@@ -1,0 +1,22 @@
+{
+  "users": [
+    {
+      "id": "6be45908-1073-4db0-83b1-9565b45c1907",
+      "email": "nguyenlongqh223@gmail.com",
+      "passwordHash": "2b7e30d367c1cfff453a0076c9a760d3:5b51207d5e032e4b62d7133185b4ba5ba03923dc739bd11f8fd6fbd8b3561f260d3fc946fcadbc539f2cf75a5e97fd559363410838839f077764013242b0ee22",
+      "createdAt": "2026-05-26T09:25:17.554Z"
+    },
+    {
+      "id": "d6f3ab11-afdd-4882-beff-c77ea2433b9b",
+      "email": "longqh300@gmail.com",
+      "passwordHash": "9445df4aad86e73fbe6d2565559723ec:3f24fd50d14b4db27ec0593130884d47dca374a50c10a6b150918c0ae28337c7f9fbca1ceac5bdfb3a398a474ee26b9751696738dc3e0cc14cdbe21647bf4f2d",
+      "createdAt": "2026-05-26T09:51:59.356Z"
+    },
+    {
+      "id": "70fc37c2-3846-40e1-b17c-2abd905b5d7d",
+      "email": "logh59016@gmail.com",
+      "passwordHash": "a5c0dfb00ed27a0681378e9232ae40af:bd9a6a1920b85a9a59bf3230012afd803e1d58a2dd2d522578cb32542ba59c7fd954d0715fe0ed99f68e0beddb063112f084d91b8ee62172e8e7f343ef119454",
+      "createdAt": "2026-05-26T10:00:18.272Z"
+    }
+  ]
+}
