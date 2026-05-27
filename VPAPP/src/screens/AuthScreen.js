@@ -21,7 +21,7 @@ import {
   registerUser,
   setAuthError,
 } from '../redux/authSlice';
-import { useGoogleLogin } from '../hooks/useGoogleLogin';
+import { useFirebaseLogin } from '../hooks/useFirebaseLogin';
 import { MainTabsScreen } from './MainTabsScreen';
 
 const FONT_SIZE = 13;
@@ -32,12 +32,16 @@ export function AuthScreen() {
   const [mode, setMode] = useState('login');
   const [activeTab, setActiveTab] = useState('profile');
 
-  const { signInWithGoogle } = useGoogleLogin({
-    onError: (message) => dispatch(setAuthError(message)),
-    onSuccess: async (profile) => {
+  const { loginWithGoogle } = useFirebaseLogin();
+
+  const handleGoogleLogin = async () => {
+    try {
+      const profile = await loginWithGoogle();
       await dispatch(googleLoginUser(profile));
-    },
-  });
+    } catch (error) {
+      dispatch(setAuthError(error.message || 'Đăng nhập Google thất bại.'));
+    }
+  };
 
   useEffect(() => {
     dispatch(hydrateSession());
@@ -95,7 +99,7 @@ export function AuthScreen() {
             loading={loading}
             mode={mode}
             onForgotPassword={() => setMode('forgot')}
-            onGoogleLogin={signInWithGoogle}
+            onGoogleLogin={handleGoogleLogin}
             onSubmit={handleSubmit}
             onSwitchMode={() => setMode((currentMode) => (currentMode === 'login' ? 'register' : 'login'))}
             successMessage={successMessage}

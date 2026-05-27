@@ -1,36 +1,19 @@
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
+
 const cors = require('cors');
 const crypto = require('node:crypto');
-const fs = require('node:fs/promises');
-const path = require('node:path');
 const express = require('express');
+const mongoose = require('mongoose');
+
+const User = require('./models/User');
 
 const app = express();
 const PORT = 4000;
 const HOST = '0.0.0.0';
-const DB_FILE = path.join(__dirname, '..', 'db.json');
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesport';
 
 app.use(cors());
 app.use(express.json());
-
-async function ensureDb() {
-  try {
-    await fs.access(DB_FILE);
-  } catch {
-    await fs.writeFile(DB_FILE, JSON.stringify({ users: [] }, null, 2));
-  }
-}
-
-async function readUsers() {
-  await ensureDb();
-  const raw = await fs.readFile(DB_FILE, 'utf8');
-  const data = JSON.parse(raw);
-  return data.users || [];
-}
-
-async function writeUsers(users) {
-  await ensureDb();
-  await fs.writeFile(DB_FILE, JSON.stringify({ users }, null, 2));
-}
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -48,7 +31,7 @@ function createSessionPayload(user) {
   return {
     token: crypto.randomUUID(),
     user: {
-      id: user.id,
+      id: user._id,
       email: user.email,
       createdAt: user.createdAt,
       name: user.name ?? null,
@@ -80,28 +63,22 @@ app.post('/auth/register', async (request, response) => {
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
-  const users = await readUsers();
-  const existingUser = users.find((user) => user.email === normalizedEmail);
+  const existingUser = await User.findOne({ email: normalizedEmail });
 
   if (existingUser) {
     response.status(409).json({ message: 'Email đã tồn tại.' });
     return;
   }
 
-  const newUser = {
-    id: crypto.randomUUID(),
+  const newUser = await User.create({
     email: normalizedEmail,
     passwordHash: hashPassword(password),
-    createdAt: new Date().toISOString(),
-  };
-
-  users.push(newUser);
-  await writeUsers(users);
+  });
 
   response.status(201).json({
     message: 'Đăng ký thành công. Vui lòng đăng nhập.',
     user: {
-      id: newUser.id,
+      id: newUser._id,
       email: newUser.email,
       createdAt: newUser.createdAt,
     },
@@ -117,8 +94,7 @@ app.post('/auth/login', async (request, response) => {
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
-  const users = await readUsers();
-  const user = users.find((entry) => entry.email === normalizedEmail);
+  const user = await User.findOne({ email: normalizedEmail });
 
   if (!user) {
     response.status(401).json({ message: 'Thông tin đăng nhập không đúng.' });
@@ -152,20 +128,16 @@ app.post('/auth/forgot-password', async (request, response) => {
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
-  const users = await readUsers();
-  const userIndex = users.findIndex((entry) => entry.email === normalizedEmail);
+  const user = await User.findOneAndUpdate(
+    { email: normalizedEmail },
+    { passwordHash: hashPassword(password) },
+    { new: true }
+  );
 
-  if (userIndex === -1) {
+  if (!user) {
     response.status(404).json({ message: 'Không tìm thấy tài khoản với email này.' });
     return;
   }
-
-  users[userIndex] = {
-    ...users[userIndex],
-    passwordHash: hashPassword(password),
-  };
-
-  await writeUsers(users);
 
   response.json({ message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.' });
 });
@@ -180,48 +152,31 @@ app.post('/auth/google', async (request, response) => {
 
   const normalizedEmail = String(email).trim().toLowerCase();
   const normalizedGoogleId = String(googleId).trim();
-  const users = await readUsers();
-  const userIndex = users.findIndex(
-    (entry) => entry.googleId === normalizedGoogleId || entry.email === normalizedEmail
+
+  const user = await User.findOneAndUpdate(
+    { $or: [{ googleId: normalizedGoogleId }, { email: normalizedEmail }] },
+    {
+      email: normalizedEmail,
+      googleId: normalizedGoogleId,
+      name: name ?? undefined,
+      picture: picture ?? undefined,
+      provider: 'google',
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
   );
-
-  let user;
-
-  if (userIndex >= 0) {
-    user = {
-      ...users[userIndex],
-      email: normalizedEmail,
-      googleId: normalizedGoogleId,
-      name: name ?? users[userIndex].name ?? null,
-      picture: picture ?? users[userIndex].picture ?? null,
-      provider: 'google',
-    };
-    users[userIndex] = user;
-  } else {
-    user = {
-      id: crypto.randomUUID(),
-      email: normalizedEmail,
-      googleId: normalizedGoogleId,
-      name: name ?? null,
-      picture: picture ?? null,
-      provider: 'google',
-      createdAt: new Date().toISOString(),
-    };
-    users.push(user);
-  }
-
-  await writeUsers(users);
 
   response.json(createSessionPayload(user));
 });
 
-ensureDb()
+mongoose
+  .connect(MONGODB_URI)
   .then(() => {
+    console.log('Connected to MongoDB');
     app.listen(PORT, HOST, () => {
       console.log(`Auth API listening at http://${HOST}:${PORT}`);
     });
   })
   .catch((error) => {
-    console.error('Failed to start auth API', error);
+    console.error('Failed to connect to MongoDB', error);
     process.exit(1);
   });
