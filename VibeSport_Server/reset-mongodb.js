@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
 
 const mongoose = require('mongoose');
 const readline = require('readline');

@@ -10,7 +10,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 export function useGoogleLogin({ onError, onSuccess }) {
   const redirectUri = AuthSession.makeRedirectUri({
-    scheme: 'vpapp',
+    scheme: 'vibesportmobile',
     path: 'oauthredirect',
   });
 

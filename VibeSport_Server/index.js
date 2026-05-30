@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
 
 const cors = require('cors');
 const crypto = require('node:crypto');

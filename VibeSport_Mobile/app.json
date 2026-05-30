@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "VPAPP",
-    "slug": "VPAPP",
-    "scheme": "vpapp",
+    "name": "VibeSport_Mobile",
+    "slug": "vibesport-mobile",
+    "scheme": "vibesportmobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

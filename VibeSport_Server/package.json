@@ -1,0 +1,23 @@
+{
+  "name": "vibesport-server",
+  "version": "1.0.0",
+  "description": "Auth API Server for VibeSport Mobile App",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "migrate": "node migrate.js",
+    "check-mongodb": "node check-mongodb.js",
+    "reset-mongodb": "node reset-mongodb.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "private": true
+}

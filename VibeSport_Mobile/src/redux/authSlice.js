@@ -3,7 +3,7 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import { forgotPasswordRequest, googleLoginRequest, loginRequest, registerRequest } from '../services/authApi';
 
-const AUTH_STORAGE_KEY = 'vpapp_auth_session';
+const AUTH_STORAGE_KEY = 'vibesport_mobile_auth_session';
 
 export const hydrateSession = createAsyncThunk('auth/hydrateSession', async (_, { rejectWithValue }) => {
   try {

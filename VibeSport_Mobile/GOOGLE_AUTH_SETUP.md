@@ -16,7 +16,7 @@ Tạo 3 client:
 
 ## 2. Điền client ID vào app
 
-Mở file [src/constants/googleAuth.js](C:/DATN/VibeSport-Mobile/VPAPP/src/constants/googleAuth.js:1) và thay:
+Mở file [src/components/constants/googleAuth.js](./src/components/constants/googleAuth.js) và thay:
 
 - `YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com`
 - `YOUR_IOS_CLIENT_ID.apps.googleusercontent.com`
@@ -26,14 +26,14 @@ Mở file [src/constants/googleAuth.js](C:/DATN/VibeSport-Mobile/VPAPP/src/const
 
 App đã cấu hình:
 
-- `scheme`: `vpapp`
+- `scheme`: `vibesportmobile`
 - Android package: `com.vibesport.vpapp`
 - iOS bundle identifier: `com.vibesport.vpapp`
 
 Redirect native hiện tại:
 
 ```text
-vpapp://oauthredirect
+vibesportmobile://oauthredirect
 ```
 
 ## 4. Lưu ý quan trọng

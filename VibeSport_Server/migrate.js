@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
 
 const mongoose = require('mongoose');
 const fs = require('fs');
@@ -22,7 +22,7 @@ async function migrateData() {
     }
 
     // Đọc dữ liệu từ db.json
-    const dbPath = path.join(__dirname, '..', 'db.json');
+    const dbPath = path.join(__dirname, 'db.json');
     const dbContent = fs.readFileSync(dbPath, 'utf-8');
     const { users } = JSON.parse(dbContent);
 
