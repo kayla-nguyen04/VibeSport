@@ -23,13 +23,14 @@ import {
 } from '../redux/authSlice';
 import { useFirebaseLogin } from '../hooks/useFirebaseLogin';
 import { MainTabsScreen } from './MainTabsScreen';
+import { SplashScreen } from './SplashScreen';
 
 const FONT_SIZE = 13;
 
 export function AuthScreen() {
   const dispatch = useDispatch();
   const { error, isAuthenticated, isHydrating, loading, successMessage, user } = useSelector((state) => state.auth);
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState('splash');
   const [activeTab, setActiveTab] = useState('profile');
 
   const { loginWithGoogle } = useFirebaseLogin();
@@ -84,6 +85,15 @@ export function AuthScreen() {
   if (isAuthenticated) {
     return (
       <MainTabsScreen activeTab={activeTab} onChangeTab={setActiveTab} onLogout={() => dispatch(logoutUser())} user={user} />
+    );
+  }
+
+  if (mode === 'splash') {
+    return (
+      <SplashScreen
+        onNavigateToRegister={() => setMode('register')}
+        onNavigateToLogin={() => setMode('login')}
+      />
     );
   }
 

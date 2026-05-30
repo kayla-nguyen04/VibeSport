@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 const FONT_SIZE = 13;
-const BRAND_LOGO = require('../../assets/logo-vp.png');
+const BRAND_LOGO = require('../../assets/logo_vibe.png');
 
 const INITIAL_FORM = {
   email: '',
