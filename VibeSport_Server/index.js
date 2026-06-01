@@ -50,39 +50,59 @@ app.get('/health', (_, response) => {
 });
 
 app.post('/auth/register', async (request, response) => {
-  const { email, password, confirmPassword } = request.body ?? {};
+  try {
+    console.log('POST /auth/register', request.body);
 
-  if (!email || !password || !confirmPassword) {
-    response.status(400).json({ message: 'Email, mật khẩu và xác nhận mật khẩu là bắt buộc.' });
-    return;
+    const { email, password, confirmPassword } = request.body ?? {};
+
+    if (!email || !password || !confirmPassword) {
+      response.status(400).json({ message: 'Email, mật khẩu và xác nhận mật khẩu là bắt buộc.' });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      response.status(400).json({ message: 'Mật khẩu xác nhận không khớp.' });
+      return;
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    if (existingUser) {
+      response.status(409).json({ message: 'Email đã tồn tại.' });
+      return;
+    }
+
+    const newUser = await User.create({
+      email: normalizedEmail,
+      passwordHash: hashPassword(password),
+    });
+
+    response.status(201).json({
+      message: 'Đăng ký thành công. Vui lòng đăng nhập.',
+      user: {
+        id: newUser._id,
+        email: newUser.email,
+        createdAt: newUser.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error('Error in /auth/register:', error);
+    if (error?.code === 11000) {
+      const resp = { message: 'Tài khoản đã tồn tại.' };
+      if (process.env.NODE_ENV !== 'production') {
+        resp.detail = error.message;
+      }
+      response.status(409).json(resp);
+      return;
+    }
+
+    const resp = { message: 'Lỗi máy chủ nội bộ.' };
+    if (process.env.NODE_ENV !== 'production') {
+      resp.detail = error.message;
+    }
+    response.status(500).json(resp);
   }
-
-  if (password !== confirmPassword) {
-    response.status(400).json({ message: 'Mật khẩu xác nhận không khớp.' });
-    return;
-  }
-
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const existingUser = await User.findOne({ email: normalizedEmail });
-
-  if (existingUser) {
-    response.status(409).json({ message: 'Email đã tồn tại.' });
-    return;
-  }
-
-  const newUser = await User.create({
-    email: normalizedEmail,
-    passwordHash: hashPassword(password),
-  });
-
-  response.status(201).json({
-    message: 'Đăng ký thành công. Vui lòng đăng nhập.',
-    user: {
-      id: newUser._id,
-      email: newUser.email,
-      createdAt: newUser.createdAt,
-    },
-  });
 });
 
 app.post('/auth/login', async (request, response) => {
