@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 
 // Fix DNS querySrv ECONNREFUSED/ENOTFOUND on Windows when resolving MongoDB Atlas SRV records
 if (process.env.MONGODB_URI && process.env.MONGODB_URI.startsWith('mongodb+srv://')) {

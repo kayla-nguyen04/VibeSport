@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 
 // Fix DNS querySrv ECONNREFUSED/ENOTFOUND on Windows when resolving MongoDB Atlas SRV records
 if (process.env.MONGODB_URI && process.env.MONGODB_URI.startsWith('mongodb+srv://')) {
@@ -12,7 +12,7 @@ if (process.env.MONGODB_URI && process.env.MONGODB_URI.startsWith('mongodb+srv:/
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const User = require('./models/User');
+const User = require('../models/User');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesport';
 
@@ -31,7 +31,13 @@ async function migrateData() {
     }
 
     // Đọc dữ liệu từ db.json
-    const dbPath = path.join(__dirname, 'db.json');
+    const dbPath = path.join(__dirname, '..', 'db.json');
+    if (!fs.existsSync(dbPath)) {
+      console.log(`\n⚠️  Không tìm thấy tệp db.json tại: ${dbPath}`);
+      await mongoose.disconnect();
+      process.exit(0);
+    }
+
     const dbContent = fs.readFileSync(dbPath, 'utf-8');
     const { users } = JSON.parse(dbContent);
 
