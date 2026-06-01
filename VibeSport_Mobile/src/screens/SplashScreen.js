@@ -139,24 +139,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 30,
   },
-  logoCircle: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#e14d2a",
-    shadowColor: "#e14d2a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
+
   logoImage: {
-    width: 90,
-    height: 90,
+    width: 120,
+    height: 120,
   },
   logoSubtext: {
     color: "#8f9cae",
