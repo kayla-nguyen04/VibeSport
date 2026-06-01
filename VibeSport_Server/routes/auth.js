@@ -33,19 +33,21 @@ function createSessionPayload(user) {
 
 // Routes
 router.post('/register', async (request, response) => {
-  const { email, password, confirmPassword } = request.body ?? {};
-
-  if (!email || !password || !confirmPassword) {
-    response.status(400).json({ message: 'Email, mật khẩu và xác nhận mật khẩu là bắt buộc.' });
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    response.status(400).json({ message: 'Mật khẩu xác nhận không khớp.' });
-    return;
-  }
-
   try {
+    console.log('POST /auth/register', request.body);
+
+    const { email, password, confirmPassword } = request.body ?? {};
+
+    if (!email || !password || !confirmPassword) {
+      response.status(400).json({ message: 'Email, mật khẩu và xác nhận mật khẩu là bắt buộc.' });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      response.status(400).json({ message: 'Mật khẩu xác nhận không khớp.' });
+      return;
+    }
+
     const normalizedEmail = String(email).trim().toLowerCase();
     const existingUser = await User.findOne({ email: normalizedEmail });
 
@@ -68,7 +70,21 @@ router.post('/register', async (request, response) => {
       },
     });
   } catch (error) {
-    response.status(500).json({ message: 'Lỗi máy chủ khi đăng ký tài khoản.' });
+    console.error('Error in /auth/register:', error);
+    if (error?.code === 11000) {
+      const resp = { message: 'Tài khoản đã tồn tại.' };
+      if (process.env.NODE_ENV !== 'production') {
+        resp.detail = error.message;
+      }
+      response.status(409).json(resp);
+      return;
+    }
+
+    const resp = { message: 'Lỗi máy chủ nội bộ.' };
+    if (process.env.NODE_ENV !== 'production') {
+      resp.detail = error.message;
+    }
+    response.status(500).json(resp);
   }
 });
 
