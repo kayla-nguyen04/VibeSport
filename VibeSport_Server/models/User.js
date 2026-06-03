@@ -41,6 +41,36 @@ const userSchema = new Schema(
       enum: ['email', 'google'],
       default: 'email',
     },
+    favoriteSport: {
+      type: String,
+      default: null,
+    },
+    position: {
+      type: String,
+      default: null,
+    },
+    area: {
+      type: String,
+      default: null,
+    },
+    bio: {
+      type: String,
+      default: null,
+    },
+    featuredPost: {
+      type: String,
+      default: null,
+    },
+    rating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    profileCompleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

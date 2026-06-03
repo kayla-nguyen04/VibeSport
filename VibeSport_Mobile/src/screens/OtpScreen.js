@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -186,13 +187,15 @@ export default function OtpScreen({ navigation, route }) {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 20}
         style={styles.flex}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          bounces={false}
+          scrollEventThrottle={16}
         >
           <Text style={styles.title}>
             Xác minh <Text style={styles.titleAccent}>OTP</Text>
@@ -217,6 +220,7 @@ export default function OtpScreen({ navigation, route }) {
                 value={digit}
                 onChangeText={(text) => handleChange(text, index)}
                 onKeyPress={(event) => handleKeyPress(event, index)}
+                editable={!verifying}
               />
             ))}
           </View>
@@ -262,7 +266,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 25,
-    paddingBottom: 32,
+    paddingBottom: 60,
     justifyContent: 'center',
   },
   title: {
@@ -289,11 +293,11 @@ const styles = StyleSheet.create({
   otpContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 40,
   },
   input: {
     width: 50,
-    height: 60,
+    height: 65,
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 12,
@@ -311,13 +315,14 @@ const styles = StyleSheet.create({
   },
   resend: {
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: 40,
   },
   button: {
     backgroundColor: '#ff5a1f',
     padding: 18,
     borderRadius: 14,
     alignItems: 'center',
+    marginTop: 10,
   },
   buttonDisabled: {
     opacity: 0.7,

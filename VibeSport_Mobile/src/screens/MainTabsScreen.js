@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
 import { ProfileScreen } from './ProfileScreen';
 
 const FONT_SIZE = 13;
@@ -10,22 +11,25 @@ const TABS = [
   {
     key: 'posts',
     label: 'Bài đăng',
-    icon: ({ color, size }) => <MaterialCommunityIcons color={color} name="soccer" size={size} />,
+    icon: ({ color, size }) => <MaterialCommunityIcons color={color} name="home-outline" size={size} />,
   },
   {
     key: 'teams',
-    label: 'Đội',
-    icon: ({ color, size }) => <Ionicons color={color} name="people-outline" size={size} />,
+    label: 'Trận',
+    icon: ({ color, size }) => <MaterialCommunityIcons color={color} name="soccer" size={size} />,
   },
   {
-    key: 'create',
-    label: 'Tạo',
-    icon: ({ color, size }) => <Feather color={color} name="plus" size={size} />,
-    isCenter: true,
+    key: 'fc',
+    label: 'FC',
+    icon: ({ color, size }) => (
+      <View style={[styles.fcIcon, color === ACTIVE_COLOR && styles.fcIconActive]}>
+        <Text style={[styles.fcIconText, color === ACTIVE_COLOR && styles.fcIconTextActive]}>FC</Text>
+      </View>
+    ),
   },
   {
     key: 'social',
-    label: 'MXH',
+    label: 'Chat',
     icon: ({ color, size }) => <Ionicons color={color} name="chatbubble-outline" size={size} />,
   },
   {
@@ -37,6 +41,26 @@ const TABS = [
 
 export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfile, user }) {
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[4];
+  const [tabLayouts, setTabLayouts] = useState({});
+  const indicatorAnim = useRef(new Animated.Value(0)).current;
+  const activeIndex = TABS.findIndex((tab) => tab.key === activeTab);
+
+  useEffect(() => {
+    if (tabLayouts[activeIndex]) {
+      Animated.timing(indicatorAnim, {
+        toValue: tabLayouts[activeIndex].x,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [activeIndex, tabLayouts, indicatorAnim]);
+
+  const handleLayout = (event, index) => {
+    const { x, width } = event.nativeEvent.layout;
+    setTabLayouts((prev) => ({ ...prev, [index]: { x, width } }));
+  };
+
+  const activeLayout = tabLayouts[activeIndex] || { width: 0 };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -56,26 +80,20 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
       </View>
 
       <View style={styles.bottomBar}>
-        {TABS.map((tab) => {
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.activeBackground,
+            {
+              width: activeLayout.width,
+              transform: [{ translateX: indicatorAnim }],
+            },
+          ]}
+        />
+
+        {TABS.map((tab, index) => {
           const isActive = tab.key === activeTab;
           const color = isActive ? ACTIVE_COLOR : INACTIVE_COLOR;
-
-          if (tab.isCenter) {
-            return (
-              <Pressable
-                key={tab.key}
-                onPress={() => onChangeTab(tab.key)}
-                style={({ pressed, hovered }) => [
-                  styles.centerButtonWrap,
-                  (pressed || hovered) && styles.zoomedWrap,
-                ]}
-              >
-                <View style={[styles.centerButton, isActive && styles.centerButtonActive]}>
-                  {tab.icon({ color: '#ffffff', size: 28 })}
-                </View>
-              </Pressable>
-            );
-          }
 
           return (
             <Pressable
@@ -86,11 +104,11 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
                 isActive && styles.activeTabButton,
                 (pressed || hovered) && styles.zoomedTab,
               ]}
+              onLayout={(event) => handleLayout(event, index)}
             >
               <View style={[styles.iconFrame, isActive && styles.activeIconFrame]}>
                 {tab.icon({ color, size: 22 })}
               </View>
-              <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{tab.label}</Text>
             </Pressable>
           );
         })}
@@ -134,11 +152,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
     shadowColor: '#0b1220',
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -147,19 +165,28 @@ const styles = StyleSheet.create({
       height: -6,
     },
     elevation: 12,
+    position: 'relative',
+  },
+  activeBackground: {
+    position: 'absolute',
+    left: 0,
+    top: 10,
+    bottom: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(11, 116, 255, 0.12)',
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     gap: 6,
-    paddingTop: 8,
+    paddingVertical: 8,
   },
   activeTabButton: {
-    transform: [{ scale: 1.08 }],
+    // No extra scaling on active tab; active background handles highlighting.
   },
   zoomedTab: {
-    transform: [{ scale: 1.08 }],
+    transform: [{ translateY: -2 }],
   },
   iconFrame: {
     width: 38,
@@ -183,32 +210,23 @@ const styles = StyleSheet.create({
     color: ACTIVE_COLOR,
     fontWeight: '700',
   },
-  centerButtonWrap: {
-    marginTop: -28,
-    marginHorizontal: 6,
-  },
-  zoomedWrap: {
-    transform: [{ scale: 1.08 }],
-  },
-  centerButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#0b74ff',
-    borderWidth: 4,
-    borderColor: '#dce9ff',
+  fcIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#eef5ff',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#0b74ff',
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    elevation: 10,
   },
-  centerButtonActive: {
-    borderColor: '#9fc3ff',
+  fcIconActive: {
+    backgroundColor: '#0b74ff',
+  },
+  fcIconText: {
+    color: '#0b74ff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  fcIconTextActive: {
+    color: '#ffffff',
   },
 });

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -38,6 +40,7 @@ export function AuthScreen({ route }) {
   const dispatch = useDispatch();
   const { error, loading, successMessage } = useSelector((state) => state.auth);
   const [mode, setMode] = useState(route.params?.initialMode ?? 'splash');
+  const [sendingOtp, setSendingOtp] = useState(false);
 
   useEffect(() => {
     if (route.params?.initialMode) {
@@ -53,19 +56,25 @@ export function AuthScreen({ route }) {
 
   const handleSubmit = async (values) => {
     if (mode === 'register') {
+      setSendingOtp(true);
       try {
         const result = await sendOtp(values.email);
 
         if (result.success) {
-          navigation.navigate('OtpScreen', {
-            email: values.email,
-            flow: 'register',
-            registerData: values,
-          });
+          setTimeout(() => {
+            setSendingOtp(false);
+            navigation.navigate('OtpScreen', {
+              email: values.email,
+              flow: 'register',
+              registerData: values,
+            });
+          }, 800);
         } else {
+          setSendingOtp(false);
           dispatch(setAuthError(result.message || 'Không gửi được mã OTP'));
         }
       } catch (err) {
+        setSendingOtp(false);
         dispatch(setAuthError('Không thể kết nối máy chủ'));
         console.log(err);
       }
@@ -115,6 +124,15 @@ export function AuthScreen({ route }) {
           />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal transparent={true} visible={sendingOtp} animationType="fade">
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#ff5a1f" />
+            <Text style={styles.loadingText}>Đang gửi mã xác minh...</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -156,5 +174,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#4b4b4b',
     lineHeight: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingBox: {
+    backgroundColor: '#fff',
+    paddingVertical: 30,
+    paddingHorizontal: 40,
+    borderRadius: 16,
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
 });

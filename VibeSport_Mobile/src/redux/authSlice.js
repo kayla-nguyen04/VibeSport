@@ -54,17 +54,24 @@ export const googleLoginUser = createAsyncThunk('auth/googleLoginUser', async (p
   }
 });
 
-export const updateProfile = createAsyncThunk('auth/updateProfile', async (payload, { rejectWithValue }) => {
+export const updateProfile = createAsyncThunk('auth/updateProfile', async (payload, { rejectWithValue, getState }) => {
   try {
     const responseData = await updateProfileRequest(payload);
-    
-    // Cập nhật lại AsyncStorage của phiên đăng nhập hiện tại
+
     const savedSessionStr = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+    const currentState = getState();
+    const currentToken = currentState.auth?.token;
     if (savedSessionStr) {
       const session = JSON.parse(savedSessionStr);
       session.user = responseData.user;
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    } else if (currentToken) {
+      await AsyncStorage.setItem(
+        AUTH_STORAGE_KEY,
+        JSON.stringify({ token: currentToken, user: responseData.user })
+      );
     }
+
     return responseData.user;
   } catch (error) {
     return rejectWithValue(error.message || 'Cập nhật hồ sơ thất bại.');

@@ -9,11 +9,12 @@ import { AuthScreen } from '../screens/AuthScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import { MainTabsScreen } from '../screens/MainTabsScreen';
 import OtpScreen from '../screens/OtpScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 const Stack = createNativeStackNavigator();
 
-function HomeScreen() {
+function HomeScreen({ navigation }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const [activeTab, setActiveTab] = useState('profile');
@@ -40,7 +41,9 @@ function LoadingScreen() {
 
 export function AuthNavigator() {
   const dispatch = useDispatch();
-  const { isAuthenticated, isHydrating } = useSelector((state) => state.auth);
+  const { isAuthenticated, isHydrating, user } = useSelector((state) => state.auth);
+
+  const isProfileComplete = Boolean(user?.favoriteSport && user?.position && user?.area);
 
   useEffect(() => {
     dispatch(hydrateSession());
@@ -50,11 +53,28 @@ export function AuthNavigator() {
     return <LoadingScreen />;
   }
 
+  const navigatorKey = isAuthenticated
+    ? isProfileComplete
+      ? 'authenticated-complete'
+      : 'authenticated-incomplete'
+    : 'guest';
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <NavigationContainer key={navigatorKey}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          animationDuration: 280,
+          gestureEnabled: true,
+        }}
+        initialRouteName={isAuthenticated ? (isProfileComplete ? 'Home' : 'CompleteProfile') : 'Auth'}
+      >
         {isAuthenticated ? (
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <>
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Auth" component={AuthScreen} />

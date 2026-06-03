@@ -22,6 +22,8 @@ export default function ResetPasswordScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleReset = async () => {
@@ -72,26 +74,36 @@ export default function ResetPasswordScreen({ navigation, route }) {
       <Text style={styles.subtitle}>Tạo mật khẩu mới cho {email}</Text>
 
       <Text style={styles.label}>Mật khẩu mới</Text>
-      <TextInput
-        autoCapitalize="none"
-        onChangeText={setPassword}
-        placeholder="Nhập mật khẩu mới"
-        placeholderTextColor="#9ca3af"
-        secureTextEntry
-        style={styles.input}
-        value={password}
-      />
+      <View style={styles.inputWrapper}>
+        <TextInput
+          autoCapitalize="none"
+          onChangeText={setPassword}
+          placeholder="Nhập mật khẩu mới"
+          placeholderTextColor="#9ca3af"
+          secureTextEntry={!showPassword}
+          style={styles.input}
+          value={password}
+        />
+        <TouchableOpacity onPress={() => setShowPassword((value) => !value)} style={styles.toggleButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={styles.toggleText}>{showPassword ? 'Ẩn' : 'Hiện'}</Text>
+        </TouchableOpacity>
+      </View>
 
       <Text style={styles.label}>Xác nhận mật khẩu</Text>
-      <TextInput
-        autoCapitalize="none"
-        onChangeText={setConfirmPassword}
-        placeholder="Nhập lại mật khẩu"
-        placeholderTextColor="#9ca3af"
-        secureTextEntry
-        style={styles.input}
-        value={confirmPassword}
-      />
+      <View style={styles.inputWrapper}>
+        <TextInput
+          autoCapitalize="none"
+          onChangeText={setConfirmPassword}
+          placeholder="Nhập lại mật khẩu"
+          placeholderTextColor="#9ca3af"
+          secureTextEntry={!showConfirmPassword}
+          style={styles.input}
+          value={confirmPassword}
+        />
+        <TouchableOpacity onPress={() => setShowConfirmPassword((value) => !value)} style={styles.toggleButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={styles.toggleText}>{showConfirmPassword ? 'Ẩn' : 'Hiện'}</Text>
+        </TouchableOpacity>
+      </View>
 
       <TouchableOpacity disabled={loading} onPress={handleReset} style={styles.button}>
         {loading ? (
@@ -142,6 +154,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 12,
   },
+  inputWrapper: {
+    position: 'relative',
+    marginBottom: 8,
+  },
   input: {
     minHeight: 56,
     borderWidth: 1,
@@ -149,7 +165,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     fontSize: 15,
-    marginBottom: 8,
+    paddingRight: 72,
+  },
+  toggleButton: {
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  toggleText: {
+    color: '#0b74ff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   button: {
     backgroundColor: '#ff5a1f',

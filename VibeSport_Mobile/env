@@ -1,1 +1,6 @@
+PORT=4000
 MONGODB_URI=mongodb+srv://vibesport:longquadeptrai@cluster0.auxczve.mongodb.net/vibesport?appName=Cluster0
+JWT_SECRET=your_jwt_secret_key_here_change_in_production
+JWT_EXPIRE=7d
+EMAIL_USER=baonamtran2404@gmail.com
+EMAIL_PASS=sthsufajjzmoaydy

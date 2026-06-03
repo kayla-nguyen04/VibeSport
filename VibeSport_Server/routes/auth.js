@@ -28,6 +28,13 @@ function createSessionPayload(user) {
       picture: user.picture ?? null,
       provider: user.provider ?? 'email',
       phone: user.phone ?? null,
+      favoriteSport: user.favoriteSport ?? null,
+      position: user.position ?? null,
+      area: user.area ?? null,
+      bio: user.bio ?? null,
+      featuredPost: user.featuredPost ?? null,
+      rating: user.rating ?? 0,
+      profileCompleted: Boolean(user.profileCompleted),
     },
   };
 }
@@ -188,7 +195,7 @@ router.post('/google', async (request, response) => {
 
 router.put('/update-profile', async (request, response) => {
   try {
-    const { userId, name, phone, picture } = request.body ?? {};
+    const { userId, name, phone, picture, favoriteSport, position, area, bio, featuredPost } = request.body ?? {};
 
     if (!userId) {
       response.status(400).json({ message: 'Thiếu thông tin ID người dùng (userId).' });
@@ -199,6 +206,15 @@ router.put('/update-profile', async (request, response) => {
     if (name !== undefined) updateFields.name = name;
     if (phone !== undefined) updateFields.phone = phone;
     if (picture !== undefined) updateFields.picture = picture;
+    if (favoriteSport !== undefined) updateFields.favoriteSport = favoriteSport;
+    if (position !== undefined) updateFields.position = position;
+    if (area !== undefined) updateFields.area = area;
+    if (bio !== undefined) updateFields.bio = bio;
+    if (featuredPost !== undefined) updateFields.featuredPost = featuredPost;
+
+    if (favoriteSport || position || area) {
+      updateFields.profileCompleted = Boolean(favoriteSport && position && area);
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -221,6 +237,13 @@ router.put('/update-profile', async (request, response) => {
         picture: user.picture ?? null,
         provider: user.provider ?? 'email',
         phone: user.phone ?? null,
+        favoriteSport: user.favoriteSport ?? null,
+        position: user.position ?? null,
+        area: user.area ?? null,
+        bio: user.bio ?? null,
+        featuredPost: user.featuredPost ?? null,
+        rating: user.rating ?? 0,
+        profileCompleted: Boolean(user.profileCompleted),
       },
     });
   } catch (error) {

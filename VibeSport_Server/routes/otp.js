@@ -17,12 +17,13 @@ router.post("/send-otp", async (req, res) => {
     });
 
     otpStore[email] = otp;
+    console.log(`[OTP ROUTE] Generated OTP for ${email}: ${otp}`);
 
     await sendOTP(email, otp);
 
     res.json({
       success: true,
-      message: "OTP sent",
+      message: "OTP sent successfully",
     });
   } catch (error) {
     console.error("send-otp error:", error.message);
@@ -31,14 +32,21 @@ router.post("/send-otp", async (req, res) => {
 
     if (error.code === "EMAIL_NOT_CONFIGURED") {
       message = "Server chưa cấu hình email. Liên hệ quản trị viên.";
-    } else if (error.code === "EAUTH" || String(error.message).includes("535")) {
+    } else if (
+      error.code === "EAUTH" ||
+      String(error.message).includes("535") ||
+      String(error.message).includes("Invalid login")
+    ) {
       message =
-        "Không gửi được email. Tài khoản Gmail cần dùng App Password (không dùng mật khẩu đăng nhập thường).";
+        "Lỗi xác thực Gmail. Hãy dùng App Password (không dùng mật khẩu đăng nhập thường). Xem hướng dẫn tại https://support.google.com/accounts/answer/185833";
+    } else if (String(error.message).includes("getaddrinfo")) {
+      message = "Lỗi kết nối mạng. Vui lòng kiểm tra kết nối Internet.";
     }
 
     res.status(500).json({
       success: false,
       message,
+      detail: process.env.NODE_ENV !== "production" ? error.message : undefined,
     });
   }
 });

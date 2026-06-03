@@ -13,17 +13,35 @@ import {
   ActivityIndicator
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+const SPORTS = [
+  { key: 'Bóng đá', label: 'Bóng đá' },
+  { key: 'Cầu lông', label: 'Cầu lông' },
+  { key: 'Pickleball', label: 'Pickleball' },
+];
 
+const POSITION_OPTIONS = {
+  'Bóng đá': ['Tiền đạo', 'Tiền vệ', 'Hậu vệ', 'Thủ môn'],
+  'Cầu lông': ['Đơn', 'Đôi', 'Đôi nam', 'Đôi nữ'],
+  Pickleball: ['Forehand', 'Backhand', 'Đôi'],
+};
 export function ProfileScreen({ onLogout, onUpdateProfile, user }) {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
+  const [editFavoriteSport, setEditFavoriteSport] = useState(user?.favoriteSport ?? 'Bóng đá');
+  const [editPosition, setEditPosition] = useState(user?.position ?? 'Tiền đạo');
+  const [editArea, setEditArea] = useState(user?.area ?? '');
+  const [editBio, setEditBio] = useState(user?.bio ?? '');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
       setEditName(user.name ?? '');
       setEditPhone(user.phone ?? '');
+      setEditFavoriteSport(user.favoriteSport ?? 'Bóng đá');
+      setEditPosition(user.position ?? 'Tiền đạo');
+      setEditArea(user.area ?? '');
+      setEditBio(user.bio ?? '');
     }
   }, [user]);
 
@@ -102,9 +120,13 @@ export function ProfileScreen({ onLogout, onUpdateProfile, user }) {
     
     setIsSaving(true);
     const actionResult = await onUpdateProfile({
-      userId: user.id,
+      userId: user?.id || user?._id,
       name: editName.trim(),
       phone: editPhone.trim(),
+      favoriteSport: editFavoriteSport,
+      position: editPosition,
+      area: editArea.trim(),
+      bio: editBio.trim(),
     });
     setIsSaving(false);
     
@@ -140,6 +162,34 @@ export function ProfileScreen({ onLogout, onUpdateProfile, user }) {
             {user?.name || user?.email?.split('@')[0] || 'Người dùng VibeSport'}
           </Text>
           <Text style={styles.emailText}>{user?.email}</Text>
+
+          <View style={styles.profileHighlights}>
+            <View style={styles.profileItem}>
+              <Text style={styles.profileLabel}>Môn thể thao</Text>
+              <Text style={styles.profileValue}>{user?.favoriteSport || 'Chưa cập nhật'}</Text>
+            </View>
+            <View style={styles.profileItem}>
+              <Text style={styles.profileLabel}>Vị trí</Text>
+              <Text style={styles.profileValue}>{user?.position || 'Chưa cập nhật'}</Text>
+            </View>
+            <View style={styles.profileItem}>
+              <Text style={styles.profileLabel}>Khu vực</Text>
+              <Text style={styles.profileValue}>{user?.area || 'Chưa cập nhật'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.ratingRow}>
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Feather
+                key={index}
+                name="star"
+                size={18}
+                color={index < (user?.rating ?? 5) ? '#f59e0b' : '#d1d5db'}
+              />
+            ))}
+            <Text style={styles.ratingText}>{((user?.rating ?? 5)).toFixed(1)} / 5.0</Text>
+          </View>
+
         </View>
 
         <View style={styles.divider} />
@@ -247,6 +297,65 @@ export function ProfileScreen({ onLogout, onUpdateProfile, user }) {
                 placeholder="Nhập số điện thoại"
                 placeholderTextColor="#9ca3af"
                 keyboardType="phone-pad"
+              />
+
+              <Text style={styles.inputLabel}>Môn thể thao</Text>
+              <View style={styles.optionRow}>
+                {SPORTS.map((sport) => (
+                  <TouchableOpacity
+                    key={sport.key}
+                    onPress={() => {
+                      setEditFavoriteSport(sport.key);
+                      const positions = POSITION_OPTIONS[sport.key] || [];
+                      setEditPosition(positions[0] || '');
+                    }}
+                    style={[
+                      styles.optionCard,
+                      editFavoriteSport === sport.key && styles.optionCardActive,
+                    ]}
+                  >
+                    <Text style={[styles.optionText, editFavoriteSport === sport.key && styles.optionTextActive]}>
+                      {sport.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>Vị trí chơi</Text>
+              <View style={styles.optionRow}>
+                {(POSITION_OPTIONS[editFavoriteSport] || []).map((posOption) => (
+                  <TouchableOpacity
+                    key={posOption}
+                    onPress={() => setEditPosition(posOption)}
+                    style={[
+                      styles.positionCard,
+                      editPosition === posOption && styles.positionCardActive,
+                    ]}
+                  >
+                    <Text style={[styles.positionText, editPosition === posOption && styles.positionTextActive]}>
+                      {posOption}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>Khu vực</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editArea}
+                onChangeText={setEditArea}
+                placeholder="Ví dụ: Đống Đa, Hà Nội"
+                placeholderTextColor="#9ca3af"
+              />
+
+              <Text style={styles.inputLabel}>Mô tả ngắn</Text>
+              <TextInput
+                style={[styles.modalInput, styles.modalTextarea]}
+                value={editBio}
+                onChangeText={setEditBio}
+                placeholder="Viết vài dòng về bạn"
+                placeholderTextColor="#9ca3af"
+                multiline
               />
 
               <Text style={styles.inputLabel}>Email (Không thể thay đổi)</Text>
@@ -357,6 +466,72 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  profileHighlights: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 22,
+    width: '100%',
+  },
+  profileItem: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    marginRight: 10,
+  },
+  profileLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 6,
+  },
+  profileValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  ratingText: {
+    marginLeft: 10,
+    fontSize: 13,
+    color: '#475569',
+  },
+  bioBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 18,
+  },
+  bioTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  bioText: {
+    color: '#475569',
+    lineHeight: 20,
+  },
+  featuredBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 18,
+  },
+  featuredTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  featuredText: {
+    color: '#475569',
+    lineHeight: 20,
+  },
   divider: {
     height: 1,
     backgroundColor: '#e2e8f0',
@@ -435,6 +610,62 @@ const styles = StyleSheet.create({
     color: '#475569',
     marginBottom: 8,
     marginTop: 16,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+    marginBottom: 12,
+  },
+  optionCard: {
+    minWidth: '30%',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 6,
+  },
+  optionCardActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
+  },
+  optionText: {
+    color: '#1e293b',
+    fontWeight: '700',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  optionTextActive: {
+    color: '#2563eb',
+  },
+  positionCard: {
+    minWidth: '32%',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 6,
+  },
+  positionCardActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
+  },
+  positionText: {
+    color: '#1e293b',
+    fontWeight: '700',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  positionTextActive: {
+    color: '#2563eb',
   },
   modalInput: {
     borderWidth: 1,
