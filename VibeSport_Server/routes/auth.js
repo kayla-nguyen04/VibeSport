@@ -36,7 +36,7 @@ router.post('/register', async (request, response) => {
   try {
     console.log('POST /auth/register', request.body);
 
-    const { email, password, confirmPassword } = request.body ?? {};
+    const { email, password, confirmPassword, fullName, phone } = request.body ?? {};
 
     if (!email || !password || !confirmPassword) {
       response.status(400).json({ message: 'Email, mật khẩu và xác nhận mật khẩu là bắt buộc.' });
@@ -59,6 +59,8 @@ router.post('/register', async (request, response) => {
     const newUser = await User.create({
       email: normalizedEmail,
       passwordHash: hashPassword(password),
+      name: fullName,
+      phone: phone,
     });
 
     response.status(201).json({
