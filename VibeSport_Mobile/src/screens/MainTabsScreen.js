@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ProfileScreen } from './ProfileScreen';
 
 const FONT_SIZE = 13;
 const ACTIVE_COLOR = '#0b74ff';
@@ -34,21 +35,24 @@ const TABS = [
   },
 ];
 
-export function MainTabsScreen({ activeTab, onChangeTab, onLogout, user }) {
+export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfile, user }) {
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[4];
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.content}>
-        <Text style={styles.layoutText}>Đây là layout</Text>
-        <Text style={styles.layoutName}>{currentTab.label}</Text>
-        {activeTab === 'profile' ? <Text style={styles.profileEmail}>{user?.email}</Text> : null}
-
+      <View style={activeTab === 'profile' ? styles.profileContent : styles.content}>
         {activeTab === 'profile' ? (
-          <Pressable onPress={onLogout} style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedButton]}>
-            <Text style={styles.logoutText}>Đăng xuất</Text>
-          </Pressable>
-        ) : null}
+          <ProfileScreen
+            onLogout={onLogout}
+            onUpdateProfile={onUpdateProfile}
+            user={user}
+          />
+        ) : (
+          <>
+            <Text style={styles.layoutText}>Đây là layout</Text>
+            <Text style={styles.layoutName}>{currentTab.label}</Text>
+          </>
+        )}
       </View>
 
       <View style={styles.bottomBar}>
@@ -106,6 +110,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
+  profileContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    backgroundColor: '#f4f6fb',
+    width: '100%',
+  },
   layoutText: {
     fontSize: FONT_SIZE,
     color: '#68707f',
@@ -118,29 +128,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#101828',
     textAlign: 'center',
-  },
-  profileEmail: {
-    marginTop: 8,
-    fontSize: FONT_SIZE,
-    color: '#5b6472',
-  },
-  logoutButton: {
-    marginTop: 24,
-    minHeight: 44,
-    minWidth: 120,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    backgroundColor: '#101828',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pressedButton: {
-    transform: [{ scale: 1.03 }],
-  },
-  logoutText: {
-    color: '#ffffff',
-    fontSize: FONT_SIZE,
-    fontWeight: '700',
   },
   bottomBar: {
     flexDirection: 'row',

@@ -57,3 +57,10 @@ export function googleLoginRequest(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function updateProfileRequest(payload) {
+  return request('/auth/update-profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
