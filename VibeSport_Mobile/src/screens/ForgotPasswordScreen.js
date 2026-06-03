@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
+import { BackButton } from '../components/BackButton';
 import { sendOtp } from '../services/otpService';
 
 export default function ForgotPasswordScreen({ navigation }) {
@@ -60,9 +60,7 @@ export default function ForgotPasswordScreen({ navigation }) {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons color="#111111" name="arrow-back" size={22} />
-          </TouchableOpacity>
+          <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
 
           <Text style={styles.title}>
             Quên <Text style={styles.titleAccent}>mật khẩu</Text>
@@ -135,12 +133,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 28,
   },
   title: {

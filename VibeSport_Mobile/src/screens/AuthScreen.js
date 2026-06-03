@@ -13,6 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 
+import { BackButton } from '../components/BackButton';
 import { AuthCard } from '../components/AuthCard';
 import { clearAuthFeedback, loginUser, setAuthError } from '../redux/authSlice';
 import { sendOtp } from '../services/otpService';
@@ -94,9 +95,7 @@ export function AuthScreen({ route }) {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.navRow}>
-            <TouchableOpacity onPress={() => setMode('splash')} style={styles.backButton}>
-              <Text style={styles.backButtonText}>{'‹'}</Text>
-            </TouchableOpacity>
+            <BackButton onPress={() => setMode('splash')} />
           </View>
 
           <View style={styles.headingGroup}>
@@ -136,23 +135,6 @@ const styles = StyleSheet.create({
   navRow: {
     height: 56,
     justifyContent: 'center',
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    shadowColor: '#000000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  backButtonText: {
-    fontSize: 22,
-    color: '#111111',
   },
   headingGroup: {
     marginTop: 8,
