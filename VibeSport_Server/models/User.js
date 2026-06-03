@@ -9,24 +9,33 @@ const userSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+
     passwordHash: {
       type: String,
       default: null,
     },
+
     googleId: {
       type: String,
-      default: undefined,
-      sparse: true,
       unique: true,
+      sparse: true,
     },
+
     name: {
       type: String,
       default: null,
     },
+
+    phone: {
+      type: String,
+      default: null,
+    },
+
     picture: {
       type: String,
       default: null,
     },
+
     provider: {
       type: String,
       enum: ['email', 'google'],

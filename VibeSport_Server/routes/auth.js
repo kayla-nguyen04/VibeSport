@@ -27,6 +27,7 @@ function createSessionPayload(user) {
       name: user.name ?? null,
       picture: user.picture ?? null,
       provider: user.provider ?? 'email',
+      phone: user.phone ?? null,
     },
   };
 }
@@ -36,7 +37,7 @@ router.post('/register', async (request, response) => {
   try {
     console.log('POST /auth/register', request.body);
 
-    const { email, password, confirmPassword } = request.body ?? {};
+    const { email, password, confirmPassword, fullName, phone } = request.body ?? {};
 
     if (!email || !password || !confirmPassword) {
       response.status(400).json({ message: 'Email, mật khẩu và xác nhận mật khẩu là bắt buộc.' });
@@ -59,6 +60,8 @@ router.post('/register', async (request, response) => {
     const newUser = await User.create({
       email: normalizedEmail,
       passwordHash: hashPassword(password),
+      name: fullName,
+      phone: phone,
     });
 
     response.status(201).json({
@@ -180,6 +183,49 @@ router.post('/google', async (request, response) => {
     response.json(createSessionPayload(user));
   } catch (error) {
     response.status(500).json({ message: 'Lỗi máy chủ khi đăng nhập bằng Google.' });
+  }
+});
+
+router.put('/update-profile', async (request, response) => {
+  try {
+    const { userId, name, phone, picture } = request.body ?? {};
+
+    if (!userId) {
+      response.status(400).json({ message: 'Thiếu thông tin ID người dùng (userId).' });
+      return;
+    }
+
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+    if (phone !== undefined) updateFields.phone = phone;
+    if (picture !== undefined) updateFields.picture = picture;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateFields },
+      { new: true }
+    );
+
+    if (!user) {
+      response.status(404).json({ message: 'Không tìm thấy người dùng.' });
+      return;
+    }
+
+    response.json({
+      message: 'Cập nhật thông tin hồ sơ thành công.',
+      user: {
+        id: user._id,
+        email: user.email,
+        createdAt: user.createdAt,
+        name: user.name ?? null,
+        picture: user.picture ?? null,
+        provider: user.provider ?? 'email',
+        phone: user.phone ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    response.status(500).json({ message: 'Lỗi máy chủ khi cập nhật hồ sơ.' });
   }
 });
 

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
-import { forgotPasswordRequest, googleLoginRequest, loginRequest, registerRequest } from '../services/authApi';
+import { forgotPasswordRequest, googleLoginRequest, loginRequest, registerRequest, updateProfileRequest } from '../services/authApi';
 
 const AUTH_STORAGE_KEY = 'vibesport_mobile_auth_session';
 
@@ -51,6 +51,23 @@ export const googleLoginUser = createAsyncThunk('auth/googleLoginUser', async (p
     return session;
   } catch (error) {
     return rejectWithValue(error.message || 'Đăng nhập Google thất bại.');
+  }
+});
+
+export const updateProfile = createAsyncThunk('auth/updateProfile', async (payload, { rejectWithValue }) => {
+  try {
+    const responseData = await updateProfileRequest(payload);
+    
+    // Cập nhật lại AsyncStorage của phiên đăng nhập hiện tại
+    const savedSessionStr = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+    if (savedSessionStr) {
+      const session = JSON.parse(savedSessionStr);
+      session.user = responseData.user;
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    }
+    return responseData.user;
+  } catch (error) {
+    return rejectWithValue(error.message || 'Cập nhật hồ sơ thất bại.');
   }
 });
 
@@ -150,6 +167,20 @@ const authSlice = createSlice({
       .addCase(forgotPasswordUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || 'Không thể đặt lại mật khẩu.';
+      })
+      .addCase(updateProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.successMessage = null;
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload;
+        state.successMessage = 'Cập nhật hồ sơ thành công.';
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || 'Cập nhật hồ sơ thất bại.';
       })
       .addCase(logoutUser.fulfilled, (state) => {
         state.user = null;

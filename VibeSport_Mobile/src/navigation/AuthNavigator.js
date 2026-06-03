@@ -4,7 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { hydrateSession, logoutUser } from '../redux/authSlice';
+import { hydrateSession, logoutUser, updateProfile } from '../redux/authSlice';
 import { AuthScreen } from '../screens/AuthScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import { MainTabsScreen } from '../screens/MainTabsScreen';
@@ -23,6 +23,7 @@ function HomeScreen() {
       activeTab={activeTab}
       onChangeTab={setActiveTab}
       onLogout={() => dispatch(logoutUser())}
+      onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
       user={user}
     />
   );
