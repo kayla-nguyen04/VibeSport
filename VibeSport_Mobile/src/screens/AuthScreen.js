@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -11,18 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { AuthCard } from '../components/AuthCard';
-import {
-  clearAuthFeedback,
-  forgotPasswordUser,
-  hydrateSession,
-  loginUser,
-  logoutUser,
-  registerUser,
-} from '../redux/authSlice';
-import { MainTabsScreen } from './MainTabsScreen';
+import { clearAuthFeedback, loginUser, setAuthError } from '../redux/authSlice';
+import { sendOtp } from '../services/otpService';
 import { SplashScreen } from './SplashScreen';
 
 const LOGO = require('../../assets/logo_vibe.png');
@@ -37,67 +30,61 @@ const HEADER_TEXT = {
     title: 'Tạo tài khoản',
     subtitle: 'Điền thông tin để bắt đầu!',
   },
-  forgot: {
-    title: 'Quên mật khẩu',
-    subtitle: 'Nhập email để đặt lại mật khẩu.',
-  },
 };
 
-export function AuthScreen() {
+export function AuthScreen({ route }) {
+  const navigation = useNavigation();
   const dispatch = useDispatch();
-  const { error, isAuthenticated, isHydrating, loading, successMessage, user } = useSelector((state) => state.auth);
-  const [mode, setMode] = useState('splash');
-  const [activeTab, setActiveTab] = useState('profile');
+  const { error, loading, successMessage } = useSelector((state) => state.auth);
+  const [mode, setMode] = useState(route.params?.initialMode ?? 'splash');
 
   useEffect(() => {
-    dispatch(hydrateSession());
-  }, [dispatch]);
-
-  useEffect(() => {
-    dispatch(clearAuthFeedback());
-  }, [dispatch, mode]);
-
-  const handleSubmit = async (values) => {
-    const action =
-      mode === 'login'
-        ? await dispatch(loginUser(values))
-        : mode === 'register'
-          ? await dispatch(registerUser(values))
-          : await dispatch(forgotPasswordUser(values));
-
-    if (!action.error && (mode === 'register' || mode === 'forgot')) {
-      setMode('login');
+    if (route.params?.initialMode) {
+      setMode(route.params.initialMode);
+      navigation.setParams({ initialMode: undefined });
     }
+  }, [navigation, route.params?.initialMode]);
 
-    return action;
+  const switchMode = () => {
+    dispatch(clearAuthFeedback());
+    setMode((currentMode) => (currentMode === 'login' ? 'register' : 'login'));
   };
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      setActiveTab('profile');
+  const handleSubmit = async (values) => {
+    if (mode === 'register') {
+      try {
+        const result = await sendOtp(values.email);
+
+        if (result.success) {
+          navigation.navigate('OtpScreen', {
+            email: values.email,
+            flow: 'register',
+            registerData: values,
+          });
+        } else {
+          dispatch(setAuthError(result.message || 'Không gửi được mã OTP'));
+        }
+      } catch (err) {
+        dispatch(setAuthError('Không thể kết nối máy chủ'));
+        console.log(err);
+      }
+      return;
     }
-  }, [isAuthenticated]);
 
-  if (isHydrating) {
-    return (
-      <SafeAreaView style={styles.centeredScreen}>
-        <ActivityIndicator size="large" color="#111111" />
-        <Text style={styles.loadingText}>Đang tải phiên đăng nhập...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (isAuthenticated) {
-    return (
-      <MainTabsScreen activeTab={activeTab} onChangeTab={setActiveTab} onLogout={() => dispatch(logoutUser())} user={user} />
-    );
-  }
+    return dispatch(loginUser(values));
+  };
 
   if (mode === 'splash') {
     return (
       <SplashScreen
-        onNavigateToRegister={() => setMode('register')}
-        onNavigateToLogin={() => setMode('login')}
+        onNavigateToRegister={() => {
+          dispatch(clearAuthFeedback());
+          setMode('register');
+        }}
+        onNavigateToLogin={() => {
+          dispatch(clearAuthFeedback());
+          setMode('login');
+        }}
       />
     );
   }
@@ -122,9 +109,9 @@ export function AuthScreen() {
             error={error}
             loading={loading}
             mode={mode}
-            onForgotPassword={() => setMode('forgot')}
+            onForgotPassword={() => navigation.navigate('ForgotPassword')}
             onSubmit={handleSubmit}
-            onSwitchMode={() => setMode((currentMode) => (currentMode === 'login' ? 'register' : 'login'))}
+            onSwitchMode={switchMode}
             successMessage={successMessage}
           />
         </ScrollView>
@@ -187,16 +174,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#4b4b4b',
     lineHeight: 24,
-  },
-  centeredScreen: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8f8f8',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: FONT_SIZE,
-    color: '#3d3d3d',
   },
 });

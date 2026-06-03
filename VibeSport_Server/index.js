@@ -13,6 +13,7 @@ const cors = require('cors');
 const express = require('express');
 const mongoose = require('mongoose');
 const authRouter = require('./routes/auth');
+const otpRoutes = require("./routes/otp");
 
 const app = express();
 const PORT = 4000;
@@ -21,6 +22,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesp
 
 app.use(cors());
 app.use(express.json());
+app.use("/api/otp", otpRoutes);
 
 app.get('/health', (_, response) => {
   response.json({
