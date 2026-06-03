@@ -2,7 +2,10 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +14,7 @@ import {
 } from 'react-native';
 import { useDispatch } from 'react-redux';
 
+import { BackButton } from '../components/BackButton';
 import { forgotPasswordUser } from '../redux/authSlice';
 
 export default function ResetPasswordScreen({ navigation, route }) {
@@ -54,7 +58,15 @@ export default function ResetPasswordScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        style={styles.flex}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
+
+          <Text style={styles.title}>
         Đặt lại <Text style={styles.accent}>mật khẩu</Text>
       </Text>
       <Text style={styles.subtitle}>Tạo mật khẩu mới cho {email}</Text>
@@ -88,6 +100,8 @@ export default function ResetPasswordScreen({ navigation, route }) {
           <Text style={styles.buttonText}>Lưu mật khẩu</Text>
         )}
       </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -95,9 +109,19 @@ export default function ResetPasswordScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 25,
     backgroundColor: '#fff',
+  },
+  flex: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: 25,
     justifyContent: 'center',
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 24,
   },
   title: {
     fontSize: 30,
