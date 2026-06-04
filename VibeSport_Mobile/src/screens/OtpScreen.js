@@ -159,7 +159,7 @@ export default function OtpScreen({ navigation, route }) {
     setResending(true);
 
     try {
-      const result = await sendOtp(email);
+      const result = await sendOtp(email, flow);
 
       if (result.success) {
         setTimeLeft(OTP_EXPIRY_SECONDS);

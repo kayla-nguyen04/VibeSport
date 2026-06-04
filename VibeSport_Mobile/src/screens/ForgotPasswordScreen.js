@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BackButton } from '../components/BackButton';
 import { sendOtp } from '../services/otpService';
+import { validateEmail } from '../utils/validateEmail';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -22,15 +23,10 @@ export default function ForgotPasswordScreen({ navigation }) {
   const [error, setError] = useState(null);
 
   const handleSendReset = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const emailCheck = validateEmail(email);
 
-    if (!normalizedEmail) {
-      setError('Vui lòng nhập email');
-      return;
-    }
-
-    if (!normalizedEmail.includes('@')) {
-      setError('Email không hợp lệ');
+    if (!emailCheck.valid) {
+      setError(emailCheck.message);
       return;
     }
 
@@ -38,11 +34,11 @@ export default function ForgotPasswordScreen({ navigation }) {
     setLoading(true);
 
     try {
-      const result = await sendOtp(normalizedEmail);
+      const result = await sendOtp(emailCheck.email, 'forgot');
 
       if (result.success) {
         navigation.navigate('OtpScreen', {
-          email: normalizedEmail,
+          email: emailCheck.email,
           flow: 'forgot',
         });
       } else {

@@ -19,6 +19,7 @@ import { BackButton } from '../components/BackButton';
 import { AuthCard } from '../components/AuthCard';
 import { clearAuthFeedback, loginUser, setAuthError } from '../redux/authSlice';
 import { sendOtp } from '../services/otpService';
+import { validateEmail } from '../utils/validateEmail';
 import { SplashScreen } from './SplashScreen';
 
 const LOGO = require('../../assets/logo_vibe.png');
@@ -56,17 +57,25 @@ export function AuthScreen({ route }) {
 
   const handleSubmit = async (values) => {
     if (mode === 'register') {
+      const emailCheck = validateEmail(values.email);
+
+      if (!emailCheck.valid) {
+        dispatch(setAuthError(emailCheck.message));
+        return;
+      }
+
       setSendingOtp(true);
+
       try {
-        const result = await sendOtp(values.email);
+        const result = await sendOtp(emailCheck.email, 'register');
 
         if (result.success) {
           setTimeout(() => {
             setSendingOtp(false);
             navigation.navigate('OtpScreen', {
-              email: values.email,
+              email: emailCheck.email,
               flow: 'register',
-              registerData: values,
+              registerData: { ...values, email: emailCheck.email },
             });
           }, 800);
         } else {
