@@ -13,6 +13,7 @@ const INCOMPLETE_DOMAINS = new Set([
   "googlemail",
 ]);
 
+
 function validateEmail(email) {
   const normalized = String(email || "")
     .trim()
