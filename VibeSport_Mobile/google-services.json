@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "542748830416",
+    "project_id": "vibesport-d1264",
+    "storage_bucket": "vibesport-d1264.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:542748830416:android:6a48fc740752ee9c0cccd5",
+        "android_client_info": {
+          "package_name": "com.vibesport.vpapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlZLWkp4CBdlSGr5TADssZDSkmnpoV-oM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
