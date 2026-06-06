@@ -1,8 +1,6 @@
 const express = require("express");
 const otpGenerator = require("otp-generator");
-const User = require("../models/User");
 const sendOTP = require("../utils/sendOtp");
-const { validateEmail, validateEmailDomain } = require("../utils/validateEmail");
 
 const router = express.Router();
 
@@ -10,49 +8,7 @@ const otpStore = {};
 
 router.post("/send-otp", async (req, res) => {
   try {
-    const { email, purpose } = req.body;
-
-    if (!purpose || !["register", "forgot"].includes(purpose)) {
-      return res.status(400).json({
-        success: false,
-        message: "Thiếu loại yêu cầu OTP.",
-      });
-    }
-
-    const validation = validateEmail(email);
-
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        message: validation.message,
-      });
-    }
-
-    const domainOk = await validateEmailDomain(validation.domain);
-
-    if (!domainOk) {
-      return res.status(400).json({
-        success: false,
-        message: "Tên miền email không tồn tại hoặc không nhận thư.",
-      });
-    }
-
-    const normalizedEmail = validation.email;
-    const existingUser = await User.findOne({ email: normalizedEmail });
-
-    if (purpose === "register" && existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "Email đã được đăng ký trên hệ thống.",
-      });
-    }
-
-    if (purpose === "forgot" && !existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: "Email chưa được đăng ký trên hệ thống.",
-      });
-    }
+    const { email } = req.body;
 
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
@@ -60,13 +16,14 @@ router.post("/send-otp", async (req, res) => {
       specialChars: false,
     });
 
-    otpStore[normalizedEmail] = otp;
+    otpStore[email] = otp;
+    console.log(`[OTP ROUTE] Generated OTP for ${email}: ${otp}`);
 
-    await sendOTP(normalizedEmail, otp);
+    await sendOTP(email, otp);
 
     res.json({
       success: true,
-      message: "OTP sent",
+      message: "OTP sent successfully",
     });
   } catch (error) {
     console.error("send-otp error:", error.message);
@@ -75,32 +32,30 @@ router.post("/send-otp", async (req, res) => {
 
     if (error.code === "EMAIL_NOT_CONFIGURED") {
       message = "Server chưa cấu hình email. Liên hệ quản trị viên.";
-    } else if (error.code === "EAUTH" || String(error.message).includes("535")) {
+    } else if (
+      error.code === "EAUTH" ||
+      String(error.message).includes("535") ||
+      String(error.message).includes("Invalid login")
+    ) {
       message =
-        "Không gửi được email. Tài khoản Gmail cần dùng App Password (không dùng mật khẩu đăng nhập thường).";
+        "Lỗi xác thực Gmail. Hãy dùng App Password (không dùng mật khẩu đăng nhập thường). Xem hướng dẫn tại https://support.google.com/accounts/answer/185833";
+    } else if (String(error.message).includes("getaddrinfo")) {
+      message = "Lỗi kết nối mạng. Vui lòng kiểm tra kết nối Internet.";
     }
 
     res.status(500).json({
       success: false,
       message,
+      detail: process.env.NODE_ENV !== "production" ? error.message : undefined,
     });
   }
 });
 
 router.post("/verify-otp", (req, res) => {
-  const validation = validateEmail(req.body?.email);
+  const { email, otp } = req.body;
 
-  if (!validation.valid) {
-    return res.status(400).json({
-      success: false,
-      message: validation.message,
-    });
-  }
-
-  const { otp } = req.body;
-
-  if (otpStore[validation.email] === otp) {
-    delete otpStore[validation.email];
+  if (otpStore[email] === otp) {
+    delete otpStore[email];
 
     return res.json({
       success: true,

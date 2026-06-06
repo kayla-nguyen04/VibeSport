@@ -6,6 +6,8 @@ function isEmailConfigured() {
 
 const sendOTP = async (email, otp) => {
   console.log(`[OTP] Preparing to send OTP to: ${email}`);
+  console.log("EMAIL_USER =", process.env.EMAIL_USER);
+  console.log("EMAIL_PASS =", process.env.EMAIL_PASS ? "OK" : "MISSING");
   
   if (!isEmailConfigured()) {
     throw Object.assign(new Error("EMAIL_NOT_CONFIGURED"), { code: "EMAIL_NOT_CONFIGURED" });
