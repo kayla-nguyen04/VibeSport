@@ -2,6 +2,7 @@ import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { Animated, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ProfileScreen } from './ProfileScreen';
+import TeamsScreen from './TeamsScreen';
 
 const FONT_SIZE = 13;
 const ACTIVE_COLOR = '#0b74ff';
@@ -39,7 +40,7 @@ const TABS = [
   },
 ];
 
-export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfile, user }) {
+export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfile, user, navigation }) {
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[4];
   const [tabLayouts, setTabLayouts] = useState({});
   const indicatorAnim = useRef(new Animated.Value(0)).current;
@@ -64,13 +65,15 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={activeTab === 'profile' ? styles.profileContent : styles.content}>
+      <View style={activeTab === 'profile' || activeTab === 'teams' ? styles.profileContent : styles.content}>
         {activeTab === 'profile' ? (
           <ProfileScreen
             onLogout={onLogout}
             onUpdateProfile={onUpdateProfile}
             user={user}
           />
+        ) : activeTab === 'teams' ? (
+          <TeamsScreen navigation={navigation} />
         ) : (
           <>
             <Text style={styles.layoutText}>Đây là layout</Text>

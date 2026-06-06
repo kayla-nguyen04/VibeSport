@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { ActivityIndicator, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
@@ -11,22 +12,44 @@ import { MainTabsScreen } from '../screens/MainTabsScreen';
 import OtpScreen from '../screens/OtpScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
+import CreateMatchScreen from '../screens/CreateMatchScreen';
+import MapPickerScreen from '../screens/MapPickerScreen';
 
 const Stack = createNativeStackNavigator();
 
-function HomeScreen({ navigation }) {
+function HomeScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const [activeTab, setActiveTab] = useState('profile');
 
+  useFocusEffect(
+    useCallback(() => {
+      const tab = route.params?.activeTab;
+      if (tab) {
+        setActiveTab(tab);
+        navigation.setParams({ activeTab: undefined });
+      }
+    }, [navigation, route.params?.activeTab])
+  );
+
   return (
-    <MainTabsScreen
-      activeTab={activeTab}
-      onChangeTab={setActiveTab}
-      onLogout={() => dispatch(logoutUser())}
-      onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
-      user={user}
-    />
+    <View style={styles.homeWrapper}>
+      <MainTabsScreen
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onLogout={() => dispatch(logoutUser())}
+        onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
+        user={user}
+        navigation={navigation}
+      />
+
+      <TouchableOpacity
+        style={styles.createMatchButton}
+        onPress={() => navigation.navigate('CreateMatch')}
+      >
+        <Text style={styles.createMatchButtonText}>+ Tạo trận</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -74,6 +97,8 @@ export function AuthNavigator() {
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
+            <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
+            <Stack.Screen name="MapPicker" component={MapPickerScreen} />
           </>
         ) : (
           <>
@@ -99,5 +124,32 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 13,
     color: '#3d3d3d',
+  },
+  homeWrapper: {
+  flex: 1,
+},
+
+  createMatchButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 90,
+    backgroundColor: '#ff4d2d',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+  },
+
+  createMatchButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
