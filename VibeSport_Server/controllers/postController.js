@@ -1,0 +1,225 @@
+const Post = require('../models/Post');
+const PostLike = require('../models/PostLike');
+const Comment = require('../models/Comment');
+const { API_BASE_URL } = require('../utils/config');
+
+// Helper to construct media absolute URLs
+function getAbsoluteUrl(req, filename) {
+  return `${API_BASE_URL}/uploads/posts/${filename}`;
+}
+
+// ─── POST CONTROLLER HANDLERS ─────────────────────────────────
+
+// 1. Create a new post
+exports.createPost = async (req, res) => {
+  try {
+    const { content, location, sportType } = req.body;
+    
+    let mediaUrls = [];
+    if (req.files && req.files.length > 0) {
+      mediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
+    }
+
+    const post = new Post({
+      userId: req.userId,
+      content: content || '',
+      mediaUrls,
+      location: location || '',
+      sportType: sportType || 'Bóng đá',
+    });
+
+    await post.save();
+    
+    // Populate user info
+    const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
+
+    res.status(201).json({
+      success: true,
+      message: 'Đăng bài thành công!',
+      data: populatedPost,
+    });
+  } catch (error) {
+    console.error('Create post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tạo bài viết' });
+  }
+};
+
+// 2. Fetch list of posts (paginated)
+exports.getPosts = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const posts = await Post.find()
+      .populate('userId', 'name picture favoriteSport')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Map posts to include isLiked flag for current user if logged in
+    const mappedPosts = await Promise.all(
+      posts.map(async (post) => {
+        let isLiked = false;
+        if (req.userId) {
+          const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
+          isLiked = !!like;
+        }
+        return {
+          ...post.toObject(),
+          isLiked,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: mappedPosts,
+      page,
+      limit,
+    });
+  } catch (error) {
+    console.error('Get posts error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tải danh sách bài viết' });
+  }
+};
+
+// 3. Fetch single post details with comments
+exports.getPostById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id).populate('userId', 'name picture favoriteSport');
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    let isLiked = false;
+    if (req.userId) {
+      const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
+      isLiked = !!like;
+    }
+
+    const comments = await Comment.find({ postId: id })
+      .populate('userId', 'name picture favoriteSport')
+      .sort({ createdAt: 1 });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...post.toObject(),
+        isLiked,
+        comments,
+      },
+    });
+  } catch (error) {
+    console.error('Get post detail error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tải chi tiết bài viết' });
+  }
+};
+
+// 4. Toggle like on a post (Optimistic friendly)
+exports.likePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    const existingLike = await PostLike.findOne({ postId: id, userId });
+    let liked = false;
+
+    if (existingLike) {
+      await PostLike.deleteOne({ _id: existingLike._id });
+      post.likesCount = Math.max(0, post.likesCount - 1);
+      liked = false;
+    } else {
+      const newLike = new PostLike({ postId: id, userId });
+      await newLike.save();
+      post.likesCount += 1;
+      liked = true;
+    }
+
+    await post.save();
+
+    res.status(200).json({
+      success: true,
+      liked,
+      likesCount: post.likesCount,
+    });
+  } catch (error) {
+    console.error('Like post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi thích/bỏ thích bài viết' });
+  }
+};
+
+// 5. Add a comment to a post
+exports.commentPost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, message: 'Nội dung bình luận không được để trống' });
+    }
+
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    const comment = new Comment({
+      postId: id,
+      userId: req.userId,
+      content: content.trim(),
+    });
+
+    await comment.save();
+
+    post.commentsCount += 1;
+    await post.save();
+
+    const populatedComment = await Comment.findById(comment._id).populate('userId', 'name picture favoriteSport');
+
+    res.status(201).json({
+      success: true,
+      message: 'Đã thêm bình luận!',
+      data: populatedComment,
+      commentsCount: post.commentsCount,
+    });
+  } catch (error) {
+    console.error('Comment post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi bình luận' });
+  }
+};
+
+// 6. Delete a post
+exports.deletePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    // Only post owner can delete
+    if (post.userId.toString() !== req.userId.toString()) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa bài viết này' });
+    }
+
+    // Delete post and all associated comments and likes
+    await Post.deleteOne({ _id: id });
+    await Comment.deleteMany({ postId: id });
+    await PostLike.deleteMany({ postId: id });
+
+    res.status(200).json({
+      success: true,
+      message: 'Xóa bài viết thành công!',
+    });
+  } catch (error) {
+    console.error('Delete post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi xóa bài viết' });
+  }
+};
