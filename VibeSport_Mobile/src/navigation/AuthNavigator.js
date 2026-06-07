@@ -14,6 +14,8 @@ import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
 import MapPickerScreen from '../screens/MapPickerScreen';
+import { CreatePostScreen } from '../screens/CreatePostScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -99,6 +101,7 @@ export function AuthNavigator() {
             <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
             <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
             <Stack.Screen name="MapPicker" component={MapPickerScreen} />
+            <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />
           </>
         ) : (
           <>

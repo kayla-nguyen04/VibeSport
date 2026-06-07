@@ -1,8 +1,10 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const User = require('../models/User');
+const Session = require('../models/Session');
 
 const router = express.Router();
+
 
 // Helper functions for auth
 function hashPassword(password) {
@@ -125,7 +127,9 @@ router.post('/login', async (request, response) => {
       return;
     }
 
-    response.json(createSessionPayload(user));
+    const payload = createSessionPayload(user);
+    await Session.create({ userId: user._id, token: payload.token });
+    response.json(payload);
   } catch (error) {
     response.status(500).json({ message: 'Lỗi máy chủ khi đăng nhập.' });
   }
@@ -187,7 +191,9 @@ router.post('/google', async (request, response) => {
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
-    response.json(createSessionPayload(user));
+    const payload = createSessionPayload(user);
+    await Session.create({ userId: user._id, token: payload.token });
+    response.json(payload);
   } catch (error) {
     response.status(500).json({ message: 'Lỗi máy chủ khi đăng nhập bằng Google.' });
   }
