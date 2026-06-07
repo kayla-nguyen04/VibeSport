@@ -8,6 +8,7 @@ const {
   likePost,
   commentPost,
   deletePost,
+  updatePost,
 } = require('../controllers/postController');
 
 const router = express.Router();
@@ -32,5 +33,19 @@ router.post('/:id/comment', commentPost);
 
 // DELETE /api/posts/:id — Xóa bài viết
 router.delete('/:id', deletePost);
+
+// PUT /api/posts/:id — Sửa bài viết (chỉ chủ bài)
+router.put('/:id', uploadPost.array('media', 10), updatePost);
+
+// Xử lý lỗi từ multer (file quá lớn, sai định dạng) — trả JSON thay vì HTML
+router.use((err, req, res, next) => {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ success: false, message: 'File quá lớn. Tối đa 50MB mỗi file.' });
+  }
+  if (err) {
+    return res.status(400).json({ success: false, message: err.message || 'Lỗi khi tải file lên.' });
+  }
+  next();
+});
 
 module.exports = router;

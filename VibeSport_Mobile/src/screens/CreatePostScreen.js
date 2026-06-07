@@ -18,23 +18,27 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useDispatch, useSelector } from 'react-redux';
-import { createPost } from '../redux/postSlice';
+import { createPost, updatePost } from '../redux/postSlice';
 
 const SPORTS = ['Bóng đá', 'Bóng rổ', 'Cầu lông', 'Bóng chuyền', 'Bóng bàn', 'Tennis', 'Chạy bộ'];
 
-export function CreatePostScreen({ navigation }) {
+export function CreatePostScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const { creating } = useSelector((state) => state.posts);
 
-  const [content, setContent] = useState('');
-  const [selectedSport, setSelectedSport] = useState('Bóng đá');
-  const [showSportDropdown, setShowSportDropdown] = useState(false);
-  const [selectedMedia, setSelectedMedia] = useState([]); // Array of picked assets
-  
+  // Check if we are in edit mode
+  const editPost = route?.params?.editPost ?? null;
+  const isEditMode = !!editPost;
+
+  const [content, setContent] = React.useState(editPost?.content ?? '');
+  const [selectedSport, setSelectedSport] = React.useState(editPost?.sportType ?? 'Bóng đá');
+  const [showSportDropdown, setShowSportDropdown] = React.useState(false);
+  const [selectedMedia, setSelectedMedia] = React.useState([]); // New media picks only
+
   // Location states
-  const [location, setLocation] = useState('');
-  const [locationLoading, setLocationLoading] = useState(false);
+  const [location, setLocation] = React.useState(editPost?.location ?? '');
+  const [locationLoading, setLocationLoading] = React.useState(false);
 
   const handlePickMedia = async () => {
     if (selectedMedia.length >= 10) {
@@ -49,10 +53,10 @@ export function CreatePostScreen({ navigation }) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ['images', 'videos'],
       allowsMultipleSelection: true,
       selectionLimit: 10 - selectedMedia.length,
-      quality: 0.8,
+      quality: 0.7,
     });
 
     if (!result.canceled && result.assets) {
@@ -75,9 +79,14 @@ export function CreatePostScreen({ navigation }) {
         return;
       }
 
-      const locResult = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      // Timeout 10 giây tránh kẹt mãi
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 10000)
+      );
+      const locResult = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        timeoutPromise,
+      ]);
 
       const { latitude, longitude } = locResult.coords;
 
@@ -85,21 +94,22 @@ export function CreatePostScreen({ navigation }) {
       const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
       if (geocode && geocode.length > 0) {
         const addr = geocode[0];
-        // Construct standard Vietnamese address string: e.g. "123 Nguyễn Huệ, Quận 1, TP. Hồ Chí Minh"
         const street = addr.streetNumber ? `${addr.streetNumber} ${addr.street || ''}` : (addr.street || '');
         const district = addr.district || addr.subregion || '';
         const city = addr.city || addr.region || '';
-        
         const addressParts = [street, district, city].filter(p => p.trim() !== '');
         const fullAddress = addressParts.join(', ');
-        
         setLocation(fullAddress || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
       } else {
         setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
       }
     } catch (error) {
-      console.error('Location error:', error);
-      Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại của bạn.');
+      if (error.message === 'timeout') {
+        Alert.alert('Hết thời gian', 'Không thể lấy vị trí. Bạn có thể đăng bài không có địa điểm.');
+      } else {
+        console.error('Location error:', error);
+        Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại của bạn.');
+      }
     } finally {
       setLocationLoading(false);
     }
@@ -113,6 +123,11 @@ export function CreatePostScreen({ navigation }) {
     if (!content.trim() && selectedMedia.length === 0) {
       Alert.alert('Nội dung trống', 'Vui lòng viết gì đó hoặc thêm hình ảnh/video.');
       return;
+    }
+
+    // Nếu đang tải vị trí thì hủy và tiếp tục đăng không có địa điểm
+    if (locationLoading) {
+      setLocationLoading(false);
     }
 
     const formData = new FormData();
@@ -133,23 +148,37 @@ export function CreatePostScreen({ navigation }) {
       });
     });
 
-    dispatch(createPost(formData))
-      .unwrap()
-      .then(() => {
-        Alert.alert('Thành công', 'Đăng bài viết lên cộng đồng thành công!', [
-          {
-            text: 'OK',
-            onPress: () => {
-              navigation.goBack();
+    if (isEditMode) {
+      dispatch(updatePost({ postId: editPost._id, formData }))
+        .unwrap()
+        .then(() => {
+          Alert.alert('Thành công', 'Đã cập nhật bài viết!', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+        })
+        .catch((err) => {
+          Alert.alert('Thất bại', err || 'Đã xảy ra lỗi khi cập nhật bài.');
+        });
+    } else {
+      dispatch(createPost(formData))
+        .unwrap()
+        .then(() => {
+          Alert.alert('Thành công', 'Đăng bài viết lên cộng đồng thành công!', [
+            {
+              text: 'OK',
+              onPress: () => {
+                navigation.goBack();
+              },
             },
-          },
-        ]);
-      })
-      .catch((err) => {
-        Alert.alert('Thất bại', err || 'Đã xảy ra lỗi khi đăng bài.');
-      });
+          ]);
+        })
+        .catch((err) => {
+          Alert.alert('Thất bại', err || 'Đã xảy ra lỗi khi đăng bài.');
+        });
+    }
   };
 
+  // Khi đang tải vị trí, nút Đăng vẫn hoạt động (sẽ bỏ qua vị trí chưa tải xong)
   const isPublishDisabled = creating || (!content.trim() && selectedMedia.length === 0);
 
   return (
@@ -163,7 +192,7 @@ export function CreatePostScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#1F2937" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Tạo bài viết</Text>
+          <Text style={styles.headerTitle}>{isEditMode ? 'Sửa bài viết' : 'Tạo bài viết'}</Text>
           <TouchableOpacity
             onPress={handlePublish}
             disabled={isPublishDisabled}
@@ -172,7 +201,7 @@ export function CreatePostScreen({ navigation }) {
             {creating ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.publishBtnText}>Đăng</Text>
+              <Text style={styles.publishBtnText}>{isEditMode ? 'Lưu' : 'Đăng'}</Text>
             )}
           </TouchableOpacity>
         </View>

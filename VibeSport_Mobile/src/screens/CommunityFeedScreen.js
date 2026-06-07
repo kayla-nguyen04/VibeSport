@@ -17,8 +17,16 @@ import {
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchPosts, likePost, commentPost, deletePost } from '../redux/postSlice';
+import { API_BASE_URL } from '../components/constants/api';
 
-export function CommunityFeedScreen({ navigation }) {
+// Fix URL ảnh khi IP server thay đổi
+function fixMediaUrl(url) {
+  if (!url) return url;
+  // Thay thế bất kỳ IP:port cũ bằng API_BASE_URL hiện tại
+  return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
+}
+
+export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
   const { posts, loading, refreshing, hasMore, page } = useSelector((state) => state.posts);
   const user = useSelector((state) => state.auth.user);
@@ -110,16 +118,25 @@ export function CommunityFeedScreen({ navigation }) {
 
     return (
       <View style={styles.postCard}>
-        {/* Header */}
+      {/* Header */}
         <View style={styles.postHeader}>
-          <Image
-            source={
-              item.userId?.picture
-                ? { uri: item.userId.picture }
-                : { uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }
-            }
-            style={styles.avatar}
-          />
+          <TouchableOpacity
+            onPress={() => {
+              if (onGoToProfile) {
+                onGoToProfile();
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={
+                item.userId?.picture
+                  ? { uri: item.userId.picture }
+                  : { uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }
+              }
+              style={styles.avatar}
+            />
+          </TouchableOpacity>
           <View style={styles.postInfo}>
             <View style={styles.nameRow}>
               <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
@@ -135,9 +152,17 @@ export function CommunityFeedScreen({ navigation }) {
             </Text>
           </View>
           {isOwner && (
-            <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.deleteButton}>
-              <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
+            <View style={styles.ownerActions}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('CreatePost', { editPost: item })}
+                style={styles.editButton}
+              >
+                <Ionicons name="pencil-outline" size={18} color="#3B82F6" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.deleteButton}>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -148,7 +173,12 @@ export function CommunityFeedScreen({ navigation }) {
         {item.mediaUrls && item.mediaUrls.length > 0 && (
           <View style={styles.mediaContainer}>
             {item.mediaUrls.map((url, index) => (
-              <Image key={index} source={{ uri: url }} style={styles.postMedia} resizeMode="cover" />
+              <Image
+                key={index}
+                source={{ uri: fixMediaUrl(url) }}
+                style={styles.postMedia}
+                resizeMode="cover"
+              />
             ))}
           </View>
         )}
@@ -392,6 +422,14 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: 4,
+  },
+  editButton: {
+    padding: 4,
+  },
+  ownerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   postContent: {
     fontSize: 15,
