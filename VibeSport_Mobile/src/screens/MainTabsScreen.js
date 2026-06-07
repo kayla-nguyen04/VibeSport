@@ -3,6 +3,8 @@ import { Animated, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react
 import { useEffect, useRef, useState } from 'react';
 import { ProfileScreen } from './ProfileScreen';
 import TeamsScreen from './TeamsScreen';
+import { CommunityFeedScreen } from './CommunityFeedScreen';
+
 
 const FONT_SIZE = 13;
 const ACTIVE_COLOR = '#0b74ff';
@@ -64,23 +66,27 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
   const activeLayout = tabLayouts[activeIndex] || { width: 0 };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={activeTab === 'profile' || activeTab === 'teams' ? styles.profileContent : styles.content}>
-        {activeTab === 'profile' ? (
-          <ProfileScreen
-            onLogout={onLogout}
-            onUpdateProfile={onUpdateProfile}
-            user={user}
-          />
-        ) : activeTab === 'teams' ? (
-          <TeamsScreen navigation={navigation} />
-        ) : (
-          <>
-            <Text style={styles.layoutText}>Đây là layout</Text>
-            <Text style={styles.layoutName}>{currentTab.label}</Text>
-          </>
-        )}
-      </View>
+    <View style={styles.screen}>
+      {activeTab === 'posts' ? (
+        <CommunityFeedScreen navigation={navigation} />
+      ) : (
+        <SafeAreaView style={activeTab === 'profile' || activeTab === 'teams' ? styles.profileContent : styles.content}>
+          {activeTab === 'profile' ? (
+            <ProfileScreen
+              onLogout={onLogout}
+              onUpdateProfile={onUpdateProfile}
+              user={user}
+            />
+          ) : activeTab === 'teams' ? (
+            <TeamsScreen navigation={navigation} />
+          ) : (
+            <View style={styles.placeholderCenter}>
+              <Text style={styles.layoutText}>Đây là layout</Text>
+              <Text style={styles.layoutName}>{currentTab.label}</Text>
+            </View>
+          )}
+        </SafeAreaView>
+      )}
 
       <View style={styles.bottomBar}>
         <Animated.View
@@ -116,7 +122,7 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
           );
         })}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -127,9 +133,13 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingHorizontal: 24,
+  },
+  placeholderCenter: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    width: '100%',
   },
   profileContent: {
     flex: 1,
