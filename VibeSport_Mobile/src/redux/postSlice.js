@@ -5,6 +5,7 @@ import {
   getPostsRequest,
   likePostRequest,
   commentPostRequest,
+  updatePostRequest,
 } from '../services/postApi';
 
 // ─── ASYNC THUNKS ──────────────────────────────────────────
@@ -73,6 +74,20 @@ export const deletePost = createAsyncThunk(
       const token = getState().auth.token;
       await deletePostRequest(postId, token);
       return postId;
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+// Update post
+export const updatePost = createAsyncThunk(
+  'posts/updatePost',
+  async ({ postId, formData }, { getState, rejectWithValue }) => {
+    try {
+      const token = getState().auth.token;
+      const response = await updatePostRequest(postId, formData, token);
+      return response.data;
     } catch (err) {
       return rejectWithValue(err.message);
     }
@@ -184,6 +199,16 @@ const postSlice = createSlice({
       .addCase(deletePost.fulfilled, (state, action) => {
         const postId = action.payload;
         state.posts = state.posts.filter((p) => p._id !== postId);
+      })
+
+      // Update Post
+      .addCase(updatePost.fulfilled, (state, action) => {
+        const updated = action.payload;
+        if (!updated) return;
+        const idx = state.posts.findIndex((p) => p._id === updated._id);
+        if (idx !== -1) {
+          state.posts[idx] = { ...state.posts[idx], ...updated };
+        }
       });
   },
 });

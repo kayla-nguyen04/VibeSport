@@ -12,14 +12,29 @@ async function request(path, options = {}, token = null) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    throw new Error('Không thể kết nối đến máy chủ. Kiểm tra lại kết nối mạng.');
+  }
 
-  const json = await response.json();
+  // Đọc body dưới dạng text trước, sau đó mới parse JSON
+  // Tránh crash khi server trả về HTML thay vì JSON
+  const text = await response.text().catch(() => '');
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (e) {
+    // Server trả về HTML (trang lỗi) thay vì JSON
+    throw new Error(`Lỗi máy chủ (${response.status}): Phản hồi không hợp lệ`);
+  }
+
   if (!response.ok) {
-    throw new Error(json.message || `API request failed with status ${response.status}`);
+    throw new Error(json?.message || `Lỗi ${response.status}: ${response.statusText}`);
   }
   return json;
 }
@@ -55,4 +70,11 @@ export const commentPostRequest = async (id, content, token = null) => {
 
 export const deletePostRequest = async (id, token = null) => {
   return request(`/api/posts/${id}`, { method: 'DELETE' }, token);
+};
+
+export const updatePostRequest = async (id, formData, token = null) => {
+  return request(`/api/posts/${id}`, {
+    method: 'PUT',
+    body: formData,
+  }, token);
 };

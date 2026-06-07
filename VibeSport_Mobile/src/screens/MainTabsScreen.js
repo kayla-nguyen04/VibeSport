@@ -68,7 +68,10 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
   return (
     <View style={styles.screen}>
       {activeTab === 'posts' ? (
-        <CommunityFeedScreen navigation={navigation} />
+        <CommunityFeedScreen
+          navigation={navigation}
+          onGoToProfile={() => onChangeTab('profile')}
+        />
       ) : (
         <SafeAreaView style={activeTab === 'profile' || activeTab === 'teams' ? styles.profileContent : styles.content}>
           {activeTab === 'profile' ? (

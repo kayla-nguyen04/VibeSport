@@ -223,3 +223,44 @@ exports.deletePost = async (req, res) => {
     res.status(500).json({ success: false, message: 'Lỗi khi xóa bài viết' });
   }
 };
+
+// 7. Update a post (owner only)
+exports.updatePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    // Only post owner can update
+    if (post.userId.toString() !== req.userId.toString()) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền sửa bài viết này' });
+    }
+
+    const { content, location, sportType } = req.body;
+
+    if (content !== undefined) post.content = content;
+    if (location !== undefined) post.location = location;
+    if (sportType !== undefined) post.sportType = sportType;
+
+    // Append newly uploaded media (if any)
+    if (req.files && req.files.length > 0) {
+      const newMediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
+      post.mediaUrls = [...post.mediaUrls, ...newMediaUrls];
+    }
+
+    await post.save();
+
+    const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật bài viết thành công!',
+      data: populatedPost,
+    });
+  } catch (error) {
+    console.error('Update post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi cập nhật bài viết' });
+  }
+};
