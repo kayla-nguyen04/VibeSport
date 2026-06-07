@@ -1,0 +1,155 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { ActivityIndicator, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useDispatch, useSelector } from 'react-redux';
+
+import { hydrateSession, logoutUser, updateProfile } from '../redux/authSlice';
+import { AuthScreen } from '../screens/AuthScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import { MainTabsScreen } from '../screens/MainTabsScreen';
+import OtpScreen from '../screens/OtpScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
+import CreateMatchScreen from '../screens/CreateMatchScreen';
+import MapPickerScreen from '../screens/MapPickerScreen';
+
+const Stack = createNativeStackNavigator();
+
+function HomeScreen({ navigation, route }) {
+  const dispatch = useDispatch();
+  const user = useSelector((state) => state.auth.user);
+  const [activeTab, setActiveTab] = useState('profile');
+
+  useFocusEffect(
+    useCallback(() => {
+      const tab = route.params?.activeTab;
+      if (tab) {
+        setActiveTab(tab);
+        navigation.setParams({ activeTab: undefined });
+      }
+    }, [navigation, route.params?.activeTab])
+  );
+
+  return (
+    <View style={styles.homeWrapper}>
+      <MainTabsScreen
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onLogout={() => dispatch(logoutUser())}
+        onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
+        user={user}
+        navigation={navigation}
+      />
+
+      <TouchableOpacity
+        style={styles.createMatchButton}
+        onPress={() => navigation.navigate('CreateMatch')}
+      >
+        <Text style={styles.createMatchButtonText}>+ Tạo trận</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <SafeAreaView style={styles.centered}>
+      <ActivityIndicator size="large" color="#111111" />
+      <Text style={styles.loadingText}>Đang tải phiên đăng nhập...</Text>
+    </SafeAreaView>
+  );
+}
+
+export function AuthNavigator() {
+  const dispatch = useDispatch();
+  const { isAuthenticated, isHydrating, user } = useSelector((state) => state.auth);
+
+  const isProfileComplete = Boolean(user?.favoriteSport && user?.position && user?.area);
+
+  useEffect(() => {
+    dispatch(hydrateSession());
+  }, [dispatch]);
+
+  if (isHydrating) {
+    return <LoadingScreen />;
+  }
+
+  const navigatorKey = isAuthenticated
+    ? isProfileComplete
+      ? 'authenticated-complete'
+      : 'authenticated-incomplete'
+    : 'guest';
+
+  return (
+    <NavigationContainer key={navigatorKey}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          animationDuration: 280,
+          gestureEnabled: true,
+        }}
+        initialRouteName={isAuthenticated ? (isProfileComplete ? 'Home' : 'CompleteProfile') : 'Auth'}
+      >
+        {isAuthenticated ? (
+          <>
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
+            <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
+            <Stack.Screen name="MapPicker" component={MapPickerScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Auth" component={AuthScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="OtpScreen" component={OtpScreen} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#3d3d3d',
+  },
+  homeWrapper: {
+  flex: 1,
+},
+
+  createMatchButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 90,
+    backgroundColor: '#ff4d2d',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+  },
+
+  createMatchButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
