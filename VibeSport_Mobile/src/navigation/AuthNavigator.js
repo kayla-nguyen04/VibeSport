@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { ActivityIndicator, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
@@ -11,22 +12,41 @@ import { MainTabsScreen } from '../screens/MainTabsScreen';
 import OtpScreen from '../screens/OtpScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
+import CreateMatchScreen from '../screens/CreateMatchScreen';
+import MatchDetailScreen from '../screens/MatchDetailScreen';
+import MapPickerScreen from '../screens/MapPickerScreen';
+import { CreatePostScreen } from '../screens/CreatePostScreen';
+import PostDetailScreen from '../screens/PostDetailScreen';
+
 
 const Stack = createNativeStackNavigator();
 
-function HomeScreen({ navigation }) {
+function HomeScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const [activeTab, setActiveTab] = useState('profile');
 
+  useFocusEffect(
+    useCallback(() => {
+      const tab = route.params?.activeTab;
+      if (tab) {
+        setActiveTab(tab);
+        navigation.setParams({ activeTab: undefined });
+      }
+    }, [navigation, route.params?.activeTab])
+  );
+
   return (
-    <MainTabsScreen
-      activeTab={activeTab}
-      onChangeTab={setActiveTab}
-      onLogout={() => dispatch(logoutUser())}
-      onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
-      user={user}
-    />
+    <View style={styles.homeWrapper}>
+      <MainTabsScreen
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onLogout={() => dispatch(logoutUser())}
+        onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
+        user={user}
+        navigation={navigation}
+      />
+    </View>
   );
 }
 
@@ -74,6 +94,11 @@ export function AuthNavigator() {
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
+            <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
+            <Stack.Screen name="MatchDetail" component={MatchDetailScreen} />
+            <Stack.Screen name="MapPicker" component={MapPickerScreen} />
+            <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           </>
         ) : (
           <>
@@ -100,4 +125,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#3d3d3d',
   },
+  homeWrapper: {
+  flex: 1,
+},
 });

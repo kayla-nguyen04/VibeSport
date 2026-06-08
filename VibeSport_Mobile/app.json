@@ -9,7 +9,12 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vibesport.vpapp"
+      "bundleIdentifier": "com.vibesport.vpapp",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,13 +23,23 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.vibesport.vpapp"
+      "package": "com.vibesport.vpapp",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "INTERNET"],
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Cho phép VibeSport truy cập vị trí của bạn để chọn địa điểm sân.",
+          "locationWhenInUsePermission": "Cho phép VibeSport truy cập vị trí của bạn để chọn địa điểm sân."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }

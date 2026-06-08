@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-
-import { validateEmail } from '../utils/validateEmail';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -75,11 +73,8 @@ export function AuthCard({
       if (!password) nextFieldErrors.password = 'Vui lòng nhập mật khẩu';
     }
 
-    if (email) {
-      const emailCheck = validateEmail(email);
-      if (!emailCheck.valid) {
-        nextFieldErrors.email = emailCheck.message;
-      }
+    if (email && !email.includes('@')) {
+      nextFieldErrors.email = 'Email không hợp lệ';
     }
 
     if (isRegisterMode && phone && phone.length < 9) {
