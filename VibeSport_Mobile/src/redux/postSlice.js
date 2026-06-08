@@ -114,6 +114,13 @@ const postSlice = createSlice({
       state.hasMore = true;
       state.error = null;
     },
+    updateCommentCount: (state, action) => {
+      const { postId, commentsCount } = action.payload;
+      const post = state.posts.find((p) => p._id === postId);
+      if (post) {
+        post.commentsCount = commentsCount;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -213,5 +220,5 @@ const postSlice = createSlice({
   },
 });
 
-export const { resetFeed } = postSlice.actions;
+export const { resetFeed, updateCommentCount } = postSlice.actions;
 export default postSlice.reducer;

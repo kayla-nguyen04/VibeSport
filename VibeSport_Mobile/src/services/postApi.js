@@ -58,14 +58,22 @@ export const likePostRequest = async (id, token = null) => {
   return request(`/api/posts/${id}/like`, { method: 'POST' }, token);
 };
 
-export const commentPostRequest = async (id, content, token = null) => {
-  return request(`/api/posts/${id}/comment`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
-  }, token);
+export const commentPostRequest = async (id, payload, token = null) => {
+  if (payload instanceof FormData) {
+    return request(`/api/posts/${id}/comment`, {
+      method: 'POST',
+      body: payload,
+    }, token);
+  } else {
+    const bodyObj = typeof payload === 'string' ? { content: payload } : payload;
+    return request(`/api/posts/${id}/comment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(bodyObj),
+    }, token);
+  }
 };
 
 export const deletePostRequest = async (id, token = null) => {
@@ -77,4 +85,8 @@ export const updatePostRequest = async (id, formData, token = null) => {
     method: 'PUT',
     body: formData,
   }, token);
+};
+
+export const getPostByIdRequest = async (id, token = null) => {
+  return request(`/api/posts/${id}`, {}, token);
 };

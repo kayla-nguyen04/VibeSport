@@ -1,4 +1,4 @@
-const API_URL = "http://10.0.2.2:4000/api";
+import { API_URL } from "../components/constants/api";
 
 export async function createMatch(matchData) {
   const response = await fetch(`${API_URL}/matches`, {

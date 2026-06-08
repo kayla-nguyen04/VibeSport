@@ -15,6 +15,7 @@ import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
 import MapPickerScreen from '../screens/MapPickerScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
+import PostDetailScreen from '../screens/PostDetailScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -44,13 +45,6 @@ function HomeScreen({ navigation, route }) {
         user={user}
         navigation={navigation}
       />
-
-      <TouchableOpacity
-        style={styles.createMatchButton}
-        onPress={() => navigation.navigate('CreateMatch')}
-      >
-        <Text style={styles.createMatchButtonText}>+ Tạo trận</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -102,6 +96,7 @@ export function AuthNavigator() {
             <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
             <Stack.Screen name="MapPicker" component={MapPickerScreen} />
             <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="PostDetail" component={PostDetailScreen} />
           </>
         ) : (
           <>
@@ -131,28 +126,4 @@ const styles = StyleSheet.create({
   homeWrapper: {
   flex: 1,
 },
-
-  createMatchButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 90,
-    backgroundColor: '#ff4d2d',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 999,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-  },
-
-  createMatchButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
 });
