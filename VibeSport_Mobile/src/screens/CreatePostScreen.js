@@ -22,6 +22,14 @@ import { createPost, updatePost } from '../redux/postSlice';
 
 const SPORTS = ['Bóng đá', 'Bóng rổ', 'Cầu lông', 'Bóng chuyền', 'Bóng bàn', 'Tennis', 'Chạy bộ'];
 
+const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
+
+const getAvatarColor = (name) => {
+  if (!name) return AVATAR_COLORS[0];
+  const charCodeSum = name.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return AVATAR_COLORS[charCodeSum % AVATAR_COLORS.length];
+};
+
 export function CreatePostScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
@@ -209,14 +217,15 @@ export function CreatePostScreen({ navigation, route }) {
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           {/* User Profile Info */}
           <View style={styles.userRow}>
-            <Image
-              source={
-                user?.picture
-                  ? { uri: user.picture }
-                  : { uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }
-              }
-              style={styles.avatar}
-            />
+            {user?.picture ? (
+              <Image source={{ uri: user.picture }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(user?.name) }]}>
+                <Text style={styles.avatarPlaceholderText}>
+                  {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
+                </Text>
+              </View>
+            )}
             <View style={styles.userInfo}>
               <Text style={styles.userName}>{user?.name || 'Thành viên VibeSport'}</Text>
               
@@ -553,5 +562,17 @@ const styles = StyleSheet.create({
     color: '#FF6B35',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  avatarPlaceholder: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });

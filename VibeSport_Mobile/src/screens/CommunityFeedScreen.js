@@ -4,6 +4,8 @@ import {
   Alert,
   FlatList,
   Image,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -19,6 +21,14 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchPosts, likePost, commentPost, deletePost } from '../redux/postSlice';
 import { API_BASE_URL } from '../components/constants/api';
 
+const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
+
+const getAvatarColor = (name) => {
+  if (!name) return AVATAR_COLORS[0];
+  const charCodeSum = name.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return AVATAR_COLORS[charCodeSum % AVATAR_COLORS.length];
+};
+
 // Fix URL ảnh khi IP server thay đổi
 function fixMediaUrl(url) {
   if (!url) return url;
@@ -30,10 +40,8 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
   const { posts, loading, refreshing, hasMore, page } = useSelector((state) => state.posts);
   const user = useSelector((state) => state.auth.user);
+  const [optionsPost, setOptionsPost] = useState(null);
   
-  const [commentingPostId, setCommentingPostId] = useState(null);
-  const [commentText, setCommentText] = useState('');
-
   // Initial load
   useEffect(() => {
     dispatch(fetchPosts({ page: 1, limit: 10 }));
@@ -65,20 +73,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     }
   };
 
-  const handleCommentSubmit = (postId) => {
-    if (!commentText.trim()) return;
-    dispatch(commentPost({ postId, content: commentText.trim() }))
-      .unwrap()
-      .then(() => {
-        setCommentText('');
-        setCommentingPostId(null);
-        Alert.alert('Thành công', 'Đã gửi bình luận của bạn!');
-      })
-      .catch((err) => {
-        Alert.alert('Lỗi', err || 'Không thể gửi bình luận');
-      });
-  };
-
   const handleDelete = (postId) => {
     Alert.alert('Xóa bài viết', 'Bạn có chắc chắn muốn xóa bài viết này không?', [
       { text: 'Hủy', style: 'cancel' },
@@ -99,6 +93,28 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     ]);
   };
 
+  const handleMoreOptions = (post) => {
+    Alert.alert(
+      'Tùy chọn bài viết',
+      'Chọn hành động bạn muốn thực hiện',
+      [
+        {
+          text: 'Sửa bài viết',
+          onPress: () => navigation.navigate('CreatePost', { editPost: post }),
+        },
+        {
+          text: 'Xóa bài viết',
+          style: 'destructive',
+          onPress: () => handleDelete(post._id),
+        },
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
   const formatTime = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -114,7 +130,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   };
 
   const renderPostItem = ({ item }) => {
-    const isOwner = user && item.userId && user.id === item.userId._id;
+    const isOwner = user && item.userId && (user.id === item.userId._id || user._id === item.userId._id);
 
     return (
       <View style={styles.postCard}>
@@ -128,14 +144,15 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             }}
             activeOpacity={0.8}
           >
-            <Image
-              source={
-                item.userId?.picture
-                  ? { uri: item.userId.picture }
-                  : { uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100' }
-              }
-              style={styles.avatar}
-            />
+            {item.userId?.picture ? (
+              <Image source={{ uri: item.userId.picture }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(item.userId?.name) }]}>
+                <Text style={styles.avatarPlaceholderText}>
+                  {item.userId?.name ? item.userId.name.charAt(0).toUpperCase() : '?'}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <View style={styles.postInfo}>
             <View style={styles.nameRow}>
@@ -151,37 +168,34 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
               {item.location ? ` • ở ${item.location}` : ''}
             </Text>
           </View>
-          {isOwner && (
-            <View style={styles.ownerActions}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CreatePost', { editPost: item })}
-                style={styles.editButton}
-              >
-                <Ionicons name="pencil-outline" size={18} color="#3B82F6" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.deleteButton}>
-                <Ionicons name="trash-outline" size={18} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          )}
+          <TouchableOpacity
+            onPress={() => setOptionsPost(item)}
+            style={styles.moreOptionsBtn}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#7C8190" />
+          </TouchableOpacity>
         </View>
 
-        {/* Content */}
-        {item.content ? <Text style={styles.postContent}>{item.content}</Text> : null}
+        {/* Clickable Content & Media Area */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('PostDetail', { postId: item._id })}
+        >
+          {item.content ? <Text style={styles.postContent}>{item.content}</Text> : null}
 
-        {/* Media Grid */}
-        {item.mediaUrls && item.mediaUrls.length > 0 && (
-          <View style={styles.mediaContainer}>
-            {item.mediaUrls.map((url, index) => (
-              <Image
-                key={index}
-                source={{ uri: fixMediaUrl(url) }}
-                style={styles.postMedia}
-                resizeMode="cover"
-              />
-            ))}
-          </View>
-        )}
+          {item.mediaUrls && item.mediaUrls.length > 0 && (
+            <View style={styles.mediaContainer}>
+              {item.mediaUrls.map((url, index) => (
+                <Image
+                  key={index}
+                  source={{ uri: fixMediaUrl(url) }}
+                  style={styles.postMedia}
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
+          )}
+        </TouchableOpacity>
 
         {/* Divider */}
         <View style={styles.divider} />
@@ -195,19 +209,16 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
               color={item.isLiked ? '#EF4444' : '#7C8190'}
             />
             <Text style={[styles.actionText, item.isLiked && styles.likedText]}>
-              {item.likesCount || 0}
+              {item.likesCount || 0} Thích
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => {
-              setCommentingPostId(commentingPostId === item._id ? null : item._id);
-              setCommentText('');
-            }}
+            onPress={() => navigation.navigate('PostDetail', { postId: item._id })}
             style={styles.actionBtn}
           >
             <Ionicons name="chatbubble-outline" size={20} color="#7C8190" />
-            <Text style={styles.actionText}>{item.commentsCount || 0} bình luận</Text>
+            <Text style={styles.actionText}>{item.commentsCount || 0} Bình luận</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => handleShare(item)} style={styles.actionBtn}>
@@ -215,25 +226,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             <Text style={styles.actionText}>Chia sẻ</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Comment Input Overlay */}
-        {commentingPostId === item._id && (
-          <View style={styles.commentInputRow}>
-            <TextInput
-              placeholder="Viết bình luận..."
-              placeholderTextColor="#9CA3AF"
-              style={styles.commentInput}
-              value={commentText}
-              onChangeText={setCommentText}
-            />
-            <TouchableOpacity
-              onPress={() => handleCommentSubmit(item._id)}
-              style={styles.sendCommentBtn}
-            >
-              <Ionicons name="send" size={18} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
     );
   };
@@ -295,6 +287,64 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           ) : null
         }
       />
+
+      {/* Bottom Sheet Modal for options */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={optionsPost !== null}
+        onRequestClose={() => setOptionsPost(null)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setOptionsPost(null)}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.bottomSheetContainer}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>TÙY CHỌN BÀI VIẾT</Text>
+            
+            {optionsPost && user && (user.id === optionsPost.userId?._id || user._id === optionsPost.userId?._id) ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    navigation.navigate('CreatePost', { editPost: post });
+                  }}
+                  style={styles.bottomSheetOption}
+                >
+                  <Ionicons name="pencil-outline" size={20} color="#374151" />
+                  <Text style={styles.bottomSheetOptionText}>Sửa bài viết</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    handleDelete(post._id);
+                  }}
+                  style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                  <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Xóa bài viết</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  setOptionsPost(null);
+                  Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+                }}
+                style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+              >
+                <Ionicons name="flag-outline" size={20} color="#EF4444" />
+                <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Báo cáo bài viết</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -423,13 +473,9 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: 4,
   },
-  editButton: {
-    padding: 4,
-  },
-  ownerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  moreOptionsBtn: {
+    padding: 8,
+    marginRight: -4,
   },
   postContent: {
     fontSize: 15,
@@ -512,5 +558,71 @@ const styles = StyleSheet.create({
   },
   footerLoader: {
     marginVertical: 16,
+  },
+  avatarPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheetContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+  },
+  bottomSheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#9CA3AF',
+    marginBottom: 12,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  bottomSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 12,
+  },
+  bottomSheetOptionText: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  bottomSheetCancelBtn: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  bottomSheetCancelText: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '700',
   },
 });

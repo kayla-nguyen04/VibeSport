@@ -161,8 +161,13 @@ exports.commentPost = async (req, res) => {
     const { id } = req.params;
     const { content } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ success: false, message: 'Nội dung bình luận không được để trống' });
+    let mediaUrl = null;
+    if (req.file) {
+      mediaUrl = getAbsoluteUrl(req, req.file.filename);
+    }
+
+    if ((!content || !content.trim()) && !mediaUrl) {
+      return res.status(400).json({ success: false, message: 'Nội dung bình luận hoặc ảnh không được để trống' });
     }
 
     const post = await Post.findById(id);
@@ -173,7 +178,8 @@ exports.commentPost = async (req, res) => {
     const comment = new Comment({
       postId: id,
       userId: req.userId,
-      content: content.trim(),
+      content: content ? content.trim() : '',
+      mediaUrl,
     });
 
     await comment.save();

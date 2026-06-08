@@ -28,8 +28,8 @@ router.get('/:id', getPostById);
 // POST /api/posts/:id/like — Thích / Bỏ thích bài viết
 router.post('/:id/like', likePost);
 
-// POST /api/posts/:id/comment — Bình luận bài viết
-router.post('/:id/comment', commentPost);
+// POST /api/posts/:id/comment — Bình luận bài viết (hỗ trợ upload 1 ảnh qua key 'media')
+router.post('/:id/comment', uploadPost.single('media'), commentPost);
 
 // DELETE /api/posts/:id — Xóa bài viết
 router.delete('/:id', deletePost);

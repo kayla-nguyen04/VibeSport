@@ -101,7 +101,9 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
               transform: [{ translateX: indicatorAnim }],
             },
           ]}
-        />
+        >
+          <View style={styles.activeBackgroundPill} />
+        </Animated.View>
 
         {TABS.map((tab, index) => {
           const isActive = tab.key === activeTab;
@@ -119,7 +121,7 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
               onLayout={(event) => handleLayout(event, index)}
             >
               <View style={[styles.iconFrame, isActive && styles.activeIconFrame]}>
-                {tab.icon({ color, size: 22 })}
+                {tab.icon({ color, size: 24 })}
               </View>
             </Pressable>
           );
@@ -165,58 +167,47 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 18,
+    height: 70,
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    shadowColor: '#0b1220',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: -6,
-    },
-    elevation: 12,
+    borderTopWidth: 1.2,
+    borderTopColor: '#e8ecf2',
     position: 'relative',
   },
   activeBackground: {
     position: 'absolute',
     left: 0,
-    top: 10,
-    bottom: 12,
-    borderRadius: 20,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeBackgroundPill: {
+    width: 62,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: 'rgba(11, 116, 255, 0.12)',
   },
   tabButton: {
     flex: 1,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
   },
   activeTabButton: {
-    // No extra scaling on active tab; active background handles highlighting.
   },
   zoomedTab: {
     transform: [{ translateY: -2 }],
   },
   iconFrame: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1.4,
-    borderColor: '#d8dde8',
+    width: 40,
+    height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
   },
   activeIconFrame: {
-    borderColor: ACTIVE_COLOR,
-    backgroundColor: '#eef5ff',
   },
   tabLabel: {
     fontSize: 11,
@@ -239,7 +230,7 @@ const styles = StyleSheet.create({
   },
   fcIconText: {
     color: '#0b74ff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
   },
   fcIconTextActive: {
