@@ -16,21 +16,49 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
-import { createMatch } from "../services/matchService";
+import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
+
+const parseDateString = (dateStr) => {
+  if (!dateStr) return new Date();
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return new Date();
+  const [day, month, year] = parts.map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const DEFAULT_POSITIONS = [
+  { key: "goalkeeper", label: "Thủ môn", icon: "🧤", quantity: 1 },
+  { key: "defender", label: "Hậu vệ", icon: "🛡️", quantity: 2 },
+  { key: "midfielder", label: "Tiền vệ", icon: "👟", quantity: 1 },
+  { key: "striker", label: "Tiền đạo", icon: "⚡", quantity: 1 },
+];
 
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
-  const [sport, setSport] = useState("football");
-  const [title, setTitle] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState("19:00");
+  const editMatch = route?.params?.editMatch ?? null;
+  const isEditMode = !!editMatch;
+
+  const [sport, setSport] = useState(editMatch?.sport || "football");
+  const [title, setTitle] = useState(editMatch?.title || "");
+  const [selectedDate, setSelectedDate] = useState(
+    editMatch?.date ? parseDateString(editMatch.date) : new Date()
+  );
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState(editMatch?.startTime || "19:00");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [maxPlayers, setMaxPlayers] = useState("10");
-  const [costPerPerson, setCostPerPerson] = useState("");
-  const [locationName, setLocationName] = useState("");
-  const [locationCoords, setLocationCoords] = useState(null);
-  const [note, setNote] = useState("");
+  const [maxPlayers, setMaxPlayers] = useState(
+    editMatch?.maxPlayers ? String(editMatch.maxPlayers) : "10"
+  );
+  const [costPerPerson, setCostPerPerson] = useState(
+    editMatch?.costPerPerson ? String(editMatch.costPerPerson) : ""
+  );
+  const [locationName, setLocationName] = useState(editMatch?.locationName || "");
+  const [locationCoords, setLocationCoords] = useState(
+    editMatch?.location?.lat != null
+      ? { lat: editMatch.location.lat, lng: editMatch.location.lng }
+      : null
+  );
+  const [note, setNote] = useState(editMatch?.note || "");
 
   // Format helpers
   const formatDate = (d) => {
@@ -90,12 +118,9 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
   }, [route?.params?.selectedLocation]);
 
-  const [positionsNeeded, setPositionsNeeded] = useState([
-    { key: "goalkeeper", label: "Thủ môn", icon: "🧤", quantity: 1 },
-    { key: "defender", label: "Hậu vệ", icon: "🛡️", quantity: 2 },
-    { key: "midfielder", label: "Tiền vệ", icon: "👟", quantity: 1 },
-    { key: "striker", label: "Tiền đạo", icon: "⚡", quantity: 1 },
-  ]);
+  const [positionsNeeded, setPositionsNeeded] = useState(
+    editMatch?.positionsNeeded?.length ? editMatch.positionsNeeded : DEFAULT_POSITIONS
+  );
 
   const sports = [
     { key: "football", label: "Bóng đá", icon: "⚽" },
@@ -133,61 +158,91 @@ export default function CreateMatchScreen({ navigation, route }) {
     );
   };
 
-  const handleCreateMatch = async () => {
+  const buildPayload = () => ({
+    sport,
+    title: title.trim(),
+    date: formatDate(selectedDate),
+    startTime: selectedTimeSlot,
+    maxPlayers: Number(maxPlayers),
+    positionsNeeded: sport === "football" ? positionsNeeded : [],
+    costPerPerson: Number(costPerPerson || 0),
+    locationName: locationName.trim(),
+    location: {
+      lat: locationCoords?.lat || null,
+      lng: locationCoords?.lng || null,
+      address: locationName.trim(),
+    },
+    note: note.trim(),
+    ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
+  });
+
+  const validateForm = () => {
+    if (!title.trim()) {
+      Alert.alert("Thiếu thông tin", "Vui lòng nhập tên trận đấu");
+      return false;
+    }
+    if (!selectedDate) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn ngày");
+      return false;
+    }
+    if (!selectedTimeSlot) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn giờ bắt đầu");
+      return false;
+    }
+    if (!locationName.trim()) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn địa điểm sân trên bản đồ");
+      return false;
+    }
+    if (!maxPlayers || Number(maxPlayers) <= 0) {
+      Alert.alert("Dữ liệu không hợp lệ", "Số người tối đa phải lớn hơn 0");
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
     try {
-      if (!title.trim()) {
-        Alert.alert("Thiếu thông tin", "Vui lòng nhập tên trận đấu");
-        return;
+      if (!validateForm()) return;
+
+      const payload = buildPayload();
+
+      if (isEditMode) {
+        await updateMatch(editMatch._id, payload);
+        Alert.alert("Thành công", "Cập nhật trận đấu thành công");
+      } else {
+        await createMatch(payload);
+        Alert.alert("Thành công", "Tạo trận đấu thành công");
       }
-
-      if (!selectedDate) {
-        Alert.alert("Thiếu thông tin", "Vui lòng chọn ngày");
-        return;
-      }
-
-      if (!selectedTimeSlot) {
-        Alert.alert("Thiếu thông tin", "Vui lòng chọn giờ bắt đầu");
-        return;
-      }
-
-      if (!locationName.trim()) {
-        Alert.alert("Thiếu thông tin", "Vui lòng chọn địa điểm sân trên bản đồ");
-        return;
-      }
-
-      if (!maxPlayers || Number(maxPlayers) <= 0) {
-        Alert.alert("Dữ liệu không hợp lệ", "Số người tối đa phải lớn hơn 0");
-        return;
-      }
-
-      const payload = {
-        sport,
-        title: title.trim(),
-        date: formatDate(selectedDate),
-        startTime: selectedTimeSlot,
-        maxPlayers: Number(maxPlayers),
-        positionsNeeded: sport === "football" ? positionsNeeded : [],
-        costPerPerson: Number(costPerPerson || 0),
-        locationName: locationName.trim(),
-        location: {
-          lat: locationCoords?.lat || null,
-          lng: locationCoords?.lng || null,
-          address: locationName.trim(),
-        },
-        note: note.trim(),
-        createdBy: user?.id || null,
-      };
-
-      await createMatch(payload);
 
       if (navigation) {
         navigation.navigate("Home", { activeTab: "teams" });
       }
-
-      Alert.alert("Thành công", "Tạo trận đấu thành công");
     } catch (error) {
       Alert.alert("Lỗi", error.message);
     }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Xóa trận đấu",
+      "Bạn có chắc muốn xóa trận này? Hành động này không thể hoàn tác.",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMatch(editMatch._id);
+              Alert.alert("Thành công", "Đã xóa trận đấu");
+              navigation.navigate("Home", { activeTab: "teams" });
+            } catch (error) {
+              Alert.alert("Lỗi", error.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -202,7 +257,7 @@ export default function CreateMatchScreen({ navigation, route }) {
         >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tạo trận đấu</Text>
+        <Text style={styles.headerTitle}>{isEditMode ? "Sửa trận đấu" : "Tạo trận đấu"}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -484,11 +539,17 @@ export default function CreateMatchScreen({ navigation, route }) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Tạo trận ngay Button */}
       <View style={styles.bottomButtonContainer}>
-        <TouchableOpacity style={styles.createButton} onPress={handleCreateMatch}>
-          <Text style={styles.createButtonIcon}>⚽</Text>
-          <Text style={styles.createButtonText}>Tạo trận ngay</Text>
+        {isEditMode && (
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.7}>
+            <Text style={styles.deleteButtonText}>🗑️ Xóa trận đấu</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.createButton} onPress={handleSubmit}>
+          <Text style={styles.createButtonIcon}>{isEditMode ? "✓" : "⚽"}</Text>
+          <Text style={styles.createButtonText}>
+            {isEditMode ? "Lưu thay đổi" : "Tạo trận ngay"}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -907,5 +968,20 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 16,
+  },
+  deleteButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#ef4444",
+    backgroundColor: "#fff",
+    marginBottom: 10,
+  },
+  deleteButtonText: {
+    color: "#ef4444",
+    fontWeight: "700",
+    fontSize: 15,
   },
 });

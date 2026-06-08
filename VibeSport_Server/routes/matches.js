@@ -118,7 +118,8 @@ router.get("/", async (req, res) => {
 
     const matches = await Match.find(filter)
       .sort({ createdAt: -1 })
-      .populate("createdBy", "name email picture");
+      .populate("createdBy", "name email picture area favoriteSport position")
+      .populate("participants", "name email picture");
 
     return res.json({
       success: true,
@@ -225,6 +226,79 @@ router.post("/:id/leave", async (req, res) => {
   } catch (error) {
     console.error("Leave match error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server khi rút khỏi trận" });
+  }
+});
+
+// Update a match
+router.put("/:id", async (req, res) => {
+  try {
+    const {
+      sport,
+      title,
+      date,
+      startTime,
+      maxPlayers,
+      positionsNeeded,
+      costPerPerson,
+      locationName,
+      location,
+      note,
+    } = req.body;
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (sport && !["football", "badminton", "pickleball"].includes(sport)) {
+      return res.status(400).json({ success: false, message: "Môn thể thao không hợp lệ" });
+    }
+
+    if (maxPlayers !== undefined) {
+      const nextMax = Number(maxPlayers);
+      if (nextMax <= 0) {
+        return res.status(400).json({ success: false, message: "Số người tối đa phải lớn hơn 0" });
+      }
+      if (nextMax < match.participants.length) {
+        return res.status(400).json({
+          success: false,
+          message: "Số người tối đa không thể nhỏ hơn số người đã tham gia",
+        });
+      }
+      match.maxPlayers = nextMax;
+      if (match.participants.length >= nextMax) {
+        match.status = "full";
+      } else if (match.status === "full") {
+        match.status = "open";
+      }
+    }
+
+    if (sport) match.sport = sport;
+    if (title) match.title = title.trim();
+    if (date) match.date = date;
+    if (startTime) match.startTime = startTime;
+    if (positionsNeeded !== undefined) {
+      match.positionsNeeded = sport === "football" || match.sport === "football" ? positionsNeeded || [] : [];
+    }
+    if (costPerPerson !== undefined) match.costPerPerson = Number(costPerPerson || 0);
+    if (locationName) match.locationName = locationName.trim();
+    if (location) match.location = location;
+    if (note !== undefined) match.note = note;
+
+    await match.save();
+
+    const updated = await Match.findById(match._id)
+      .populate("createdBy", "name email picture area favoriteSport position")
+      .populate("participants", "name email picture");
+
+    return res.json({
+      success: true,
+      message: "Cập nhật trận đấu thành công",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Update match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi cập nhật trận đấu" });
   }
 });
 

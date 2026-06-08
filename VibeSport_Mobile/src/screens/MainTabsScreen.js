@@ -73,7 +73,13 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
           onGoToProfile={() => onChangeTab('profile')}
         />
       ) : (
-        <SafeAreaView style={activeTab === 'profile' || activeTab === 'teams' ? styles.profileContent : styles.content}>
+        <SafeAreaView style={
+          activeTab === 'teams'
+            ? styles.teamsContent
+            : activeTab === 'profile'
+              ? styles.profileContent
+              : styles.content
+        }>
           {activeTab === 'profile' ? (
             <ProfileScreen
               onLogout={onLogout}
@@ -150,6 +156,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     backgroundColor: '#f4f6fb',
+    width: '100%',
+  },
+  teamsContent: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
     width: '100%',
   },
   layoutText: {
