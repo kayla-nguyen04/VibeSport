@@ -41,8 +41,16 @@ async function request(path, options = {}, token = null) {
 
 // ─── POST API ENDPOINTS ───────────────────────────────────────
 
-export const getPostsRequest = async (page = 1, limit = 10, token = null) => {
-  return request(`/api/posts?page=${page}&limit=${limit}`, {}, token);
+export const getPostsRequest = async (page = 1, limit = 10, token = null, tag = null, userId = null) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+
+  if (tag) params.append('tag', tag);
+  if (userId) params.append('userId', userId);
+
+  return request(`/api/posts?${params.toString()}`, {}, token);
 };
 
 export const createPostRequest = async (formData, token = null) => {

@@ -1,6 +1,7 @@
-import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
-import { Animated, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { useEffect, useRef, useState } from 'react';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Screen } from '../components/Screen';
 import { ProfileScreen } from './ProfileScreen';
 import TeamsScreen from './TeamsScreen';
 import { CommunityFeedScreen } from './CommunityFeedScreen';
@@ -42,28 +43,11 @@ const TABS = [
   },
 ];
 
+const TAB_BAR_HEIGHT = 70;
+
 export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfile, user, navigation }) {
+  const insets = useSafeAreaInsets();
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[4];
-  const [tabLayouts, setTabLayouts] = useState({});
-  const indicatorAnim = useRef(new Animated.Value(0)).current;
-  const activeIndex = TABS.findIndex((tab) => tab.key === activeTab);
-
-  useEffect(() => {
-    if (tabLayouts[activeIndex]) {
-      Animated.timing(indicatorAnim, {
-        toValue: tabLayouts[activeIndex].x,
-        duration: 260,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [activeIndex, tabLayouts, indicatorAnim]);
-
-  const handleLayout = (event, index) => {
-    const { x, width } = event.nativeEvent.layout;
-    setTabLayouts((prev) => ({ ...prev, [index]: { x, width } }));
-  };
-
-  const activeLayout = tabLayouts[activeIndex] || { width: 0 };
 
   return (
     <View style={styles.screen}>
@@ -73,13 +57,16 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
           onGoToProfile={() => onChangeTab('profile')}
         />
       ) : (
-        <SafeAreaView style={
-          activeTab === 'teams'
-            ? styles.teamsContent
-            : activeTab === 'profile'
-              ? styles.profileContent
-              : styles.content
-        }>
+        <Screen
+          edges={['top', 'left', 'right']}
+          style={
+            activeTab === 'teams'
+              ? styles.teamsContent
+              : activeTab === 'profile'
+                ? styles.profileContent
+                : styles.content
+          }
+        >
           {activeTab === 'profile' ? (
             <ProfileScreen
               onLogout={onLogout}
@@ -94,44 +81,28 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
               <Text style={styles.layoutName}>{currentTab.label}</Text>
             </View>
           )}
-        </SafeAreaView>
+        </Screen>
       )}
 
-      <View style={styles.bottomBar}>
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.activeBackground,
-            {
-              width: activeLayout.width,
-              transform: [{ translateX: indicatorAnim }],
-            },
-          ]}
-        >
-          <View style={styles.activeBackgroundPill} />
-        </Animated.View>
+      <View style={[styles.bottomBarWrap, { paddingBottom: insets.bottom }]}>
+        <View style={styles.bottomBar}>
+          {TABS.map((tab) => {
+            const isActive = tab.key === activeTab;
+            const color = isActive ? ACTIVE_COLOR : INACTIVE_COLOR;
 
-        {TABS.map((tab, index) => {
-          const isActive = tab.key === activeTab;
-          const color = isActive ? ACTIVE_COLOR : INACTIVE_COLOR;
-
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => onChangeTab(tab.key)}
-              style={({ pressed, hovered }) => [
-                styles.tabButton,
-                isActive && styles.activeTabButton,
-                (pressed || hovered) && styles.zoomedTab,
-              ]}
-              onLayout={(event) => handleLayout(event, index)}
-            >
-              <View style={[styles.iconFrame, isActive && styles.activeIconFrame]}>
-                {tab.icon({ color, size: 24 })}
-              </View>
-            </Pressable>
-          );
-        })}
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => onChangeTab(tab.key)}
+                style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
+              >
+                <View style={[styles.iconFrame, isActive && styles.activeIconFrame]}>
+                  {tab.icon({ color, size: 24 })}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -176,49 +147,34 @@ const styles = StyleSheet.create({
     color: '#101828',
     textAlign: 'center',
   },
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    height: 70,
+  bottomBarWrap: {
     backgroundColor: '#ffffff',
     borderTopWidth: 1.2,
     borderTopColor: '#e8ecf2',
-    position: 'relative',
   },
-  activeBackground: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
+  bottomBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  activeBackgroundPill: {
-    width: 62,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(11, 116, 255, 0.12)',
+    height: TAB_BAR_HEIGHT,
+    paddingHorizontal: 18,
   },
   tabButton: {
     flex: 1,
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  activeTabButton: {
-  },
-  zoomedTab: {
-    transform: [{ translateY: -2 }],
+  tabButtonPressed: {
+    opacity: 0.7,
   },
   iconFrame: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
   activeIconFrame: {
+    backgroundColor: 'rgba(11, 116, 255, 0.12)',
   },
   tabLabel: {
     fontSize: 11,

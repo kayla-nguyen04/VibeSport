@@ -67,9 +67,18 @@ const userSchema = new Schema(
       min: 0,
       max: 5,
     },
+    stats: {
+      matchesPlayed: { type: Number, default: 0 },
+      matchesWon: { type: Number, default: 0 },
+      mvp: { type: Number, default: 0 },
+    },
     profileCompleted: {
       type: Boolean,
       default: false,
+    },
+    lastSeenAt: {
+      type: Date,
+      default: null,
     },
   },
   {

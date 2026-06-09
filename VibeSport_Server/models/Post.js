@@ -24,6 +24,11 @@ const postSchema = new Schema(
       type: String,
       default: 'Bóng đá',
     },
+    tags: {
+      type: [String],
+      default: [],
+      index: true,
+    },
     likesCount: {
       type: Number,
       default: 0,

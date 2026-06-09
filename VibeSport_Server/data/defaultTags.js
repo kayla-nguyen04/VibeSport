@@ -1,0 +1,17 @@
+module.exports = [
+  { name: 'Bóng đá', slug: 'bong-da', category: 'sport' },
+  { name: 'Bóng rổ', slug: 'bong-ro', category: 'sport' },
+  { name: 'Cầu lông', slug: 'cau-long', category: 'sport' },
+  { name: 'Bóng chuyền', slug: 'bong-chuyen', category: 'sport' },
+  { name: 'Bóng bàn', slug: 'bong-ban', category: 'sport' },
+  { name: 'Tennis', slug: 'tennis', category: 'sport' },
+  { name: 'Pickleball', slug: 'pickleball', category: 'sport' },
+  { name: 'Chạy bộ', slug: 'chay-bo', category: 'sport' },
+  { name: 'Bơi lội', slug: 'boi-loi', category: 'sport' },
+  { name: 'Gym', slug: 'gym', category: 'sport' },
+  { name: 'Tìm đội', slug: 'tim-doi', category: 'topic' },
+  { name: 'Giải đấu', slug: 'giai-dau', category: 'topic' },
+  { name: 'Tập luyện', slug: 'tap-luyen', category: 'topic' },
+  { name: 'Review sân', slug: 'review-san', category: 'topic' },
+  { name: 'Tuyển thành viên', slug: 'tuyen-thanh-vien', category: 'topic' },
+];

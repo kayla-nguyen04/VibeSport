@@ -13,11 +13,11 @@ import {
 // Fetch posts paginated
 export const fetchPosts = createAsyncThunk(
   'posts/fetchPosts',
-  async ({ page, limit }, { getState, rejectWithValue }) => {
+  async ({ page, limit, tag = null }, { getState, rejectWithValue }) => {
     try {
       const token = getState().auth.token;
-      const response = await getPostsRequest(page, limit, token);
-      return response; // { success, data, page, limit }
+      const response = await getPostsRequest(page, limit, token, tag);
+      return { ...response, tag };
     } catch (err) {
       return rejectWithValue(err.message);
     }
@@ -106,13 +106,21 @@ const postSlice = createSlice({
     creating: false,
     hasMore: true,
     error: null,
+    activeTag: null,
   },
   reducers: {
+    setActiveTag: (state, action) => {
+      state.activeTag = action.payload || null;
+      state.posts = [];
+      state.page = 1;
+      state.hasMore = true;
+    },
     resetFeed: (state) => {
       state.posts = [];
       state.page = 1;
       state.hasMore = true;
       state.error = null;
+      state.activeTag = null;
     },
     updateCommentCount: (state, action) => {
       const { postId, commentsCount } = action.payload;
@@ -134,9 +142,10 @@ const postSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchPosts.fulfilled, (state, action) => {
-        const { data, page } = action.payload;
+        const { data, page, tag } = action.payload;
         state.loading = false;
         state.refreshing = false;
+        state.activeTag = tag || null;
         if (page === 1) {
           state.posts = data;
         } else {
@@ -220,5 +229,5 @@ const postSlice = createSlice({
   },
 });
 
-export const { resetFeed, updateCommentCount } = postSlice.actions;
+export const { resetFeed, setActiveTag, updateCommentCount } = postSlice.actions;
 export default postSlice.reducer;
