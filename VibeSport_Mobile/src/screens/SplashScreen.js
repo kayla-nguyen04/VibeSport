@@ -2,13 +2,13 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Image,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { Screen } from "../components/Screen";
 
 export function SplashScreen({ onNavigateToRegister, onNavigateToLogin }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -38,7 +38,7 @@ export function SplashScreen({ onNavigateToRegister, onNavigateToLogin }) {
 
   return (
     <LinearGradient colors={["#0e1726", "#1a0d0e"]} style={styles.gradient}>
-      <SafeAreaView style={styles.container}>
+      <Screen style={styles.container}>
         <View style={styles.content}>
           <Animated.View
             style={[
@@ -115,7 +115,7 @@ export function SplashScreen({ onNavigateToRegister, onNavigateToLogin }) {
             </Text>
           </TouchableOpacity>
         </Animated.View>
-      </SafeAreaView>
+      </Screen>
     </LinearGradient>
   );
 }

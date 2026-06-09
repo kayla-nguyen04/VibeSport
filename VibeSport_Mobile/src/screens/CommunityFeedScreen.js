@@ -6,20 +6,21 @@ import {
   Image,
   Modal,
   Platform,
-  Pressable,
   RefreshControl,
-  SafeAreaView,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchPosts, likePost, commentPost, deletePost } from '../redux/postSlice';
+import { fetchPosts, likePost, deletePost, setActiveTag } from '../redux/postSlice';
+import { TagIcon } from '../components/TagIcon';
+import { getTagsRequest } from '../services/tagApi';
 import { API_BASE_URL } from '../components/constants/api';
+import { Screen } from '../components/Screen';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -38,23 +39,35 @@ function fixMediaUrl(url) {
 
 export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
-  const { posts, loading, refreshing, hasMore, page } = useSelector((state) => state.posts);
+  const { posts, loading, refreshing, hasMore, page, activeTag } = useSelector((state) => state.posts);
   const user = useSelector((state) => state.auth.user);
+  const token = useSelector((state) => state.auth.token);
   const [optionsPost, setOptionsPost] = useState(null);
-  
-  // Initial load
+  const [catalogTags, setCatalogTags] = useState([]);
+
   useEffect(() => {
-    dispatch(fetchPosts({ page: 1, limit: 10 }));
-  }, [dispatch]);
+    getTagsRequest(token, 'sport')
+      .then((res) => setCatalogTags(res.data || []))
+      .catch(() => setCatalogTags([]));
+  }, [token]);
+
+  useEffect(() => {
+    dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
+  }, [dispatch, activeTag]);
 
   const handleRefresh = useCallback(() => {
-    dispatch(fetchPosts({ page: 1, limit: 10 }));
-  }, [dispatch]);
+    dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
+  }, [dispatch, activeTag]);
 
   const handleLoadMore = () => {
     if (!loading && !refreshing && hasMore) {
-      dispatch(fetchPosts({ page: page + 1, limit: 10 }));
+      dispatch(fetchPosts({ page: page + 1, limit: 10, tag: activeTag }));
     }
+  };
+
+  const handleTagPress = (tagName) => {
+    const nextTag = activeTag === tagName ? null : tagName;
+    dispatch(setActiveTag(nextTag));
   };
 
   const handleLike = (postId) => {
@@ -129,8 +142,26 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     return `${diffDays} ngày trước`;
   };
 
+  const renderTagBadge = (tagName, key) => (
+    <TouchableOpacity
+      key={key}
+      onPress={() => handleTagPress(tagName)}
+      style={[styles.sportBadge, activeTag === tagName && styles.sportBadgeActive]}
+    >
+      <TagIcon
+        color={activeTag === tagName ? '#FFFFFF' : '#FF6B35'}
+        size={12}
+        tagName={tagName}
+      />
+      <Text style={[styles.sportBadgeText, activeTag === tagName && styles.sportBadgeTextActive]}>
+        {tagName}
+      </Text>
+    </TouchableOpacity>
+  );
+
   const renderPostItem = ({ item }) => {
     const isOwner = user && item.userId && (user.id === item.userId._id || user._id === item.userId._id);
+    const displayTags = item.tags?.length ? item.tags : item.sportType ? [item.sportType] : [];
 
     return (
       <View style={styles.postCard}>
@@ -138,8 +169,9 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         <View style={styles.postHeader}>
           <TouchableOpacity
             onPress={() => {
-              if (onGoToProfile) {
-                onGoToProfile();
+              const authorId = item.userId?._id || item.userId?.id;
+              if (authorId) {
+                navigation.navigate('UserProfile', { userId: authorId });
               }
             }}
             activeOpacity={0.8}
@@ -156,12 +188,18 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           </TouchableOpacity>
           <View style={styles.postInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
-              {item.sportType && (
-                <View style={styles.sportBadge}>
-                  <Text style={styles.sportBadgeText}>{item.sportType}</Text>
-                </View>
-              )}
+              <TouchableOpacity
+                onPress={() => {
+                  const authorId = item.userId?._id || item.userId?.id;
+                  if (authorId) navigation.navigate('UserProfile', { userId: authorId });
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
+              </TouchableOpacity>
+              <View style={styles.tagRow}>
+                {displayTags.map((tagName, index) => renderTagBadge(tagName, `${item._id}-${index}`))}
+              </View>
             </View>
             <Text style={styles.timeText}>
               {formatTime(item.createdAt)}
@@ -231,7 +269,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen edges={['top', 'left', 'right']} style={styles.safeArea}>
       {/* App Header */}
       <View style={styles.header}>
         <Text style={styles.logoText}>
@@ -257,6 +295,49 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF6B35']} />
         }
         ListHeaderComponent={
+          <View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagFilterRow}
+            >
+              <TouchableOpacity
+                onPress={() => handleTagPress(null)}
+                style={[styles.filterChip, !activeTag && styles.filterChipActive]}
+              >
+                <Text style={[styles.filterChipText, !activeTag && styles.filterChipTextActive]}>
+                  Tất cả
+                </Text>
+              </TouchableOpacity>
+              {catalogTags.map((tag) => (
+                <TouchableOpacity
+                  key={tag._id}
+                  onPress={() => handleTagPress(tag.name)}
+                  style={[styles.filterChip, activeTag === tag.name && styles.filterChipActive]}
+                >
+                  <TagIcon
+                    color={activeTag === tag.name ? '#FF6B35' : '#374151'}
+                    size={14}
+                    tagName={tag.name}
+                  />
+                  <Text
+                    style={[styles.filterChipText, activeTag === tag.name && styles.filterChipTextActive]}
+                  >
+                    {tag.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {activeTag ? (
+              <View style={styles.activeFilterBanner}>
+                <Text style={styles.activeFilterText}>Đang lọc: #{activeTag}</Text>
+                <TouchableOpacity onPress={() => handleTagPress(null)}>
+                  <Text style={styles.clearFilterText}>Bỏ lọc</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
           <View style={styles.bannerContainer}>
             <View style={styles.bannerCard}>
               <Text style={styles.bannerGreeting}>
@@ -271,6 +352,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 <Text style={styles.createPostBtnText}>Đăng bài lên cộng đồng</Text>
               </TouchableOpacity>
             </View>
+          </View>
           </View>
         }
         ListFooterComponent={
@@ -345,7 +427,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -363,6 +445,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    zIndex: 10,
+    elevation: 10,
   },
   logoText: {
     fontSize: 22,
@@ -447,7 +531,63 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  tagFilterRow: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  filterChipActive: {
+    backgroundColor: '#FFF0EA',
+    borderColor: '#FF6B35',
+  },
+  filterChipText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#FF6B35',
+  },
+  activeFilterBanner: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  activeFilterText: {
+    color: '#C2410C',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  clearFilterText: {
+    color: '#FF6B35',
+    fontWeight: '700',
+    fontSize: 13,
   },
   userName: {
     fontSize: 15,
@@ -455,15 +595,24 @@ const styles = StyleSheet.create({
     color: '#1F2937',
   },
   sportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#FFF0EA',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
+  sportBadgeActive: {
+    backgroundColor: '#FF6B35',
+  },
   sportBadgeText: {
     color: '#FF6B35',
     fontSize: 11,
     fontWeight: '600',
+  },
+  sportBadgeTextActive: {
+    color: '#FFFFFF',
   },
   timeText: {
     fontSize: 12,
