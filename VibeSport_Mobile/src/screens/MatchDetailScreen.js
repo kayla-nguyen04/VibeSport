@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
   Alert,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { getMatchById, deleteMatch } from "../services/matchService";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 
 const SPORT_ICONS = { football: "⚽", badminton: "🏸", pickleball: "🏓" };
 const AVATAR_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FB8C00", "#8E24AA", "#00ACC1"];
@@ -75,11 +76,11 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   if (loading || !match) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <Screen style={styles.safeArea}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#0066cc" />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -119,14 +120,18 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+    <Screen style={styles.safeArea}>
+      <ScreenHeader style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => navigation.goBack()}
+        >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
         <View style={styles.headerSpacer} />
-      </View>
+      </ScreenHeader>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
@@ -232,7 +237,7 @@ export default function MatchDetailScreen({ navigation, route }) {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

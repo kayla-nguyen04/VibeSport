@@ -7,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   Share,
   StyleSheet,
   Text,
@@ -24,7 +23,10 @@ import {
   likePost as likePostInFeed,
   deletePost as deletePostInFeed,
   updateCommentCount as updateCommentCountInFeed,
+  setActiveTag,
 } from '../redux/postSlice';
+import { Screen } from '../components/Screen';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 function fixMediaUrl(url) {
   if (!url) return url;
@@ -340,20 +342,23 @@ export default function PostDetailScreen({ route, navigation }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+      <Screen style={styles.safeArea}>
+        <ScreenHeader style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.backButton}
+          >
             <Ionicons name="arrow-back" size={20} color="#1F2937" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Chi tiết bài viết</Text>
           <View style={{ width: 36 }} />
-        </View>
+        </ScreenHeader>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FF6B35" />
           <Text style={styles.loadingText}>Đang tải bài viết...</Text>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -361,16 +366,32 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const isOwner = currentUser && post.userId && (currentUser.id === post.userId._id || currentUser._id === post.userId._id);
   const posterAvatarColor = getAvatarColor(post.userId?.name);
+  const displayTags = post.tags?.length ? post.tags : post.sportType ? [post.sportType] : [];
+
+  const handleTagPress = (tagName) => {
+    dispatch(setActiveTag(tagName));
+    navigation.goBack();
+  };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Header bar styled like image */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+    <Screen style={styles.safeArea}>
+      <ScreenHeader style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.backButton}
+        >
           <Ionicons name="arrow-back" size={20} color="#1F2937" />
         </TouchableOpacity>
-        
-        <View style={styles.headerUserInfo}>
+
+        <TouchableOpacity
+          style={styles.headerUserInfo}
+          activeOpacity={0.8}
+          onPress={() => {
+            const authorId = post.userId?._id || post.userId?.id;
+            if (authorId) navigation.navigate('UserProfile', { userId: authorId });
+          }}
+        >
           {post.userId?.picture ? (
             <Image source={{ uri: post.userId.picture }} style={styles.headerAvatar} />
           ) : (
@@ -385,20 +406,21 @@ export default function PostDetailScreen({ route, navigation }) {
               {formatTime(post.createdAt)}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setOptionsVisible(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={styles.optionsButton}
         >
           <Ionicons name="ellipsis-horizontal" size={20} color="#7C8190" />
         </TouchableOpacity>
-      </View>
+      </ScreenHeader>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardContainer}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        keyboardVerticalOffset={0}
       >
         <FlatList
           data={comments}
@@ -407,7 +429,20 @@ export default function PostDetailScreen({ route, navigation }) {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <View style={styles.postDetailsContainer}>
-              {/* Post Content */}
+              {displayTags.length > 0 ? (
+                <View style={styles.tagRow}>
+                  {displayTags.map((tagName) => (
+                    <TouchableOpacity
+                      key={tagName}
+                      onPress={() => handleTagPress(tagName)}
+                      style={styles.tagBadge}
+                    >
+                      <Text style={styles.tagBadgeText}>{tagName}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+
               {post.content ? <Text style={styles.postContent}>{post.content}</Text> : null}
 
               {/* Media content */}
@@ -572,13 +607,12 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
-    flex: 1,
     backgroundColor: '#FFFFFF',
   },
   keyboardContainer: {
@@ -601,7 +635,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
-    backgroundColor: '#FFFFFF',
   },
   backButton: {
     width: 36,
@@ -661,6 +694,23 @@ const styles = StyleSheet.create({
   },
   postDetailsContainer: {
     padding: 16,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  tagBadge: {
+    backgroundColor: '#FFF0EA',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  tagBadgeText: {
+    color: '#FF6B35',
+    fontSize: 12,
+    fontWeight: '700',
   },
   postContent: {
     fontSize: 16,

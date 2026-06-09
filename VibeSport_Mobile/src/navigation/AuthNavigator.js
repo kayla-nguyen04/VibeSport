@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Screen } from '../components/Screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { hydrateSession, logoutUser, updateProfile } from '../redux/authSlice';
+import { usePresenceHeartbeat } from '../hooks/usePresenceHeartbeat';
 import { AuthScreen } from '../screens/AuthScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import { MainTabsScreen } from '../screens/MainTabsScreen';
@@ -17,6 +19,7 @@ import MatchDetailScreen from '../screens/MatchDetailScreen';
 import MapPickerScreen from '../screens/MapPickerScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -52,10 +55,10 @@ function HomeScreen({ navigation, route }) {
 
 function LoadingScreen() {
   return (
-    <SafeAreaView style={styles.centered}>
+    <Screen style={styles.centered}>
       <ActivityIndicator size="large" color="#111111" />
       <Text style={styles.loadingText}>Đang tải phiên đăng nhập...</Text>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -64,6 +67,8 @@ export function AuthNavigator() {
   const { isAuthenticated, isHydrating, user } = useSelector((state) => state.auth);
 
   const isProfileComplete = Boolean(user?.favoriteSport && user?.position && user?.area);
+
+  usePresenceHeartbeat();
 
   useEffect(() => {
     dispatch(hydrateSession());
@@ -99,6 +104,7 @@ export function AuthNavigator() {
             <Stack.Screen name="MapPicker" component={MapPickerScreen} />
             <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+            <Stack.Screen name="UserProfile" component={UserProfileScreen} />
           </>
         ) : (
           <>

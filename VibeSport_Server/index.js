@@ -18,6 +18,9 @@ const authRouter = require('./routes/auth');
 const otpRoutes = require("./routes/otp");
 const matchRoutes = require("./routes/matches");
 const postsRouter = require('./routes/posts');
+const tagsRouter = require('./routes/tags');
+const usersRouter = require('./routes/users');
+const seedTags = require('./scripts/seedTags');
 
 const app = express();
 const PORT = 4000;
@@ -40,6 +43,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Mount posts routes
 app.use('/api/posts', postsRouter);
+app.use('/api/tags', tagsRouter);
+app.use('/api/users', usersRouter);
 
 app.get('/health', (_, response) => {
   response.json({
@@ -55,8 +60,10 @@ app.use('/auth', authRouter);
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('Connected to MongoDB');
+    await seedTags();
+    console.log('Tag catalog ready');
     app.listen(PORT, HOST, () => {
       console.log(`Auth API listening at http://${HOST}:${PORT}`);
     });

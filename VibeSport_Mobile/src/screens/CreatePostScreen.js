@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,8 +18,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useDispatch, useSelector } from 'react-redux';
 import { createPost, updatePost } from '../redux/postSlice';
-
-const SPORTS = ['Bóng đá', 'Bóng rổ', 'Cầu lông', 'Bóng chuyền', 'Bóng bàn', 'Tennis', 'Chạy bộ'];
+import { getTagsRequest } from '../services/tagApi';
+import { Screen } from '../components/Screen';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -33,6 +33,7 @@ const getAvatarColor = (name) => {
 export function CreatePostScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
+  const token = useSelector((state) => state.auth.token);
   const { creating } = useSelector((state) => state.posts);
 
   // Check if we are in edit mode
@@ -40,9 +41,12 @@ export function CreatePostScreen({ navigation, route }) {
   const isEditMode = !!editPost;
 
   const [content, setContent] = React.useState(editPost?.content ?? '');
-  const [selectedSport, setSelectedSport] = React.useState(editPost?.sportType ?? 'Bóng đá');
-  const [showSportDropdown, setShowSportDropdown] = React.useState(false);
-  const [selectedMedia, setSelectedMedia] = React.useState([]); // New media picks only
+  const [selectedMedia, setSelectedMedia] = React.useState([]);
+  const [catalogTags, setCatalogTags] = React.useState([]);
+  const [selectedTag, setSelectedTag] = React.useState(
+    editPost?.tags?.[0] ?? editPost?.sportType ?? 'Bóng đá'
+  );
+  const [showTagDropdown, setShowTagDropdown] = React.useState(false);
 
   // Location states
   const [location, setLocation] = React.useState(editPost?.location ?? '');
@@ -127,7 +131,25 @@ export function CreatePostScreen({ navigation, route }) {
     setLocation('');
   };
 
+  React.useEffect(() => {
+    getTagsRequest(token)
+      .then((res) => setCatalogTags(res.data || []))
+      .catch(() => setCatalogTags([]));
+  }, [token]);
+
+  const sportTagNames = React.useMemo(
+    () => new Set(catalogTags.filter((tag) => tag.category === 'sport').map((tag) => tag.name)),
+    [catalogTags]
+  );
+
+  const sportType = sportTagNames.has(selectedTag) ? selectedTag : editPost?.sportType || 'Bóng đá';
+
   const handlePublish = async () => {
+    if (!selectedTag) {
+      Alert.alert('Chưa chọn tag', 'Vui lòng chọn tag cho bài viết.');
+      return;
+    }
+
     if (!content.trim() && selectedMedia.length === 0) {
       Alert.alert('Nội dung trống', 'Vui lòng viết gì đó hoặc thêm hình ảnh/video.');
       return;
@@ -141,7 +163,8 @@ export function CreatePostScreen({ navigation, route }) {
     const formData = new FormData();
     formData.append('content', content.trim());
     formData.append('location', location);
-    formData.append('sportType', selectedSport);
+    formData.append('sportType', sportType);
+    formData.append('tags', JSON.stringify([selectedTag]));
 
     selectedMedia.forEach((asset, index) => {
       const uri = asset.uri;
@@ -190,30 +213,34 @@ export function CreatePostScreen({ navigation, route }) {
   const isPublishDisabled = creating || (!content.trim() && selectedMedia.length === 0);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen style={styles.safeArea}>
+      <ScreenHeader style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1F2937" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{isEditMode ? 'Sửa bài viết' : 'Tạo bài viết'}</Text>
+        <TouchableOpacity
+          onPress={handlePublish}
+          disabled={isPublishDisabled}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={[styles.publishBtn, isPublishDisabled && styles.publishBtnDisabled]}
+        >
+          {creating ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.publishBtnText}>{isEditMode ? 'Lưu' : 'Đăng'}</Text>
+          )}
+        </TouchableOpacity>
+      </ScreenHeader>
+
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{isEditMode ? 'Sửa bài viết' : 'Tạo bài viết'}</Text>
-          <TouchableOpacity
-            onPress={handlePublish}
-            disabled={isPublishDisabled}
-            style={[styles.publishBtn, isPublishDisabled && styles.publishBtnDisabled]}
-          >
-            {creating ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.publishBtnText}>{isEditMode ? 'Lưu' : 'Đăng'}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           {/* User Profile Info */}
           <View style={styles.userRow}>
@@ -228,48 +255,45 @@ export function CreatePostScreen({ navigation, route }) {
             )}
             <View style={styles.userInfo}>
               <Text style={styles.userName}>{user?.name || 'Thành viên VibeSport'}</Text>
-              
-              {/* Sport Selector Dropdown Trigger */}
               <TouchableOpacity
-                onPress={() => setShowSportDropdown(!showSportDropdown)}
-                style={styles.sportDropdownTrigger}
+                onPress={() => setShowTagDropdown(!showTagDropdown)}
+                style={styles.tagDropdownTrigger}
               >
-                <Text style={styles.sportDropdownText}>{selectedSport}</Text>
+                <Text style={styles.tagDropdownText}>{selectedTag || 'Chọn tag'}</Text>
                 <Ionicons name="chevron-down" size={14} color="#FF6B35" />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Sport Dropdown Options */}
-          {showSportDropdown && (
+          {showTagDropdown ? (
             <View style={styles.dropdownOptions}>
-              {SPORTS.map((sport) => (
+              {(catalogTags.length
+                ? catalogTags
+                : [{ name: 'Bóng đá' }, { name: 'Bóng rổ' }, { name: 'Cầu lông' }]
+              ).map((tag) => (
                 <TouchableOpacity
-                  key={sport}
+                  key={tag._id || tag.name}
                   onPress={() => {
-                    setSelectedSport(sport);
-                    setShowSportDropdown(false);
+                    setSelectedTag(tag.name);
+                    setShowTagDropdown(false);
                   }}
-                  style={[
-                    styles.dropdownItem,
-                    selectedSport === sport && styles.dropdownItemActive,
-                  ]}
+                  style={[styles.dropdownItem, selectedTag === tag.name && styles.dropdownItemActive]}
                 >
                   <Text
                     style={[
                       styles.dropdownItemText,
-                      selectedSport === sport && styles.dropdownItemTextActive,
+                      selectedTag === tag.name && styles.dropdownItemTextActive,
                     ]}
                   >
-                    {sport}
+                    {tag.name}
                   </Text>
-                  {selectedSport === sport && (
+                  {selectedTag === tag.name ? (
                     <Ionicons name="checkmark" size={16} color="#FF6B35" />
-                  )}
+                  ) : null}
                 </TouchableOpacity>
               ))}
             </View>
-          )}
+          ) : null}
 
           {/* Text Input */}
           <TextInput
@@ -341,7 +365,7 @@ export function CreatePostScreen({ navigation, route }) {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -411,7 +435,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1F2937',
   },
-  sportDropdownTrigger: {
+  tagDropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF0EA',
@@ -422,7 +446,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     gap: 4,
   },
-  sportDropdownText: {
+  tagDropdownText: {
     color: '#FF6B35',
     fontSize: 12,
     fontWeight: 'bold',

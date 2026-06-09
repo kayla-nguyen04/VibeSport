@@ -127,6 +127,9 @@ router.post('/login', async (request, response) => {
       return;
     }
 
+    user.lastSeenAt = new Date();
+    await user.save();
+
     const payload = createSessionPayload(user);
     await Session.create({ userId: user._id, token: payload.token });
     response.json(payload);
@@ -187,6 +190,7 @@ router.post('/google', async (request, response) => {
         name: name ?? undefined,
         picture: picture ?? undefined,
         provider: 'google',
+        lastSeenAt: new Date(),
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );

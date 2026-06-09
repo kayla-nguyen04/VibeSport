@@ -4,7 +4,6 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +14,8 @@ import {
 import { useDispatch } from 'react-redux';
 
 import { BackButton } from '../components/BackButton';
+import { Screen } from '../components/Screen';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { registerUser } from '../redux/authSlice';
 import { sendOtp, verifyOtp } from '../services/otpService';
 
@@ -180,14 +181,14 @@ export default function OtpScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
+    <Screen style={styles.safeArea}>
+      <ScreenHeader style={styles.header}>
         <BackButton onPress={() => navigation.goBack()} />
-      </View>
+      </ScreenHeader>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={styles.flex}
       >
         <ScrollView
@@ -246,7 +247,7 @@ export default function OtpScreen({ navigation, route }) {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

@@ -8,7 +8,6 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Platform,
   Modal,
@@ -17,6 +16,8 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 
 const parseDateString = (dateStr) => {
   if (!dateStr) return new Date();
@@ -246,11 +247,10 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* Header */}
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation && navigation.goBack()}
@@ -259,7 +259,7 @@ export default function CreateMatchScreen({ navigation, route }) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isEditMode ? "Sửa trận đấu" : "Tạo trận đấu"}</Text>
         <View style={styles.headerSpacer} />
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         style={styles.scrollView}
@@ -552,7 +552,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

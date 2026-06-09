@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { BackButton } from '../components/BackButton';
+import { Screen } from '../components/Screen';
 import { AuthCard } from '../components/AuthCard';
 import { clearAuthFeedback, loginUser, setAuthError } from '../redux/authSlice';
 import { sendOtp } from '../services/otpService';
@@ -100,7 +100,7 @@ export function AuthScreen({ route }) {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <Screen style={styles.screen}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.navRow}>
@@ -133,7 +133,7 @@ export function AuthScreen({ route }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
