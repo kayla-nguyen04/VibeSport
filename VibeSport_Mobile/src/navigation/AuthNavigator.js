@@ -15,6 +15,7 @@ import OtpScreen from '../screens/OtpScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
+import CreateFindTeamScreen from '../screens/CreateFindTeamScreen';
 import MatchDetailScreen from '../screens/MatchDetailScreen';
 import MapPickerScreen from '../screens/MapPickerScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
@@ -100,6 +101,7 @@ export function AuthNavigator() {
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
             <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
+            <Stack.Screen name="CreateFindTeam" component={CreateFindTeamScreen} />
             <Stack.Screen name="MatchDetail" component={MatchDetailScreen} />
             <Stack.Screen name="MapPicker" component={MapPickerScreen} />
             <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />

@@ -9,10 +9,14 @@ import {
   FlatList,
   ActivityIndicator,
   Platform,
+  Alert,
+  Modal,
+  Image,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSelector } from "react-redux";
-import { getMatches } from "../services/matchService";
+import { getMatches, leaveMatch } from "../services/matchService";
+import { getPostsRequest } from "../services/postApi";
 
 const SPORT_FILTERS = [
   { key: "all", label: "Tất cả", icon: "" },
@@ -58,6 +62,18 @@ const getDayLabel = (dateStr) => {
 
 const getParticipantName = (p) => (typeof p === "object" ? p?.name : null);
 
+const formatTimeAgo = (dateString) => {
+  if (!dateString) return "";
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return "Vừa xong";
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  return `${diffDays} ngày trước`;
+};
+
 const CreatorProfileRow = ({ creator, label }) => {
   if (!creator || typeof creator !== "object") return null;
   return (
@@ -75,14 +91,18 @@ const CreatorProfileRow = ({ creator, label }) => {
 
 export default function TeamsScreen({ navigation }) {
   const user = useSelector((state) => state.auth?.user);
+  const token = useSelector((state) => state.auth?.token);
   const [activeSubTab, setActiveSubTab] = useState("near");
   const [activeSport, setActiveSport] = useState("all");
   const [searchText, setSearchText] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
   const [matches, setMatches] = useState([]);
+  const [findTeamPosts, setFindTeamPosts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [findTeamLoading, setFindTeamLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const userId = normalizeId(user?.id || user?._id);
 
@@ -108,14 +128,35 @@ export default function TeamsScreen({ navigation }) {
     }
   }, [activeSport, activeSubTab, userId]);
 
+  const loadFindTeamPosts = useCallback(async () => {
+    try {
+      setFindTeamLoading(true);
+      const res = await getPostsRequest(1, 50, token, "Tìm đội");
+      setFindTeamPosts(res.data || []);
+    } catch (err) {
+      console.log("Load find team posts error:", err.message);
+      setFindTeamPosts([]);
+    } finally {
+      setFindTeamLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
-    loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+    if (activeSubTab === "findteam") {
+      loadFindTeamPosts();
+    } else {
+      loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+    }
   }, [activeSport, activeSubTab]);
 
   useFocusEffect(
     useCallback(() => {
-      loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
-    }, [loadMatches, searchText, areaFilter, timeFilter, activeSubTab])
+      if (activeSubTab === "findteam") {
+        loadFindTeamPosts();
+      } else {
+        loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+      }
+    }, [loadMatches, loadFindTeamPosts, searchText, areaFilter, timeFilter, activeSubTab])
   );
 
   const handleSearch = () => {
@@ -128,6 +169,38 @@ export default function TeamsScreen({ navigation }) {
 
   const handleEditMatch = (item) => {
     navigation?.navigate?.("CreateMatch", { editMatch: item });
+  };
+
+  const handleLeaveMatch = (item) => {
+    Alert.alert("Rút khỏi trận", "Bạn có chắc muốn rút khỏi trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Rút khỏi",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await leaveMatch(item._id, userId);
+            loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+            Alert.alert("Thành công", "Đã rút khỏi trận đấu");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleViewPostDetail = (post) => {
+    navigation?.navigate?.("PostDetail", { postId: post._id, post });
+  };
+
+  const handleCreateOption = (option) => {
+    setShowCreateModal(false);
+    if (option === "match") {
+      navigation?.navigate?.("CreateMatch");
+    } else {
+      navigation?.navigate?.("CreateFindTeam");
+    }
   };
 
   const isUserParticipant = (match) => {
@@ -223,9 +296,7 @@ export default function TeamsScreen({ navigation }) {
             activeOpacity={0.7}
             onPress={() => handleViewDetail(item)}
           >
-            <Text style={styles.detailBlueBtnText}>
-              {joined ? "Xem chi tiết" : "Tham gia"}
-            </Text>
+            <Text style={styles.detailBlueBtnText}>Xem chi tiết</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -284,8 +355,19 @@ export default function TeamsScreen({ navigation }) {
           <View style={styles.joinedBadge}>
             <Text style={styles.joinedBadgeText}>✓ Đã tham gia</Text>
           </View>
-          <TouchableOpacity style={styles.leaveBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.leaveBtn}
+            activeOpacity={0.7}
+            onPress={() => handleLeaveMatch(item)}
+          >
             <Text style={styles.leaveBtnText}>Rút khỏi trận</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.detailBlueBtn}
+            activeOpacity={0.7}
+            onPress={() => handleViewDetail(item)}
+          >
+            <Text style={styles.detailBlueBtnText}>Xem chi tiết</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -427,19 +509,81 @@ export default function TeamsScreen({ navigation }) {
     );
   };
 
+  const renderFindTeamCard = (item) => {
+    const author = typeof item.userId === "object" ? item.userId : null;
+    const sportTag = item.sportType || item.tags?.find((t) => t !== "Tìm đội") || "Bóng đá";
+
+    return (
+      <View key={item._id} style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={[styles.sportSquare, { backgroundColor: "#FF6B35" }]}>
+            <Text style={styles.sportSquareIcon}>👥</Text>
+          </View>
+          <View style={styles.titleContainer}>
+            <Text style={styles.matchTitle} numberOfLines={1}>Tìm đội • {sportTag}</Text>
+            <Text style={styles.matchSubtitle}>{formatTimeAgo(item.createdAt)}</Text>
+          </View>
+        </View>
+
+        {author && (
+          <TouchableOpacity
+            style={styles.creatorRow}
+            activeOpacity={0.7}
+            onPress={() => {
+              const authorId = author._id || author.id;
+              if (authorId && normalizeId(authorId) !== userId) {
+                navigation?.navigate?.("UserProfile", { userId: authorId });
+              }
+            }}
+          >
+            <View style={[styles.creatorAvatar, { backgroundColor: AVATAR_COLORS[1] }]}>
+              {author.picture ? (
+                <Image source={{ uri: author.picture }} style={styles.creatorAvatarImg} />
+              ) : (
+                <Text style={styles.creatorAvatarText}>{getInitials(author.name)}</Text>
+              )}
+            </View>
+            <View style={styles.creatorMeta}>
+              <Text style={styles.creatorName}>{author.name || "Người dùng"}</Text>
+              <Text style={styles.creatorSub}>Người đăng</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        <Text style={styles.findTeamContent} numberOfLines={4}>{item.content}</Text>
+
+        <View style={styles.actionRow}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.detailBlueBtn}
+            activeOpacity={0.7}
+            onPress={() => handleViewPostDetail(item)}
+          >
+            <Text style={styles.detailBlueBtnText}>Xem chi tiết</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderItem = ({ item }) => {
+    if (activeSubTab === "findteam") return renderFindTeamCard(item);
     if (activeSubTab === "created") return renderCreatedCard(item);
     if (activeSubTab === "near") return renderBrowseCard(item);
     return renderJoinedCard(item);
   };
+
+  const isFindTeamTab = activeSubTab === "findteam";
+  const listLoading = isFindTeamTab ? findTeamLoading : loading;
+  const listData = isFindTeamTab ? findTeamPosts : getDisplayData();
 
   return (
     <View style={styles.container}>
       {/* ─── Header ─── */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Trận đấu</Text>
-        <TouchableOpacity style={styles.createBtn} onPress={() => navigation?.navigate?.("CreateMatch")}>
-          <Text style={styles.createBtnText}>+ Tạo trận</Text>
+        <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreateModal(true)}>
+          <Text style={styles.createBtnText}>+ Tạo</Text>
         </TouchableOpacity>
       </View>
 
@@ -449,6 +593,7 @@ export default function TeamsScreen({ navigation }) {
           { key: "near", label: "Gần tôi" },
           { key: "joined", label: "Đã tham gia" },
           { key: "created", label: "Đã tạo" },
+          { key: "findteam", label: "Tìm đội" },
         ].map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -465,6 +610,7 @@ export default function TeamsScreen({ navigation }) {
       </View>
 
       {/* ─── Sport Filters ─── */}
+      {!isFindTeamTab && (
       <View style={styles.filters}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersInner}>
           {SPORT_FILTERS.map((f) => {
@@ -486,8 +632,10 @@ export default function TeamsScreen({ navigation }) {
           })}
         </ScrollView>
       </View>
+      )}
 
       {/* ─── Search & Filters Bar ─── */}
+      {!isFindTeamTab && (
       <View style={styles.searchBar}>
         <View style={styles.searchWrap}>
           <Text style={styles.searchIcon}>🔍</Text>
@@ -544,43 +692,89 @@ export default function TeamsScreen({ navigation }) {
           </View>
         </View>
       </View>
+      )}
 
-      {/* ─── Match List ─── */}
-      {loading ? (
+      {/* ─── Match / Find Team List ─── */}
+      {listLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#ff4d2d" />
           <Text style={styles.loadingText}>Đang tải trận đấu...</Text>
         </View>
       ) : (
         <FlatList
-          data={getDisplayData()}
+          data={listData}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
           contentContainerStyle={styles.listInner}
           showsVerticalScrollIndicator={false}
-          refreshing={loading}
-          onRefresh={() => loadMatches(searchText, areaFilter, timeFilter, activeSubTab)}
+          refreshing={listLoading}
+          onRefresh={() => (isFindTeamTab ? loadFindTeamPosts() : loadMatches(searchText, areaFilter, timeFilter, activeSubTab))}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>⚽</Text>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>{isFindTeamTab ? "👥" : "⚽"}</Text>
               <Text style={styles.emptyTitle}>
-                {activeSubTab === "created"
+                {activeSubTab === "findteam"
+                  ? "Chưa có bài đăng tìm đội"
+                  : activeSubTab === "created"
                   ? "Bạn chưa tạo trận nào"
                   : activeSubTab === "joined"
                     ? "Bạn chưa tham gia trận nào"
                     : "Không tìm thấy trận đấu"}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {activeSubTab === "near"
+                {activeSubTab === "findteam"
+                  ? "Nhấn + Tạo để đăng bài tìm đội mới."
+                  : activeSubTab === "near"
                   ? "Hãy tạo trận mới hoặc thay đổi bộ lọc tìm kiếm."
                   : activeSubTab === "created"
-                    ? "Nhấn + Tạo trận để bắt đầu."
+                    ? "Nhấn + Tạo để bắt đầu."
                     : "Tìm trận ở tab Gần tôi và tham gia."}
               </Text>
             </View>
           }
         />
       )}
+
+      <Modal
+        visible={showCreateModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowCreateModal(false)}
+          />
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Tạo mới</Text>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => handleCreateOption("match")}
+            >
+              <Text style={styles.modalOptionIcon}>⚽</Text>
+              <View style={styles.modalOptionText}>
+                <Text style={styles.modalOptionTitle}>Tạo trận</Text>
+                <Text style={styles.modalOptionSub}>Tạo trận đấu mới, tìm người chơi</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => handleCreateOption("findteam")}
+            >
+              <Text style={styles.modalOptionIcon}>👥</Text>
+              <View style={styles.modalOptionText}>
+                <Text style={styles.modalOptionTitle}>Tìm đội</Text>
+                <Text style={styles.modalOptionSub}>Đăng bài tìm đội bóng</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancel} onPress={() => setShowCreateModal(false)}>
+              <Text style={styles.modalCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -729,6 +923,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   creatorAvatarText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  creatorAvatarImg: { width: 32, height: 32, borderRadius: 16 },
   creatorMeta: { marginLeft: 10, flex: 1 },
   creatorName: { fontSize: 13, fontWeight: "700", color: "#222" },
   creatorSub: { fontSize: 11, color: "#888", marginTop: 1 },
@@ -934,4 +1129,49 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   endedInfoText: { fontSize: 13, color: "#666" },
+
+  findTeamContent: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#444",
+    lineHeight: 20,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 36,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  modalOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: "#f8f9fa",
+    marginBottom: 10,
+  },
+  modalOptionIcon: { fontSize: 28, marginRight: 14 },
+  modalOptionText: { flex: 1 },
+  modalOptionTitle: { fontSize: 16, fontWeight: "700", color: "#111" },
+  modalOptionSub: { fontSize: 13, color: "#888", marginTop: 2 },
+  modalCancel: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  modalCancelText: { fontSize: 15, color: "#888", fontWeight: "600" },
 });
