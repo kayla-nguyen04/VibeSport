@@ -6,11 +6,17 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Platform,
   Alert,
 } from "react-native";
 import { useSelector } from "react-redux";
-import { getMatchById, deleteMatch } from "../services/matchService";
+import {
+  getMatchById,
+  deleteMatch,
+  requestJoinMatch,
+  acceptJoinMatch,
+  rejectJoinMatch,
+  leaveMatch,
+} from "../services/matchService";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 
@@ -49,22 +55,59 @@ const getDayLabel = (dateStr) => {
 
 const normalizeId = (id) => (id == null ? "" : String(id));
 
+const getUserId = (user) => normalizeId(typeof user === "object" ? user?._id || user?.id : user);
+
+function UserRow({ user, label, badge, onPress, rightAction }) {
+  if (!user || typeof user !== "object") return null;
+  const name = user.name || "Người dùng";
+
+  return (
+    <View style={styles.userRowWrap}>
+      <TouchableOpacity style={styles.userRow} onPress={onPress} activeOpacity={0.7} disabled={!onPress}>
+        <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
+          <Text style={styles.userInitials}>{getInitials(name)}</Text>
+        </View>
+        <View style={styles.userInfo}>
+          <View style={styles.userNameRow}>
+            <Text style={styles.userName}>{name}</Text>
+            {badge ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{badge}</Text>
+              </View>
+            ) : null}
+          </View>
+          {label ? <Text style={styles.userMeta}>{label}</Text> : null}
+          {user.area ? <Text style={styles.userMeta}>📍 {user.area}</Text> : null}
+        </View>
+        {onPress ? <Text style={styles.chevron}>›</Text> : null}
+      </TouchableOpacity>
+      {rightAction}
+    </View>
+  );
+}
+
 export default function MatchDetailScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth?.user);
   const matchId = route?.params?.matchId;
   const initialMatch = route?.params?.match;
   const [match, setMatch] = useState(initialMatch || null);
   const [loading, setLoading] = useState(!initialMatch);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const userId = normalizeId(user?.id || user?._id);
+
+  const reloadMatch = async () => {
+    if (!matchId) return;
+    const data = await getMatchById(matchId);
+    setMatch(data);
+  };
 
   useEffect(() => {
     if (!matchId) return;
     (async () => {
       try {
         setLoading(true);
-        const data = await getMatchById(matchId);
-        setMatch(data);
+        await reloadMatch();
       } catch (err) {
         Alert.alert("Lỗi", err.message);
         navigation.goBack();
@@ -85,12 +128,87 @@ export default function MatchDetailScreen({ navigation, route }) {
   }
 
   const creator = typeof match.createdBy === "object" ? match.createdBy : null;
-  const creatorId = normalizeId(creator?._id || creator?.id || match.createdBy);
+  const creatorId = getUserId(creator || match.createdBy);
   const isOwner = creatorId === userId;
   const icon = SPORT_ICONS[match.sport] || "⚽";
   const currentCount = match.currentPlayers || match.participants?.length || 0;
   const maxCount = match.maxPlayers || 10;
   const coords = match.location;
+  const participants = match.participants || [];
+  const pendingRequests = match.pendingJoinRequests || [];
+
+  const isParticipant = participants.some((p) => getUserId(p) === userId);
+  const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
+  const isFull = match.status === "full" || currentCount >= maxCount;
+  const isEnded = match.status === "completed" || match.status === "cancelled";
+
+  const openProfile = (profileUser) => {
+    const profileUserId = getUserId(profileUser);
+    if (!profileUserId || profileUserId === userId) {
+      navigation.navigate("Home", { activeTab: "profile" });
+      return;
+    }
+    navigation.navigate("UserProfile", { userId: profileUserId });
+  };
+
+  const handleRequestJoin = async () => {
+    try {
+      setActionLoading(true);
+      const data = await requestJoinMatch(match._id, userId);
+      setMatch(data);
+      Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAcceptRequest = async (requestUserId) => {
+    try {
+      setActionLoading(true);
+      const data = await acceptJoinMatch(match._id, userId, requestUserId);
+      setMatch(data);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (requestUserId) => {
+    try {
+      setActionLoading(true);
+      const data = await rejectJoinMatch(match._id, userId, requestUserId);
+      setMatch(data);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleLeave = () => {
+    Alert.alert("Rút khỏi trận", "Bạn có chắc muốn rút khỏi trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Rút khỏi",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await leaveMatch(match._id, userId);
+            setMatch(data);
+            Alert.alert("Thành công", "Đã rút khỏi trận đấu");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
+  };
 
   const handleEdit = () => {
     navigation.navigate("CreateMatch", { editMatch: match });
@@ -190,40 +308,106 @@ export default function MatchDetailScreen({ navigation, route }) {
         </View>
 
         {creator && (
-          <View style={styles.creatorCard}>
+          <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Người tạo trận</Text>
-            <View style={styles.creatorRow}>
-              <View style={[styles.creatorAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
-                <Text style={styles.creatorInitials}>{getInitials(creator.name)}</Text>
-              </View>
-              <View style={styles.creatorInfo}>
-                <Text style={styles.creatorName}>{creator.name || "Người dùng"}</Text>
-                {creator.area ? <Text style={styles.creatorMeta}>📍 {creator.area}</Text> : null}
-                {creator.favoriteSport ? (
-                  <Text style={styles.creatorMeta}>⚽ {creator.favoriteSport}</Text>
-                ) : null}
-              </View>
-            </View>
+            <UserRow
+              user={creator}
+              label="Chủ trận"
+              badge="Tạo trận"
+              onPress={() => openProfile(creator)}
+            />
           </View>
         )}
 
-        {(match.participants || []).length > 0 && (
-          <View style={styles.participantsCard}>
-            <Text style={styles.sectionTitle}>Người tham gia</Text>
-            <View style={styles.participantList}>
-              {match.participants.map((p, idx) => {
-                const name = typeof p === "object" ? p.name : "Người chơi";
-                return (
-                  <View key={idx} style={styles.participantItem}>
-                    <View style={[styles.participantAvatar, { backgroundColor: AVATAR_COLORS[idx % AVATAR_COLORS.length] }]}>
-                      <Text style={styles.participantInitials}>{getInitials(name)}</Text>
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>
+            Người tham gia ({participants.length})
+          </Text>
+          {participants.length === 0 ? (
+            <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
+          ) : (
+            participants.map((p, idx) => {
+              const pid = getUserId(p);
+              const isCreatorParticipant = pid === creatorId;
+              return (
+                <UserRow
+                  key={pid || idx}
+                  user={typeof p === "object" ? p : { name: "Người chơi" }}
+                  label={isCreatorParticipant ? "Chủ trận" : "Thành viên"}
+                  badge={isCreatorParticipant ? "Tạo trận" : null}
+                  onPress={() => openProfile(p)}
+                />
+              );
+            })
+          )}
+        </View>
+
+        {isOwner && pendingRequests.length > 0 && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Yêu cầu tham gia ({pendingRequests.length})</Text>
+            {pendingRequests.map((p, idx) => {
+              const requestUserId = getUserId(p);
+              return (
+                <UserRow
+                  key={requestUserId || idx}
+                  user={typeof p === "object" ? p : { name: "Người dùng" }}
+                  label="Muốn tham gia trận"
+                  onPress={() => openProfile(p)}
+                  rightAction={
+                    <View style={styles.requestActions}>
+                      <TouchableOpacity
+                        style={styles.acceptBtn}
+                        onPress={() => handleAcceptRequest(requestUserId)}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.acceptBtnText}>Chấp nhận</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.rejectBtn}
+                        onPress={() => handleRejectRequest(requestUserId)}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.rejectBtnText}>Từ chối</Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.participantName}>{name}</Text>
-                  </View>
-                );
-              })}
-            </View>
+                  }
+                />
+              );
+            })}
           </View>
+        )}
+
+        {!isOwner && !isEnded && !isParticipant && (
+          <View style={styles.joinSection}>
+            {hasPendingRequest ? (
+              <View style={styles.pendingBadge}>
+                <Text style={styles.pendingBadgeText}>⏳ Đã gửi yêu cầu tham gia</Text>
+              </View>
+            ) : isFull ? (
+              <View style={styles.fullBadge}>
+                <Text style={styles.fullBadgeText}>Trận đã đủ người</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.joinBtn, actionLoading && styles.joinBtnDisabled]}
+                onPress={handleRequestJoin}
+                disabled={actionLoading}
+                activeOpacity={0.7}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.joinBtnText}>Tham gia</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {!isOwner && isParticipant && !isEnded && (
+          <TouchableOpacity style={styles.leaveActionBtn} onPress={handleLeave} activeOpacity={0.7}>
+            <Text style={styles.leaveActionText}>Rút khỏi trận</Text>
+          </TouchableOpacity>
         )}
 
         {isOwner && match.status !== "completed" && (
@@ -305,42 +489,87 @@ const styles = StyleSheet.create({
   },
   noteLabel: { fontSize: 12, fontWeight: "700", color: "#888", marginBottom: 4 },
   noteText: { fontSize: 14, color: "#555", lineHeight: 20 },
-  creatorCard: {
+  sectionCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
   },
   sectionTitle: { fontSize: 14, fontWeight: "800", color: "#333", marginBottom: 12 },
-  creatorRow: { flexDirection: "row", alignItems: "center" },
-  creatorAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  emptyText: { fontSize: 13, color: "#999" },
+  userRowWrap: { marginBottom: 10 },
+  userRow: { flexDirection: "row", alignItems: "center" },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
-  creatorInitials: { color: "#fff", fontSize: 14, fontWeight: "800" },
-  creatorInfo: { marginLeft: 12, flex: 1 },
-  creatorName: { fontSize: 16, fontWeight: "700", color: "#111" },
-  creatorMeta: { fontSize: 13, color: "#666", marginTop: 2 },
-  participantsCard: {
+  userInitials: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  userInfo: { marginLeft: 12, flex: 1 },
+  userNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  userName: { fontSize: 15, fontWeight: "700", color: "#111" },
+  userMeta: { fontSize: 12, color: "#666", marginTop: 2 },
+  badge: {
+    backgroundColor: "#eef4ff",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: { fontSize: 10, color: "#0066cc", fontWeight: "700" },
+  chevron: { fontSize: 22, color: "#ccc", marginLeft: 8 },
+  requestActions: { flexDirection: "row", gap: 8, marginTop: 8, marginLeft: 52 },
+  acceptBtn: {
+    backgroundColor: "#0066cc",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  acceptBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  rejectBtn: {
+    borderWidth: 1,
+    borderColor: "#ef4444",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  rejectBtnText: { color: "#ef4444", fontSize: 12, fontWeight: "700" },
+  joinSection: { marginBottom: 12 },
+  joinBtn: {
+    backgroundColor: "#0066cc",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  joinBtnDisabled: { opacity: 0.6 },
+  joinBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  pendingBadge: {
+    backgroundColor: "#fff8e1",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ffe082",
+  },
+  pendingBadgeText: { color: "#856404", fontSize: 14, fontWeight: "700" },
+  fullBadge: {
+    backgroundColor: "#f3f3f3",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  fullBadgeText: { color: "#888", fontSize: 14, fontWeight: "700" },
+  leaveActionBtn: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
+    borderWidth: 1.5,
+    borderColor: "#ef4444",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
     marginBottom: 12,
   },
-  participantList: { gap: 10 },
-  participantItem: { flexDirection: "row", alignItems: "center" },
-  participantAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  participantInitials: { color: "#fff", fontSize: 11, fontWeight: "800" },
-  participantName: { marginLeft: 10, fontSize: 14, color: "#333", fontWeight: "500" },
+  leaveActionText: { fontSize: 15, fontWeight: "700", color: "#ef4444" },
   ownerActions: { gap: 10, marginTop: 4 },
   editActionBtn: {
     backgroundColor: "#fff8e1",

@@ -106,6 +106,13 @@ const matchSchema = new Schema(
       },
     ],
 
+    pendingJoinRequests: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
     status: {
       type: String,
       enum: ["open", "full", "cancelled", "completed"],

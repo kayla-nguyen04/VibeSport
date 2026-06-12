@@ -44,6 +44,36 @@ export async function getMatches(filters = {}) {
   return matchRequest(`${MATCHES_URL}${query}`);
 }
 
+export async function requestJoinMatch(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/request-join`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function acceptJoinMatch(matchId, ownerId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/accept-join`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ownerId, userId }),
+  });
+}
+
+export async function rejectJoinMatch(matchId, ownerId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/reject-join`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ownerId, userId }),
+  });
+}
+
 export async function joinMatch(matchId, userId) {
   return matchRequest(`${MATCHES_URL}/${matchId}/join`, {
     method: "POST",
