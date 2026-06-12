@@ -14,19 +14,33 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSelector, useDispatch } from 'react-redux';
-import { getPostByIdRequest, commentPostRequest, likePostRequest, deletePostRequest, likeCommentRequest } from '../services/postApi';
+import {
+  getPostByIdRequest,
+  commentPostRequest,
+  getPostLikesRequest,
+  deletePostRequest,
+} from '../services/postApi';
 import { API_BASE_URL } from '../components/constants/api';
 import {
   likePost as likePostInFeed,
+  unlikePost as unlikePostInFeed,
   deletePost as deletePostInFeed,
+  savePost as savePostInFeed,
+  unsavePost as unsavePostInFeed,
   updateCommentCount as updateCommentCountInFeed,
   setActiveTag,
 } from '../redux/postSlice';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import {
+  LikesModal,
+  ReactionPickerModal,
+  ReactionsPreview,
+  getReactionMeta,
+} from '../components/PostReactions';
 
 function fixMediaUrl(url) {
   if (!url) return url;
@@ -78,6 +92,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [expandedComments, setExpandedComments] = useState({});
+<<<<<<< HEAD
   const [replyingTo, setReplyingTo] = useState(null);
   const [showReplies, setShowReplies] = useState({});
   const commentInputRef = useRef(null);
@@ -89,6 +104,13 @@ export default function PostDetailScreen({ route, navigation }) {
       [commentId]: !prev[commentId],
     }));
   };
+=======
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
+  const [likesVisible, setLikesVisible] = useState(false);
+  const [likesSummary, setLikesSummary] = useState(null);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [activeReactionFilter, setActiveReactionFilter] = useState('all');
+>>>>>>> Duc
 
   const toggleExpandComment = (commentId) => {
     setExpandedComments((prev) => ({
@@ -160,30 +182,117 @@ export default function PostDetailScreen({ route, navigation }) {
     loadPostDetails();
   }, [loadPostDetails]);
 
+<<<<<<< HEAD
   const handleLikePost = async () => {
     if (!post) return;
 
     // Optimistic UI update locally
     const wasLiked = post.isLiked;
     setPost((prev) => ({
+=======
+  const applyPostReaction = (payload) => {
+    setPost((prev) => prev ? ({
+>>>>>>> Duc
       ...prev,
-      isLiked: !wasLiked,
-      likesCount: prev.likesCount + (wasLiked ? -1 : 1),
-    }));
+      isLiked: payload.isLiked,
+      reactionType: payload.reactionType,
+      likesCount: payload.likesCount,
+      topReactions: payload.topReactions,
+    }) : prev);
+  };
 
-    // Dispatch to update feed state as well
-    dispatch(likePostInFeed(post._id));
+  const handleReactToPost = async (reactionType) => {
+    if (!post) return;
+
+    const previousPost = post;
+    setPost((prev) => prev ? ({
+      ...prev,
+      isLiked: true,
+      reactionType,
+      likesCount: (prev.likesCount || 0) + (prev.isLiked ? 0 : 1),
+      topReactions: [reactionType, ...(prev.topReactions || []).filter((item) => item !== reactionType)].slice(0, 2),
+    }) : prev);
 
     try {
-      await likePostRequest(post._id, token);
+      const response = await dispatch(likePostInFeed({ postId: post._id, reactionType })).unwrap();
+      applyPostReaction(response);
     } catch (err) {
-      // Rollback if failed
-      setPost((prev) => ({
-        ...prev,
-        isLiked: wasLiked,
-        likesCount: prev.likesCount + (wasLiked ? 1 : -1),
-      }));
-      Alert.alert('Lỗi', 'Không thể gửi lượt thích. Thử lại sau.');
+      setPost(previousPost);
+      Alert.alert('Lỗi', err?.error || 'Không thể gửi cảm xúc. Thử lại sau.');
+    }
+  };
+
+  const handleUnlikePost = async () => {
+    if (!post) return;
+
+    const previousPost = post;
+    setPost((prev) => prev ? ({
+      ...prev,
+      isLiked: false,
+      reactionType: null,
+      likesCount: Math.max(0, (prev.likesCount || 0) - (prev.isLiked ? 1 : 0)),
+    }) : prev);
+
+    try {
+      const response = await dispatch(unlikePostInFeed(post._id)).unwrap();
+      applyPostReaction(response);
+    } catch (err) {
+      setPost(previousPost);
+      Alert.alert('Lỗi', err?.error || 'Không thể bỏ cảm xúc. Thử lại sau.');
+    }
+  };
+
+  const handleLikePost = () => {
+    if (!post) return;
+    if (post.isLiked) {
+      handleUnlikePost();
+      return;
+    }
+    handleReactToPost('like');
+  };
+
+  const handleSelectReaction = (reactionType) => {
+    setReactionPickerVisible(false);
+    if (!post || (post.isLiked && post.reactionType === reactionType)) return;
+    handleReactToPost(reactionType);
+  };
+
+  const handleOpenLikes = async () => {
+    if (!post) return;
+
+    setLikesVisible(true);
+    setLikesSummary(null);
+    setActiveReactionFilter('all');
+    setLikesLoading(true);
+
+    try {
+      const response = await getPostLikesRequest(post._id, token);
+      setLikesSummary(response);
+    } catch (err) {
+      Alert.alert('Lỗi', err.message || 'Không thể tải danh sách cảm xúc.');
+      setLikesVisible(false);
+    } finally {
+      setLikesLoading(false);
+    }
+  };
+
+  const handleToggleSavePost = async () => {
+    if (!post) return;
+
+    const previousPost = post;
+    const shouldSave = !post.isSaved;
+    setPost((prev) => prev ? ({ ...prev, isSaved: shouldSave }) : prev);
+
+    try {
+      if (shouldSave) {
+        await dispatch(savePostInFeed(post._id)).unwrap();
+      } else {
+        await dispatch(unsavePostInFeed(post._id)).unwrap();
+      }
+      Alert.alert('Thành công', shouldSave ? 'Đã lưu bài viết.' : 'Đã bỏ lưu bài viết.');
+    } catch (err) {
+      setPost(previousPost);
+      Alert.alert('Lỗi', err?.error || 'Không thể cập nhật trạng thái lưu bài viết.');
     }
   };
 
@@ -531,6 +640,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const isOwner = currentUser && post.userId && (currentUser.id === post.userId._id || currentUser._id === post.userId._id);
   const posterAvatarColor = getAvatarColor(post.userId?.name);
   const displayTags = post.tags?.length ? post.tags : post.sportType ? [post.sportType] : [];
+  const reactionMeta = getReactionMeta(post.reactionType);
 
   const handleTagPress = (tagName) => {
     dispatch(setActiveTag(tagName));
@@ -623,27 +733,51 @@ export default function PostDetailScreen({ route, navigation }) {
                 </View>
               )}
 
-              {/* Action buttons count summary row */}
-              <View style={styles.actionsCountRow}>
-                <TouchableOpacity onPress={handleLikePost} style={styles.countItem}>
-                  <Ionicons
-                    name={post.isLiked ? 'heart' : 'heart-outline'}
-                    size={18}
-                    color={post.isLiked ? '#EF4444' : '#7C8190'}
+              {(post.likesCount > 0 || post.commentsCount > 0) ? (
+                <View style={styles.engagementRow}>
+                  <ReactionsPreview
+                    likesCount={post.likesCount || 0}
+                    topReactions={post.topReactions || []}
+                    onPress={handleOpenLikes}
                   />
-                  <Text style={[styles.countText, post.isLiked && styles.likedCountText]}>
-                    {post.likesCount || 0} Thích
+                  {post.commentsCount > 0 ? (
+                    <Text style={styles.commentSummaryText}>{post.commentsCount} bình luận</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View style={styles.divider} />
+
+              <View style={styles.actionsBar}>
+                <TouchableOpacity
+                  onPress={handleLikePost}
+                  onLongPress={() => setReactionPickerVisible(true)}
+                  delayLongPress={220}
+                  style={styles.actionBtn}
+                >
+                  {post.isLiked ? (
+                    <Text style={styles.actionEmoji}>{reactionMeta.emoji}</Text>
+                  ) : (
+                    <Ionicons name="heart-outline" size={20} color="#7C8190" />
+                  )}
+                  <Text
+                    style={[
+                      styles.actionText,
+                      post.isLiked && { color: reactionMeta.color },
+                    ]}
+                  >
+                    {post.isLiked ? reactionMeta.label : 'Thích'}
                   </Text>
                 </TouchableOpacity>
 
-                <View style={styles.countItem}>
-                  <Ionicons name="chatbubble-outline" size={18} color="#7C8190" />
-                  <Text style={styles.countText}>{post.commentsCount || 0} Bình luận</Text>
+                <View style={styles.actionBtn}>
+                  <Ionicons name="chatbubble-outline" size={20} color="#7C8190" />
+                  <Text style={styles.actionText}>{post.commentsCount || 0} Bình luận</Text>
                 </View>
 
-                <TouchableOpacity onPress={handleShare} style={styles.countItem}>
-                  <Ionicons name="share-outline" size={18} color="#7C8190" />
-                  <Text style={styles.countText}>Chia sẻ</Text>
+                <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
+                  <Ionicons name="share-outline" size={20} color="#7C8190" />
+                  <Text style={styles.actionText}>Chia sẻ</Text>
                 </TouchableOpacity>
               </View>
 
@@ -748,6 +882,26 @@ export default function PostDetailScreen({ route, navigation }) {
             <View style={styles.bottomSheetHandle} />
             <Text style={styles.bottomSheetTitle}>TÙY CHỌN BÀI VIẾT</Text>
 
+<<<<<<< HEAD
+=======
+            <TouchableOpacity
+              onPress={() => {
+                setOptionsVisible(false);
+                handleToggleSavePost();
+              }}
+              style={styles.bottomSheetOption}
+            >
+              <Ionicons
+                name={post.isSaved ? 'bookmark' : 'bookmark-outline'}
+                size={20}
+                color="#FF6B35"
+              />
+              <Text style={[styles.bottomSheetOptionText, { color: '#FF6B35' }]}>
+                {post.isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
+              </Text>
+            </TouchableOpacity>
+
+>>>>>>> Duc
             {isOwner ? (
               <>
                 <TouchableOpacity
@@ -787,6 +941,21 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <ReactionPickerModal
+        visible={reactionPickerVisible}
+        onClose={() => setReactionPickerVisible(false)}
+        onSelect={handleSelectReaction}
+      />
+
+      <LikesModal
+        visible={likesVisible}
+        loading={likesLoading}
+        summary={likesSummary}
+        activeFilter={activeReactionFilter}
+        onChangeFilter={setActiveReactionFilter}
+        onClose={() => setLikesVisible(false)}
+      />
     </Screen>
   );
 }
@@ -823,6 +992,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
   },
   headerUserInfo: {
     flex: 1,
@@ -907,28 +1083,45 @@ const styles = StyleSheet.create({
     height: 220,
     backgroundColor: '#E5E7EB',
   },
-  actionsCountRow: {
+  engagementRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    marginTop: 16,
-    borderBottomWidth: 1,
-    borderColor: '#F3F4F6',
-    paddingVertical: 12,
+    minHeight: 30,
+    marginTop: 12,
   },
-  countItem: {
+  commentSummaryText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 12,
+  },
+  actionsBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
-  countText: {
+  actionText: {
     fontSize: 13,
     color: '#7C8190',
     fontWeight: '500',
   },
-  likedCountText: {
-    color: '#EF4444',
+  actionEmoji: {
+    fontSize: 18,
+    width: 20,
+    textAlign: 'center',
   },
   commentsHeaderBar: {
     marginTop: 16,

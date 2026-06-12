@@ -71,6 +71,7 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
             <ProfileScreen
               onLogout={onLogout}
               onUpdateProfile={onUpdateProfile}
+              navigation={navigation}
               user={user}
             />
           ) : activeTab === 'teams' ? (

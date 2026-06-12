@@ -6,6 +6,8 @@ const {
   getPosts,
   getPostById,
   likePost,
+  unlikePost,
+  getPostLikes,
   commentPost,
   deletePost,
   updatePost,
@@ -28,6 +30,12 @@ router.get('/:id', getPostById);
 
 // POST /api/posts/:id/like — Thích / Bỏ thích bài viết
 router.post('/:id/like', likePost);
+
+// DELETE /api/posts/:id/like — Bỏ thích bài viết trực tiếp
+router.delete('/:id/like', unlikePost);
+
+// GET /api/posts/:id/likes — Lấy danh sách người đã thích bài viết
+router.get('/:id/likes', getPostLikes);
 
 // POST /api/posts/:id/comment — Bình luận bài viết (hỗ trợ upload 1 ảnh qua key 'media')
 router.post('/:id/comment', uploadPost.single('media'), commentPost);

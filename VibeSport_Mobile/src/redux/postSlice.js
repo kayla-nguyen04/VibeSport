@@ -4,13 +4,66 @@ import {
   deletePostRequest,
   getPostsRequest,
   likePostRequest,
+  unlikePostRequest,
   commentPostRequest,
   updatePostRequest,
+  savePostRequest,
+  unsavePostRequest,
+  getSavedPostsRequest,
 } from '../services/postApi';
 
-// ─── ASYNC THUNKS ──────────────────────────────────────────
+const normalizePost = (post) => ({
+  isLiked: false,
+  reactionType: null,
+  topReactions: [],
+  isSaved: false,
+  ...post,
+});
 
-// Fetch posts paginated
+const getPostIdFromArg = (arg) => (typeof arg === 'string' ? arg : arg?.postId);
+const getReactionTypeFromArg = (arg) => (typeof arg === 'string' ? 'like' : arg?.reactionType || 'like');
+
+const snapshotPostInteraction = (post) => post
+  ? {
+      isLiked: Boolean(post.isLiked),
+      likesCount: post.likesCount || 0,
+      reactionType: post.reactionType || null,
+      topReactions: post.topReactions || [],
+      isSaved: Boolean(post.isSaved),
+    }
+  : null;
+
+const findPostInState = (state, postId) => (
+  state.posts.find((post) => post._id === postId)
+  || state.savedPosts.find((post) => post._id === postId)
+);
+
+const updatePostInCollections = (state, postId, updater) => {
+  state.posts.forEach((post) => {
+    if (post._id === postId) updater(post);
+  });
+  state.savedPosts.forEach((post) => {
+    if (post._id === postId) updater(post);
+  });
+};
+
+const restorePostInteraction = (state, postId, snapshot) => {
+  if (!snapshot) return;
+  updatePostInCollections(state, postId, (post) => {
+    post.isLiked = snapshot.isLiked;
+    post.likesCount = snapshot.likesCount;
+    post.reactionType = snapshot.reactionType;
+    post.topReactions = snapshot.topReactions;
+    post.isSaved = snapshot.isSaved;
+  });
+};
+
+const pushTopReaction = (topReactions = [], reactionType) => {
+  if (!reactionType) return topReactions || [];
+  const rest = (topReactions || []).filter((item) => item !== reactionType);
+  return [reactionType, ...rest].slice(0, 2);
+};
+
 export const fetchPosts = createAsyncThunk(
   'posts/fetchPosts',
   async ({ page, limit, tag = null }, { getState, rejectWithValue }) => {
@@ -24,7 +77,19 @@ export const fetchPosts = createAsyncThunk(
   }
 );
 
-// Create a post
+export const fetchSavedPosts = createAsyncThunk(
+  'posts/fetchSavedPosts',
+  async (_, { getState, rejectWithValue }) => {
+    try {
+      const token = getState().auth.token;
+      const response = await getSavedPostsRequest(token);
+      return response.data || [];
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 export const createPost = createAsyncThunk(
   'posts/createPost',
   async (formData, { getState, rejectWithValue }) => {
@@ -38,21 +103,73 @@ export const createPost = createAsyncThunk(
   }
 );
 
-// Like / unlike post (optimistic toggle)
 export const likePost = createAsyncThunk(
   'posts/likePost',
-  async (postId, { getState, rejectWithValue }) => {
+  async (arg, { getState, rejectWithValue }) => {
+    const postId = getPostIdFromArg(arg);
+    const reactionType = getReactionTypeFromArg(arg);
+
     try {
       const token = getState().auth.token;
-      const response = await likePostRequest(postId, token);
-      return { postId, liked: response.liked, likesCount: response.likesCount };
+      const response = await likePostRequest(postId, token, reactionType);
+      return {
+        postId,
+        isLiked: response.isLiked ?? Boolean(response.reactionType),
+        reactionType: response.reactionType || null,
+        likesCount: response.likesCount,
+        topReactions: response.topReactions || [],
+      };
     } catch (err) {
       return rejectWithValue({ postId, error: err.message });
     }
   }
 );
 
-// Comment on post
+export const unlikePost = createAsyncThunk(
+  'posts/unlikePost',
+  async (postId, { getState, rejectWithValue }) => {
+    try {
+      const token = getState().auth.token;
+      const response = await unlikePostRequest(postId, token);
+      return {
+        postId,
+        isLiked: false,
+        reactionType: null,
+        likesCount: response.likesCount,
+        topReactions: response.topReactions || [],
+      };
+    } catch (err) {
+      return rejectWithValue({ postId, error: err.message });
+    }
+  }
+);
+
+export const savePost = createAsyncThunk(
+  'posts/savePost',
+  async (postId, { getState, rejectWithValue }) => {
+    try {
+      const token = getState().auth.token;
+      await savePostRequest(postId, token);
+      return postId;
+    } catch (err) {
+      return rejectWithValue({ postId, error: err.message });
+    }
+  }
+);
+
+export const unsavePost = createAsyncThunk(
+  'posts/unsavePost',
+  async (postId, { getState, rejectWithValue }) => {
+    try {
+      const token = getState().auth.token;
+      await unsavePostRequest(postId, token);
+      return postId;
+    } catch (err) {
+      return rejectWithValue({ postId, error: err.message });
+    }
+  }
+);
+
 export const commentPost = createAsyncThunk(
   'posts/commentPost',
   async ({ postId, content }, { getState, rejectWithValue }) => {
@@ -66,7 +183,6 @@ export const commentPost = createAsyncThunk(
   }
 );
 
-// Delete post
 export const deletePost = createAsyncThunk(
   'posts/deletePost',
   async (postId, { getState, rejectWithValue }) => {
@@ -80,7 +196,6 @@ export const deletePost = createAsyncThunk(
   }
 );
 
-// Update post
 export const updatePost = createAsyncThunk(
   'posts/updatePost',
   async ({ postId, formData }, { getState, rejectWithValue }) => {
@@ -94,19 +209,23 @@ export const updatePost = createAsyncThunk(
   }
 );
 
-// ─── POST SLICE ──────────────────────────────────────────────
-
 const postSlice = createSlice({
   name: 'posts',
   initialState: {
     posts: [],
+    savedPosts: [],
     page: 1,
     loading: false,
     refreshing: false,
+    savedPostsLoading: false,
+    savedPostsRefreshing: false,
     creating: false,
     hasMore: true,
     error: null,
+    savedPostsError: null,
     activeTag: null,
+    pendingReactions: {},
+    pendingSaves: {},
   },
   reducers: {
     setActiveTag: (state, action) => {
@@ -124,15 +243,13 @@ const postSlice = createSlice({
     },
     updateCommentCount: (state, action) => {
       const { postId, commentsCount } = action.payload;
-      const post = state.posts.find((p) => p._id === postId);
-      if (post) {
+      updatePostInCollections(state, postId, (post) => {
         post.commentsCount = commentsCount;
-      }
+      });
     },
   },
   extraReducers: (builder) => {
     builder
-      // Fetch Posts
       .addCase(fetchPosts.pending, (state, action) => {
         if (action.meta.arg.page === 1) {
           state.refreshing = true;
@@ -143,19 +260,22 @@ const postSlice = createSlice({
       })
       .addCase(fetchPosts.fulfilled, (state, action) => {
         const { data, page, tag } = action.payload;
+        const normalizedPosts = (data || []).map(normalizePost);
+
         state.loading = false;
         state.refreshing = false;
         state.activeTag = tag || null;
         if (page === 1) {
-          state.posts = data;
+          state.posts = normalizedPosts;
         } else {
-          // Filter duplicates
-          const existingIds = new Set(state.posts.map((p) => p._id));
-          const newPosts = data.filter((p) => !existingIds.has(p._id));
-          state.posts = [...state.posts, ...newPosts];
+          const existingIds = new Set(state.posts.map((post) => post._id));
+          state.posts = [
+            ...state.posts,
+            ...normalizedPosts.filter((post) => !existingIds.has(post._id)),
+          ];
         }
         state.page = page;
-        state.hasMore = data.length > 0;
+        state.hasMore = normalizedPosts.length > 0;
       })
       .addCase(fetchPosts.rejected, (state, action) => {
         state.loading = false;
@@ -163,68 +283,173 @@ const postSlice = createSlice({
         state.error = action.payload;
       })
 
-      // Create Post
+      .addCase(fetchSavedPosts.pending, (state) => {
+        if (state.savedPosts.length === 0) {
+          state.savedPostsLoading = true;
+        } else {
+          state.savedPostsRefreshing = true;
+        }
+        state.savedPostsError = null;
+      })
+      .addCase(fetchSavedPosts.fulfilled, (state, action) => {
+        state.savedPostsLoading = false;
+        state.savedPostsRefreshing = false;
+        state.savedPosts = (action.payload || []).map(normalizePost);
+      })
+      .addCase(fetchSavedPosts.rejected, (state, action) => {
+        state.savedPostsLoading = false;
+        state.savedPostsRefreshing = false;
+        state.savedPostsError = action.payload;
+      })
+
       .addCase(createPost.pending, (state) => {
         state.creating = true;
       })
       .addCase(createPost.fulfilled, (state, action) => {
         state.creating = false;
-        state.posts = [action.payload, ...state.posts];
+        state.posts = [normalizePost(action.payload), ...state.posts];
       })
       .addCase(createPost.rejected, (state) => {
         state.creating = false;
       })
 
-      // Like Post (Optimistic update)
       .addCase(likePost.pending, (state, action) => {
-        const postId = action.meta.arg;
-        const post = state.posts.find((p) => p._id === postId);
-        if (post) {
-          post.isLiked = !post.isLiked;
-          post.likesCount += post.isLiked ? 1 : -1;
-        }
+        const postId = getPostIdFromArg(action.meta.arg);
+        const reactionType = getReactionTypeFromArg(action.meta.arg);
+        const currentPost = findPostInState(state, postId);
+
+        state.pendingReactions[action.meta.requestId] = {
+          postId,
+          snapshot: snapshotPostInteraction(currentPost),
+        };
+
+        updatePostInCollections(state, postId, (post) => {
+          const shouldIncrement = !post.isLiked;
+          post.isLiked = true;
+          post.reactionType = reactionType;
+          post.likesCount = Math.max(0, (post.likesCount || 0) + (shouldIncrement ? 1 : 0));
+          post.topReactions = pushTopReaction(post.topReactions, reactionType);
+        });
       })
       .addCase(likePost.fulfilled, (state, action) => {
-        const { postId, liked, likesCount } = action.payload;
-        const post = state.posts.find((p) => p._id === postId);
-        if (post) {
-          post.isLiked = liked;
+        const { postId, isLiked, reactionType, likesCount, topReactions } = action.payload;
+        updatePostInCollections(state, postId, (post) => {
+          post.isLiked = isLiked;
+          post.reactionType = reactionType;
           post.likesCount = likesCount;
-        }
+          post.topReactions = topReactions;
+        });
+        delete state.pendingReactions[action.meta.requestId];
       })
       .addCase(likePost.rejected, (state, action) => {
-        // Rollback state on error
-        const { postId } = action.payload || {};
-        const post = state.posts.find((p) => p._id === postId);
-        if (post) {
-          post.isLiked = !post.isLiked;
-          post.likesCount += post.isLiked ? 1 : -1;
-        }
+        const pending = state.pendingReactions[action.meta.requestId];
+        restorePostInteraction(state, pending?.postId, pending?.snapshot);
+        delete state.pendingReactions[action.meta.requestId];
       })
 
-      // Comment Post
+      .addCase(unlikePost.pending, (state, action) => {
+        const postId = action.meta.arg;
+        const currentPost = findPostInState(state, postId);
+
+        state.pendingReactions[action.meta.requestId] = {
+          postId,
+          snapshot: snapshotPostInteraction(currentPost),
+        };
+
+        updatePostInCollections(state, postId, (post) => {
+          const shouldDecrement = Boolean(post.isLiked);
+          post.isLiked = false;
+          post.reactionType = null;
+          post.likesCount = Math.max(0, (post.likesCount || 0) - (shouldDecrement ? 1 : 0));
+        });
+      })
+      .addCase(unlikePost.fulfilled, (state, action) => {
+        const { postId, isLiked, reactionType, likesCount, topReactions } = action.payload;
+        updatePostInCollections(state, postId, (post) => {
+          post.isLiked = isLiked;
+          post.reactionType = reactionType;
+          post.likesCount = likesCount;
+          post.topReactions = topReactions;
+        });
+        delete state.pendingReactions[action.meta.requestId];
+      })
+      .addCase(unlikePost.rejected, (state, action) => {
+        const pending = state.pendingReactions[action.meta.requestId];
+        restorePostInteraction(state, pending?.postId, pending?.snapshot);
+        delete state.pendingReactions[action.meta.requestId];
+      })
+
+      .addCase(savePost.pending, (state, action) => {
+        const postId = action.meta.arg;
+        const currentPost = findPostInState(state, postId);
+        state.pendingSaves[action.meta.requestId] = {
+          postId,
+          isSaved: Boolean(currentPost?.isSaved),
+        };
+        updatePostInCollections(state, postId, (post) => {
+          post.isSaved = true;
+        });
+      })
+      .addCase(savePost.fulfilled, (state, action) => {
+        updatePostInCollections(state, action.payload, (post) => {
+          post.isSaved = true;
+        });
+        delete state.pendingSaves[action.meta.requestId];
+      })
+      .addCase(savePost.rejected, (state, action) => {
+        const pending = state.pendingSaves[action.meta.requestId];
+        updatePostInCollections(state, pending?.postId, (post) => {
+          post.isSaved = pending?.isSaved || false;
+        });
+        delete state.pendingSaves[action.meta.requestId];
+      })
+
+      .addCase(unsavePost.pending, (state, action) => {
+        const postId = action.meta.arg;
+        const currentPost = findPostInState(state, postId);
+        state.pendingSaves[action.meta.requestId] = {
+          postId,
+          isSaved: Boolean(currentPost?.isSaved),
+        };
+        updatePostInCollections(state, postId, (post) => {
+          post.isSaved = false;
+        });
+      })
+      .addCase(unsavePost.fulfilled, (state, action) => {
+        const postId = action.payload;
+        updatePostInCollections(state, postId, (post) => {
+          post.isSaved = false;
+        });
+        state.savedPosts = state.savedPosts.filter((post) => post._id !== postId);
+        delete state.pendingSaves[action.meta.requestId];
+      })
+      .addCase(unsavePost.rejected, (state, action) => {
+        const pending = state.pendingSaves[action.meta.requestId];
+        updatePostInCollections(state, pending?.postId, (post) => {
+          post.isSaved = pending?.isSaved || false;
+        });
+        delete state.pendingSaves[action.meta.requestId];
+      })
+
       .addCase(commentPost.fulfilled, (state, action) => {
         const { postId, commentsCount } = action.payload;
-        const post = state.posts.find((p) => p._id === postId);
-        if (post) {
+        updatePostInCollections(state, postId, (post) => {
           post.commentsCount = commentsCount;
-        }
+        });
       })
 
-      // Delete Post
       .addCase(deletePost.fulfilled, (state, action) => {
         const postId = action.payload;
-        state.posts = state.posts.filter((p) => p._id !== postId);
+        state.posts = state.posts.filter((post) => post._id !== postId);
+        state.savedPosts = state.savedPosts.filter((post) => post._id !== postId);
       })
 
-      // Update Post
       .addCase(updatePost.fulfilled, (state, action) => {
         const updated = action.payload;
         if (!updated) return;
-        const idx = state.posts.findIndex((p) => p._id === updated._id);
-        if (idx !== -1) {
-          state.posts[idx] = { ...state.posts[idx], ...updated };
-        }
+        updatePostInCollections(state, updated._id, (post) => {
+          Object.assign(post, normalizePost({ ...post, ...updated }));
+        });
       });
   },
 });

@@ -24,7 +24,7 @@ const POSITION_OPTIONS = {
   'Cầu lông': ['Đơn', 'Đôi', 'Đôi nam', 'Đôi nữ'],
   Pickleball: ['Forehand', 'Backhand', 'Đôi'],
 };
-export function ProfileScreen({ onLogout, onUpdateProfile, user }) {
+export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
@@ -218,6 +218,19 @@ export function ProfileScreen({ onLogout, onUpdateProfile, user }) {
                 <Feather name="activity" size={18} color="#0b74ff" />
               </View>
               <Text style={styles.menuText}>Hoạt động</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation?.navigate('SavedPosts')}
+            style={styles.menuItem}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIconWrap, { backgroundColor: '#fff7ed' }]}>
+                <Feather name="bookmark" size={18} color="#f97316" />
+              </View>
+              <Text style={styles.menuText}>Bài viết đã lưu</Text>
             </View>
             <Feather name="chevron-right" size={18} color="#9ca3af" />
           </TouchableOpacity>
