@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSelector } from "react-redux";
 import {
   View,
@@ -33,6 +34,23 @@ const DEFAULT_POSITIONS = [
   { key: "midfielder", label: "Tiền vệ", icon: "👟", quantity: 1 },
   { key: "striker", label: "Tiền đạo", icon: "⚡", quantity: 1 },
 ];
+
+const MAX_COST_PER_PERSON = 1000000;
+
+const SPORT_LIMITS = {
+  football: {
+    maxPlayers: 10,
+    maxPlayersHint: "Tối đa 10 người (5v5) • Ví dụ: 5v5 → 10 người",
+  },
+  badminton: {
+    maxPlayers: 4,
+    maxPlayersHint: "Tối đa 4 người (đánh đôi) • Đánh đơn 2 người",
+  },
+  pickleball: {
+    maxPlayers: 4,
+    maxPlayersHint: "Tối đa 4 người (đánh đôi) • Đánh đơn 2 người",
+  },
+};
 
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
@@ -110,17 +128,66 @@ export default function CreateMatchScreen({ navigation, route }) {
     return d;
   };
 
-  // Handle returning from MapPickerScreen
-  useEffect(() => {
-    if (route?.params?.selectedLocation) {
-      const loc = route.params.selectedLocation;
-      setLocationName(loc.address || "");
-      setLocationCoords({ lat: loc.lat, lng: loc.lng });
-    }
-  }, [route?.params?.selectedLocation]);
-
   const [positionsNeeded, setPositionsNeeded] = useState(
     editMatch?.positionsNeeded?.length ? editMatch.positionsNeeded : DEFAULT_POSITIONS
+  );
+
+  const buildFormDraft = useCallback(
+    () => ({
+      sport,
+      title,
+      selectedDate: selectedDate.toISOString(),
+      selectedTimeSlot,
+      maxPlayers,
+      costPerPerson,
+      note,
+      positionsNeeded,
+      locationName,
+      locationCoords,
+    }),
+    [
+      sport,
+      title,
+      selectedDate,
+      selectedTimeSlot,
+      maxPlayers,
+      costPerPerson,
+      note,
+      positionsNeeded,
+      locationName,
+      locationCoords,
+    ]
+  );
+
+  const applyFormDraft = useCallback((draft) => {
+    if (!draft) return;
+    if (draft.sport) setSport(draft.sport);
+    if (draft.title != null) setTitle(draft.title);
+    if (draft.selectedDate) setSelectedDate(new Date(draft.selectedDate));
+    if (draft.selectedTimeSlot) setSelectedTimeSlot(draft.selectedTimeSlot);
+    if (draft.maxPlayers != null) setMaxPlayers(String(draft.maxPlayers));
+    if (draft.costPerPerson != null) setCostPerPerson(String(draft.costPerPerson));
+    if (draft.note != null) setNote(draft.note);
+    if (draft.positionsNeeded?.length) setPositionsNeeded(draft.positionsNeeded);
+    if (draft.locationName != null) setLocationName(draft.locationName);
+    if (draft.locationCoords) setLocationCoords(draft.locationCoords);
+  }, []);
+
+  // Khôi phục form khi quay lại từ MapPicker (tránh mất dữ liệu đã nhập)
+  useFocusEffect(
+    useCallback(() => {
+      const draft = route?.params?.formDraft;
+      const loc = route?.params?.selectedLocation;
+
+      if (draft || loc) {
+        if (draft) applyFormDraft(draft);
+        if (loc) {
+          setLocationName(loc.address || "");
+          setLocationCoords({ lat: loc.lat, lng: loc.lng });
+        }
+        navigation.setParams({ formDraft: undefined, selectedLocation: undefined });
+      }
+    }, [applyFormDraft, navigation, route?.params?.formDraft, route?.params?.selectedLocation])
   );
 
   const sports = [
@@ -134,9 +201,32 @@ export default function CreateMatchScreen({ navigation, route }) {
 
     if (selectedSport === "football") {
       setMaxPlayers("10");
+      setPositionsNeeded(DEFAULT_POSITIONS);
     } else {
       setMaxPlayers("2");
     }
+  };
+
+  const sportLimits = SPORT_LIMITS[sport] || SPORT_LIMITS.football;
+
+  const handleMaxPlayersChange = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setMaxPlayers("");
+      return;
+    }
+    const num = parseInt(digits, 10);
+    setMaxPlayers(String(Math.min(num, sportLimits.maxPlayers)));
+  };
+
+  const handleCostChange = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setCostPerPerson("");
+      return;
+    }
+    const num = parseInt(digits, 10);
+    setCostPerPerson(String(Math.min(num, MAX_COST_PER_PERSON)));
   };
 
   const increasePosition = (key) => {
@@ -196,6 +286,23 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
     if (!maxPlayers || Number(maxPlayers) <= 0) {
       Alert.alert("Dữ liệu không hợp lệ", "Số người tối đa phải lớn hơn 0");
+      return false;
+    }
+    const limits = SPORT_LIMITS[sport] || SPORT_LIMITS.football;
+    const playerCount = Number(maxPlayers);
+    if (playerCount > limits.maxPlayers) {
+      Alert.alert(
+        "Dữ liệu không hợp lệ",
+        `Số người tối đa cho môn này là ${limits.maxPlayers} người`
+      );
+      return false;
+    }
+    const cost = Number(costPerPerson || 0);
+    if (cost > MAX_COST_PER_PERSON) {
+      Alert.alert(
+        "Dữ liệu không hợp lệ",
+        `Chi phí tối đa là ${MAX_COST_PER_PERSON.toLocaleString("vi-VN")} VND/người`
+      );
       return false;
     }
     return true;
@@ -413,17 +520,13 @@ export default function CreateMatchScreen({ navigation, route }) {
           <TextInput
             style={styles.input}
             value={maxPlayers}
-            onChangeText={setMaxPlayers}
+            onChangeText={handleMaxPlayersChange}
             keyboardType="numeric"
             placeholder={sport === "football" ? "10" : "2"}
             placeholderTextColor="#bbb"
           />
         </View>
-        <Text style={styles.helperText}>
-          {sport === "football"
-            ? "Ví dụ, 5v5 → 10 người • 7v7 → 14 người"
-            : "Số lượng người tối đa có thể tham gia trận đấu"}
-        </Text>
+        <Text style={styles.helperText}>{sportLimits.maxPlayersHint}</Text>
 
         {/* VỊ TRÍ CẦN TÌM (Football only) */}
         {sport === "football" && (
@@ -475,7 +578,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           <TextInput
             style={[styles.input, styles.costInput]}
             value={costPerPerson}
-            onChangeText={setCostPerPerson}
+            onChangeText={handleCostChange}
             keyboardType="numeric"
             placeholder="30000"
             placeholderTextColor="#bbb"
@@ -503,6 +606,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             navigation.navigate("MapPicker", {
               currentLocation: locationCoords,
               currentAddress: locationName,
+              formDraft: buildFormDraft(),
             })
           }
         >
