@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Platform,
   ActivityIndicator,
@@ -15,6 +14,8 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import * as Location from "expo-location";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 
 const HANOI_LAT = 21.0285;
 const HANOI_LNG = 105.8542;
@@ -341,22 +342,27 @@ export default function MapPickerScreen({ navigation, route }) {
           address:
             address || `${markerCoord.lat.toFixed(6)}, ${markerCoord.lng.toFixed(6)}`,
         },
+        formDraft: route?.params?.formDraft,
       },
       merge: true,
     });
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+      <ScreenHeader style={styles.header}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => navigation.goBack()}
+        >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chọn vị trí sân</Text>
         <View style={{ width: 36 }} />
-      </View>
+      </ScreenHeader>
 
       <View style={styles.searchBar}>
         <View style={styles.searchWrap}>
@@ -554,7 +560,7 @@ export default function MapPickerScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

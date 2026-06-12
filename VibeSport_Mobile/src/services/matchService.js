@@ -1,21 +1,34 @@
-import { API_URL } from "../components/constants/api";
+import { API_BASE_URL } from "../components/constants/api";
+
+const MATCHES_URL = `${API_BASE_URL}/api/matches`;
+
+async function matchRequest(url, options) {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch {
+    throw new Error(
+      `Không kết nối được máy chủ (${API_BASE_URL}). Kiểm tra server đang chạy và IP trong api.js.`
+    );
+  }
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(result.message || "Yêu cầu thất bại");
+  }
+
+  return result.data;
+}
 
 export async function createMatch(matchData) {
-  const response = await fetch(`${API_URL}/matches`, {
+  return matchRequest(MATCHES_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(matchData),
   });
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result.message || "Tạo trận đấu thất bại");
-  }
-
-  return result.data;
 }
 
 export async function getMatches(filters = {}) {
@@ -28,63 +41,75 @@ export async function getMatches(filters = {}) {
 
   const query = params.toString() ? `?${params.toString()}` : "";
 
-  const response = await fetch(`${API_URL}/matches${query}`);
+  return matchRequest(`${MATCHES_URL}${query}`);
+}
 
-  const result = await response.json();
+export async function requestJoinMatch(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/request-join`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}
 
-  if (!response.ok) {
-    throw new Error(result.message || "Không lấy được danh sách trận đấu");
-  }
+export async function acceptJoinMatch(matchId, ownerId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/accept-join`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ownerId, userId }),
+  });
+}
 
-  return result.data;
+export async function rejectJoinMatch(matchId, ownerId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/reject-join`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ownerId, userId }),
+  });
 }
 
 export async function joinMatch(matchId, userId) {
-  const response = await fetch(`${API_URL}/matches/${matchId}/join`, {
+  return matchRequest(`${MATCHES_URL}/${matchId}/join`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ userId }),
   });
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result.message || "Tham gia trận đấu thất bại");
-  }
-
-  return result.data;
 }
 
 export async function leaveMatch(matchId, userId) {
-  const response = await fetch(`${API_URL}/matches/${matchId}/leave`, {
+  return matchRequest(`${MATCHES_URL}/${matchId}/leave`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ userId }),
   });
+}
 
-  const result = await response.json();
+export async function getMatchById(matchId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}`);
+}
 
-  if (!response.ok) {
-    throw new Error(result.message || "Rút khỏi trận đấu thất bại");
-  }
-
-  return result.data;
+export async function updateMatch(matchId, matchData) {
+  return matchRequest(`${MATCHES_URL}/${matchId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(matchData),
+  });
 }
 
 export async function deleteMatch(matchId) {
-  const response = await fetch(`${API_URL}/matches/${matchId}`, {
+  return matchRequest(`${MATCHES_URL}/${matchId}`, {
     method: "DELETE",
   });
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result.message || "Xóa trận đấu thất bại");
-  }
-
-  return result.data;
 }

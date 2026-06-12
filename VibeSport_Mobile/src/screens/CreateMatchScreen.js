@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSelector } from "react-redux";
 import {
   View,
@@ -8,7 +9,6 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Platform,
   Modal,
@@ -16,21 +16,68 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
-import { createMatch } from "../services/matchService";
+import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
+import { Screen } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
+
+const parseDateString = (dateStr) => {
+  if (!dateStr) return new Date();
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return new Date();
+  const [day, month, year] = parts.map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const DEFAULT_POSITIONS = [
+  { key: "goalkeeper", label: "Thủ môn", icon: "🧤", quantity: 1 },
+  { key: "defender", label: "Hậu vệ", icon: "🛡️", quantity: 2 },
+  { key: "midfielder", label: "Tiền vệ", icon: "👟", quantity: 1 },
+  { key: "striker", label: "Tiền đạo", icon: "⚡", quantity: 1 },
+];
+
+const MAX_COST_PER_PERSON = 1000000;
+
+const SPORT_LIMITS = {
+  football: {
+    maxPlayers: 10,
+    maxPlayersHint: "Tối đa 10 người (5v5) • Ví dụ: 5v5 → 10 người",
+  },
+  badminton: {
+    maxPlayers: 4,
+    maxPlayersHint: "Tối đa 4 người (đánh đôi) • Đánh đơn 2 người",
+  },
+  pickleball: {
+    maxPlayers: 4,
+    maxPlayersHint: "Tối đa 4 người (đánh đôi) • Đánh đơn 2 người",
+  },
+};
 
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
-  const [sport, setSport] = useState("football");
-  const [title, setTitle] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState("19:00");
+  const editMatch = route?.params?.editMatch ?? null;
+  const isEditMode = !!editMatch;
+
+  const [sport, setSport] = useState(editMatch?.sport || "football");
+  const [title, setTitle] = useState(editMatch?.title || "");
+  const [selectedDate, setSelectedDate] = useState(
+    editMatch?.date ? parseDateString(editMatch.date) : new Date()
+  );
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState(editMatch?.startTime || "19:00");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [maxPlayers, setMaxPlayers] = useState("10");
-  const [costPerPerson, setCostPerPerson] = useState("");
-  const [locationName, setLocationName] = useState("");
-  const [locationCoords, setLocationCoords] = useState(null);
-  const [note, setNote] = useState("");
+  const [maxPlayers, setMaxPlayers] = useState(
+    editMatch?.maxPlayers ? String(editMatch.maxPlayers) : "10"
+  );
+  const [costPerPerson, setCostPerPerson] = useState(
+    editMatch?.costPerPerson ? String(editMatch.costPerPerson) : ""
+  );
+  const [locationName, setLocationName] = useState(editMatch?.locationName || "");
+  const [locationCoords, setLocationCoords] = useState(
+    editMatch?.location?.lat != null
+      ? { lat: editMatch.location.lat, lng: editMatch.location.lng }
+      : null
+  );
+  const [note, setNote] = useState(editMatch?.note || "");
 
   // Format helpers
   const formatDate = (d) => {
@@ -81,21 +128,67 @@ export default function CreateMatchScreen({ navigation, route }) {
     return d;
   };
 
-  // Handle returning from MapPickerScreen
-  useEffect(() => {
-    if (route?.params?.selectedLocation) {
-      const loc = route.params.selectedLocation;
-      setLocationName(loc.address || "");
-      setLocationCoords({ lat: loc.lat, lng: loc.lng });
-    }
-  }, [route?.params?.selectedLocation]);
+  const [positionsNeeded, setPositionsNeeded] = useState(
+    editMatch?.positionsNeeded?.length ? editMatch.positionsNeeded : DEFAULT_POSITIONS
+  );
 
-  const [positionsNeeded, setPositionsNeeded] = useState([
-    { key: "goalkeeper", label: "Thủ môn", icon: "🧤", quantity: 1 },
-    { key: "defender", label: "Hậu vệ", icon: "🛡️", quantity: 2 },
-    { key: "midfielder", label: "Tiền vệ", icon: "👟", quantity: 1 },
-    { key: "striker", label: "Tiền đạo", icon: "⚡", quantity: 1 },
-  ]);
+  const buildFormDraft = useCallback(
+    () => ({
+      sport,
+      title,
+      selectedDate: selectedDate.toISOString(),
+      selectedTimeSlot,
+      maxPlayers,
+      costPerPerson,
+      note,
+      positionsNeeded,
+      locationName,
+      locationCoords,
+    }),
+    [
+      sport,
+      title,
+      selectedDate,
+      selectedTimeSlot,
+      maxPlayers,
+      costPerPerson,
+      note,
+      positionsNeeded,
+      locationName,
+      locationCoords,
+    ]
+  );
+
+  const applyFormDraft = useCallback((draft) => {
+    if (!draft) return;
+    if (draft.sport) setSport(draft.sport);
+    if (draft.title != null) setTitle(draft.title);
+    if (draft.selectedDate) setSelectedDate(new Date(draft.selectedDate));
+    if (draft.selectedTimeSlot) setSelectedTimeSlot(draft.selectedTimeSlot);
+    if (draft.maxPlayers != null) setMaxPlayers(String(draft.maxPlayers));
+    if (draft.costPerPerson != null) setCostPerPerson(String(draft.costPerPerson));
+    if (draft.note != null) setNote(draft.note);
+    if (draft.positionsNeeded?.length) setPositionsNeeded(draft.positionsNeeded);
+    if (draft.locationName != null) setLocationName(draft.locationName);
+    if (draft.locationCoords) setLocationCoords(draft.locationCoords);
+  }, []);
+
+  // Khôi phục form khi quay lại từ MapPicker (tránh mất dữ liệu đã nhập)
+  useFocusEffect(
+    useCallback(() => {
+      const draft = route?.params?.formDraft;
+      const loc = route?.params?.selectedLocation;
+
+      if (draft || loc) {
+        if (draft) applyFormDraft(draft);
+        if (loc) {
+          setLocationName(loc.address || "");
+          setLocationCoords({ lat: loc.lat, lng: loc.lng });
+        }
+        navigation.setParams({ formDraft: undefined, selectedLocation: undefined });
+      }
+    }, [applyFormDraft, navigation, route?.params?.formDraft, route?.params?.selectedLocation])
+  );
 
   const sports = [
     { key: "football", label: "Bóng đá", icon: "⚽" },
@@ -108,9 +201,32 @@ export default function CreateMatchScreen({ navigation, route }) {
 
     if (selectedSport === "football") {
       setMaxPlayers("10");
+      setPositionsNeeded(DEFAULT_POSITIONS);
     } else {
       setMaxPlayers("2");
     }
+  };
+
+  const sportLimits = SPORT_LIMITS[sport] || SPORT_LIMITS.football;
+
+  const handleMaxPlayersChange = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setMaxPlayers("");
+      return;
+    }
+    const num = parseInt(digits, 10);
+    setMaxPlayers(String(Math.min(num, sportLimits.maxPlayers)));
+  };
+
+  const handleCostChange = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setCostPerPerson("");
+      return;
+    }
+    const num = parseInt(digits, 10);
+    setCostPerPerson(String(Math.min(num, MAX_COST_PER_PERSON)));
   };
 
   const increasePosition = (key) => {
@@ -133,78 +249,124 @@ export default function CreateMatchScreen({ navigation, route }) {
     );
   };
 
-  const handleCreateMatch = async () => {
+  const buildPayload = () => ({
+    sport,
+    title: title.trim(),
+    date: formatDate(selectedDate),
+    startTime: selectedTimeSlot,
+    maxPlayers: Number(maxPlayers),
+    positionsNeeded: sport === "football" ? positionsNeeded : [],
+    costPerPerson: Number(costPerPerson || 0),
+    locationName: locationName.trim(),
+    location: {
+      lat: locationCoords?.lat || null,
+      lng: locationCoords?.lng || null,
+      address: locationName.trim(),
+    },
+    note: note.trim(),
+    ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
+  });
+
+  const validateForm = () => {
+    if (!title.trim()) {
+      Alert.alert("Thiếu thông tin", "Vui lòng nhập tên trận đấu");
+      return false;
+    }
+    if (!selectedDate) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn ngày");
+      return false;
+    }
+    if (!selectedTimeSlot) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn giờ bắt đầu");
+      return false;
+    }
+    if (!locationName.trim()) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn địa điểm sân trên bản đồ");
+      return false;
+    }
+    if (!maxPlayers || Number(maxPlayers) <= 0) {
+      Alert.alert("Dữ liệu không hợp lệ", "Số người tối đa phải lớn hơn 0");
+      return false;
+    }
+    const limits = SPORT_LIMITS[sport] || SPORT_LIMITS.football;
+    const playerCount = Number(maxPlayers);
+    if (playerCount > limits.maxPlayers) {
+      Alert.alert(
+        "Dữ liệu không hợp lệ",
+        `Số người tối đa cho môn này là ${limits.maxPlayers} người`
+      );
+      return false;
+    }
+    const cost = Number(costPerPerson || 0);
+    if (cost > MAX_COST_PER_PERSON) {
+      Alert.alert(
+        "Dữ liệu không hợp lệ",
+        `Chi phí tối đa là ${MAX_COST_PER_PERSON.toLocaleString("vi-VN")} VND/người`
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
     try {
-      if (!title.trim()) {
-        Alert.alert("Thiếu thông tin", "Vui lòng nhập tên trận đấu");
-        return;
+      if (!validateForm()) return;
+
+      const payload = buildPayload();
+
+      if (isEditMode) {
+        await updateMatch(editMatch._id, payload);
+        Alert.alert("Thành công", "Cập nhật trận đấu thành công");
+      } else {
+        await createMatch(payload);
+        Alert.alert("Thành công", "Tạo trận đấu thành công");
       }
-
-      if (!selectedDate) {
-        Alert.alert("Thiếu thông tin", "Vui lòng chọn ngày");
-        return;
-      }
-
-      if (!selectedTimeSlot) {
-        Alert.alert("Thiếu thông tin", "Vui lòng chọn giờ bắt đầu");
-        return;
-      }
-
-      if (!locationName.trim()) {
-        Alert.alert("Thiếu thông tin", "Vui lòng chọn địa điểm sân trên bản đồ");
-        return;
-      }
-
-      if (!maxPlayers || Number(maxPlayers) <= 0) {
-        Alert.alert("Dữ liệu không hợp lệ", "Số người tối đa phải lớn hơn 0");
-        return;
-      }
-
-      const payload = {
-        sport,
-        title: title.trim(),
-        date: formatDate(selectedDate),
-        startTime: selectedTimeSlot,
-        maxPlayers: Number(maxPlayers),
-        positionsNeeded: sport === "football" ? positionsNeeded : [],
-        costPerPerson: Number(costPerPerson || 0),
-        locationName: locationName.trim(),
-        location: {
-          lat: locationCoords?.lat || null,
-          lng: locationCoords?.lng || null,
-          address: locationName.trim(),
-        },
-        note: note.trim(),
-        createdBy: user?.id || null,
-      };
-
-      await createMatch(payload);
 
       if (navigation) {
         navigation.navigate("Home", { activeTab: "teams" });
       }
-
-      Alert.alert("Thành công", "Tạo trận đấu thành công");
     } catch (error) {
       Alert.alert("Lỗi", error.message);
     }
   };
 
+  const handleDelete = () => {
+    Alert.alert(
+      "Xóa trận đấu",
+      "Bạn có chắc muốn xóa trận này? Hành động này không thể hoàn tác.",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMatch(editMatch._id);
+              Alert.alert("Thành công", "Đã xóa trận đấu");
+              navigation.navigate("Home", { activeTab: "teams" });
+            } catch (error) {
+              Alert.alert("Lỗi", error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <Screen style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* Header */}
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation && navigation.goBack()}
         >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tạo trận đấu</Text>
+        <Text style={styles.headerTitle}>{isEditMode ? "Sửa trận đấu" : "Tạo trận đấu"}</Text>
         <View style={styles.headerSpacer} />
-      </View>
+      </ScreenHeader>
 
       <ScrollView
         style={styles.scrollView}
@@ -358,17 +520,13 @@ export default function CreateMatchScreen({ navigation, route }) {
           <TextInput
             style={styles.input}
             value={maxPlayers}
-            onChangeText={setMaxPlayers}
+            onChangeText={handleMaxPlayersChange}
             keyboardType="numeric"
             placeholder={sport === "football" ? "10" : "2"}
             placeholderTextColor="#bbb"
           />
         </View>
-        <Text style={styles.helperText}>
-          {sport === "football"
-            ? "Ví dụ, 5v5 → 10 người • 7v7 → 14 người"
-            : "Số lượng người tối đa có thể tham gia trận đấu"}
-        </Text>
+        <Text style={styles.helperText}>{sportLimits.maxPlayersHint}</Text>
 
         {/* VỊ TRÍ CẦN TÌM (Football only) */}
         {sport === "football" && (
@@ -420,7 +578,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           <TextInput
             style={[styles.input, styles.costInput]}
             value={costPerPerson}
-            onChangeText={setCostPerPerson}
+            onChangeText={handleCostChange}
             keyboardType="numeric"
             placeholder="30000"
             placeholderTextColor="#bbb"
@@ -448,6 +606,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             navigation.navigate("MapPicker", {
               currentLocation: locationCoords,
               currentAddress: locationName,
+              formDraft: buildFormDraft(),
             })
           }
         >
@@ -484,14 +643,20 @@ export default function CreateMatchScreen({ navigation, route }) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Tạo trận ngay Button */}
       <View style={styles.bottomButtonContainer}>
-        <TouchableOpacity style={styles.createButton} onPress={handleCreateMatch}>
-          <Text style={styles.createButtonIcon}>⚽</Text>
-          <Text style={styles.createButtonText}>Tạo trận ngay</Text>
+        {isEditMode && (
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.7}>
+            <Text style={styles.deleteButtonText}>🗑️ Xóa trận đấu</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.createButton} onPress={handleSubmit}>
+          <Text style={styles.createButtonIcon}>{isEditMode ? "✓" : "⚽"}</Text>
+          <Text style={styles.createButtonText}>
+            {isEditMode ? "Lưu thay đổi" : "Tạo trận ngay"}
+          </Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -907,5 +1072,20 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 16,
+  },
+  deleteButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#ef4444",
+    backgroundColor: "#fff",
+    marginBottom: 10,
+  },
+  deleteButtonText: {
+    color: "#ef4444",
+    fontWeight: "700",
+    fontSize: 15,
   },
 });

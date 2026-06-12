@@ -1,7 +1,15 @@
 const express = require("express");
 const Match = require("../models/Match");
+const Notification = require("../models/Notification");
+const User = require("../models/User");
 
 const router = express.Router();
+
+const populateFields = [
+  { path: "createdBy", select: "name email picture area favoriteSport position" },
+  { path: "participants", select: "name email picture area favoriteSport" },
+  { path: "pendingJoinRequests", select: "name email picture area favoriteSport" },
+];
 
 router.post("/", async (req, res) => {
   try {
@@ -118,7 +126,7 @@ router.get("/", async (req, res) => {
 
     const matches = await Match.find(filter)
       .sort({ createdAt: -1 })
-      .populate("createdBy", "name email picture");
+      .populate(populateFields);
 
     return res.json({
       success: true,
@@ -136,9 +144,7 @@ router.get("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const match = await Match.findById(req.params.id)
-      .populate("createdBy", "name email picture")
-      .populate("participants", "name email picture");
+    const match = await Match.findById(req.params.id).populate(populateFields);
 
     if (!match) {
       return res.status(404).json({
@@ -228,6 +234,77 @@ router.post("/:id/leave", async (req, res) => {
   }
 });
 
+// Update a match
+router.put("/:id", async (req, res) => {
+  try {
+    const {
+      sport,
+      title,
+      date,
+      startTime,
+      maxPlayers,
+      positionsNeeded,
+      costPerPerson,
+      locationName,
+      location,
+      note,
+    } = req.body;
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (sport && !["football", "badminton", "pickleball"].includes(sport)) {
+      return res.status(400).json({ success: false, message: "Môn thể thao không hợp lệ" });
+    }
+
+    if (maxPlayers !== undefined) {
+      const nextMax = Number(maxPlayers);
+      if (nextMax <= 0) {
+        return res.status(400).json({ success: false, message: "Số người tối đa phải lớn hơn 0" });
+      }
+      if (nextMax < match.participants.length) {
+        return res.status(400).json({
+          success: false,
+          message: "Số người tối đa không thể nhỏ hơn số người đã tham gia",
+        });
+      }
+      match.maxPlayers = nextMax;
+      if (match.participants.length >= nextMax) {
+        match.status = "full";
+      } else if (match.status === "full") {
+        match.status = "open";
+      }
+    }
+
+    if (sport) match.sport = sport;
+    if (title) match.title = title.trim();
+    if (date) match.date = date;
+    if (startTime) match.startTime = startTime;
+    if (positionsNeeded !== undefined) {
+      match.positionsNeeded = sport === "football" || match.sport === "football" ? positionsNeeded || [] : [];
+    }
+    if (costPerPerson !== undefined) match.costPerPerson = Number(costPerPerson || 0);
+    if (locationName) match.locationName = locationName.trim();
+    if (location) match.location = location;
+    if (note !== undefined) match.note = note;
+
+    await match.save();
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+
+    return res.json({
+      success: true,
+      message: "Cập nhật trận đấu thành công",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Update match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi cập nhật trận đấu" });
+  }
+});
+
 // Delete a match
 router.delete("/:id", async (req, res) => {
   try {
@@ -239,6 +316,163 @@ router.delete("/:id", async (req, res) => {
   } catch (error) {
     console.error("Delete match error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server khi xóa trận đấu" });
+  }
+});
+
+// Request to join a match (sends notification to owner)
+router.post("/:id/request-join", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "Thiếu userId" });
+    }
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    const creatorId = String(match.createdBy || "");
+    if (creatorId === String(userId)) {
+      return res.status(400).json({ success: false, message: "Bạn là người tạo trận này" });
+    }
+
+    if (match.participants.some((p) => String(p) === String(userId))) {
+      return res.status(400).json({ success: false, message: "Bạn đã tham gia trận đấu này rồi" });
+    }
+
+    if (match.pendingJoinRequests.some((p) => String(p) === String(userId))) {
+      return res.status(400).json({ success: false, message: "Bạn đã gửi yêu cầu tham gia rồi" });
+    }
+
+    if (match.participants.length >= match.maxPlayers) {
+      return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
+    }
+
+    match.pendingJoinRequests.push(userId);
+    await match.save();
+
+    const requester = await User.findById(userId).select("name");
+    const requesterName = requester?.name || "Một người dùng";
+
+    if (match.createdBy) {
+      await Notification.create({
+        userId: match.createdBy,
+        type: "match",
+        fromUserId: userId,
+        message: `${requesterName} muốn tham gia trận "${match.title}"`,
+      });
+    }
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+
+    return res.json({
+      success: true,
+      message: "Đã gửi yêu cầu tham gia đến chủ trận",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Request join match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi gửi yêu cầu tham gia" });
+  }
+});
+
+// Accept a join request (owner only)
+router.post("/:id/accept-join", async (req, res) => {
+  try {
+    const { ownerId, userId } = req.body;
+    if (!ownerId || !userId) {
+      return res.status(400).json({ success: false, message: "Thiếu ownerId hoặc userId" });
+    }
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (String(match.createdBy) !== String(ownerId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể chấp nhận yêu cầu" });
+    }
+
+    const requestIndex = match.pendingJoinRequests.findIndex((p) => String(p) === String(userId));
+    if (requestIndex === -1) {
+      return res.status(400).json({ success: false, message: "Không tìm thấy yêu cầu tham gia" });
+    }
+
+    if (match.participants.some((p) => String(p) === String(userId))) {
+      match.pendingJoinRequests.splice(requestIndex, 1);
+      await match.save();
+      return res.status(400).json({ success: false, message: "Người dùng đã tham gia trận này" });
+    }
+
+    if (match.participants.length >= match.maxPlayers) {
+      return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
+    }
+
+    match.pendingJoinRequests.splice(requestIndex, 1);
+    match.participants.push(userId);
+    match.currentPlayers = match.participants.length;
+    if (match.currentPlayers >= match.maxPlayers) {
+      match.status = "full";
+    }
+    await match.save();
+
+    const owner = await User.findById(ownerId).select("name");
+    await Notification.create({
+      userId,
+      type: "match",
+      fromUserId: ownerId,
+      message: `${owner?.name || "Chủ trận"} đã chấp nhận yêu cầu tham gia trận "${match.title}"`,
+    });
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+
+    return res.json({
+      success: true,
+      message: "Đã chấp nhận yêu cầu tham gia",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Accept join match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi chấp nhận yêu cầu" });
+  }
+});
+
+// Reject a join request (owner only)
+router.post("/:id/reject-join", async (req, res) => {
+  try {
+    const { ownerId, userId } = req.body;
+    if (!ownerId || !userId) {
+      return res.status(400).json({ success: false, message: "Thiếu ownerId hoặc userId" });
+    }
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (String(match.createdBy) !== String(ownerId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể từ chối yêu cầu" });
+    }
+
+    const requestIndex = match.pendingJoinRequests.findIndex((p) => String(p) === String(userId));
+    if (requestIndex === -1) {
+      return res.status(400).json({ success: false, message: "Không tìm thấy yêu cầu tham gia" });
+    }
+
+    match.pendingJoinRequests.splice(requestIndex, 1);
+    await match.save();
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+
+    return res.json({
+      success: true,
+      message: "Đã từ chối yêu cầu tham gia",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Reject join match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi từ chối yêu cầu" });
   }
 });
 

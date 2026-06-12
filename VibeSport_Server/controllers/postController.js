@@ -3,6 +3,12 @@ const PostLike = require('../models/PostLike');
 const Comment = require('../models/Comment');
 const CommentLike = require('../models/CommentLike');
 const { API_BASE_URL } = require('../utils/config');
+const {
+  parseTagsInput,
+  enrichPostTags,
+  resolveCatalogTags,
+  updateTagUsageCounts,
+} = require('../utils/tagHelpers');
 
 // Helper to construct media absolute URLs
 function getAbsoluteUrl(req, filename) {
@@ -12,32 +18,62 @@ function getAbsoluteUrl(req, filename) {
 // ─── POST CONTROLLER HANDLERS ─────────────────────────────────
 
 // 1. Create a new post
+async function buildPostTags({ tagsInput, sportType, content }) {
+  const requestedTags = parseTagsInput(tagsInput);
+  const mergedTags = [...new Set([...(requestedTags || []), sportType].filter(Boolean))];
+  const resolvedTags = await resolveCatalogTags(mergedTags);
+
+  if (resolvedTags.length === 0 && sportType) {
+    const fallback = await resolveCatalogTags([sportType]);
+    return fallback.length > 0 ? fallback : [sportType];
+  }
+
+  return resolvedTags;
+}
+
 exports.createPost = async (req, res) => {
   try {
+<<<<<<< HEAD
     const { content, location, sportType } = req.body;
+=======
+    const { content, location, sportType, tags } = req.body;
+    const finalSportType = sportType || 'Bóng đá';
+>>>>>>> d39a000cbe2a334e7f488707b2daa7c615891cb8
 
     let mediaUrls = [];
     if (req.files && req.files.length > 0) {
       mediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
     }
 
+    const resolvedTags = await buildPostTags({
+      tagsInput: tags,
+      sportType: finalSportType,
+      content,
+    });
+
     const post = new Post({
       userId: req.userId,
       content: content || '',
       mediaUrls,
       location: location || '',
-      sportType: sportType || 'Bóng đá',
+      sportType: resolvedTags[0] || finalSportType,
+      tags: resolvedTags,
     });
 
     await post.save();
+<<<<<<< HEAD
 
     // Populate user info
+=======
+    await updateTagUsageCounts([], resolvedTags);
+
+>>>>>>> d39a000cbe2a334e7f488707b2daa7c615891cb8
     const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
 
     res.status(201).json({
       success: true,
       message: 'Đăng bài thành công!',
-      data: populatedPost,
+      data: enrichPostTags(populatedPost),
     });
   } catch (error) {
     console.error('Create post error:', error);
@@ -51,14 +87,23 @@ exports.getPosts = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const tag = String(req.query.tag || req.query.sportType || '').trim();
+    const userId = String(req.query.userId || '').trim();
 
-    const posts = await Post.find()
+    const filter = {};
+    if (tag) {
+      filter.$or = [{ tags: tag }, { sportType: tag }];
+    }
+    if (userId) {
+      filter.userId = userId;
+    }
+
+    const posts = await Post.find(filter)
       .populate('userId', 'name picture favoriteSport')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // Map posts to include isLiked flag for current user if logged in
     const mappedPosts = await Promise.all(
       posts.map(async (post) => {
         let isLiked = false;
@@ -67,7 +112,7 @@ exports.getPosts = async (req, res) => {
           isLiked = !!like;
         }
         return {
-          ...post.toObject(),
+          ...enrichPostTags(post),
           isLiked,
         };
       })
@@ -142,7 +187,7 @@ exports.getPostById = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        ...post.toObject(),
+        ...enrichPostTags(post),
         isLiked,
         comments: topLevelComments,
       },
@@ -287,13 +332,26 @@ exports.updatePost = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền sửa bài viết này' });
     }
 
-    const { content, location, sportType } = req.body;
+    const { content, location, sportType, tags } = req.body;
+    const previousTags = [...(post.tags || [])];
 
     if (content !== undefined) post.content = content;
     if (location !== undefined) post.location = location;
-    if (sportType !== undefined) post.sportType = sportType;
 
-    // Append newly uploaded media (if any)
+    if (tags !== undefined || sportType !== undefined) {
+      const resolvedTags = await buildPostTags({
+        tagsInput: tags !== undefined ? tags : post.tags,
+        sportType: sportType !== undefined ? sportType : post.sportType,
+        content: content !== undefined ? content : post.content,
+      });
+
+      post.tags = resolvedTags;
+      post.sportType = resolvedTags[0] || sportType || post.sportType;
+      await updateTagUsageCounts(previousTags, resolvedTags);
+    } else if (sportType !== undefined) {
+      post.sportType = sportType;
+    }
+
     if (req.files && req.files.length > 0) {
       const newMediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
       post.mediaUrls = [...post.mediaUrls, ...newMediaUrls];
@@ -306,7 +364,7 @@ exports.updatePost = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Cập nhật bài viết thành công!',
-      data: populatedPost,
+      data: enrichPostTags(populatedPost),
     });
   } catch (error) {
     console.error('Update post error:', error);
