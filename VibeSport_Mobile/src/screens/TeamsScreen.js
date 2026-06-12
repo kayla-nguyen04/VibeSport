@@ -811,6 +811,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#fff",
     paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e8e8e8",
   },
   subTab: {
     flex: 1,
@@ -824,8 +826,12 @@ const styles = StyleSheet.create({
   subTabTextActive: { color: "#0066cc", fontWeight: "800" },
 
   // Sport Filters Chips
-  filters: { backgroundColor: "#fff", paddingBottom: 12 },
-  filtersInner: { paddingHorizontal: 16, gap: 8 },
+  filters: {
+    backgroundColor: "#f8f9fa",
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  filtersInner: { paddingHorizontal: 16, gap: 10 },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -850,11 +856,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   chipIcon: { fontSize: 12 },
-  chipText: { fontSize: 13, fontWeight: "600", color: "#666" },
+  chipText: { fontSize: 13, fontWeight: "600", color: "#333" },
   chipTextActive: { color: "#fff", fontWeight: "700" },
 
   // Search & Filters Bar
-  searchBar: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, backgroundColor: "#fff", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eee" },
+  searchBar: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 12, backgroundColor: "#f8f9fa", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eee" },
   searchWrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#f2f3f5", borderRadius: 12, paddingHorizontal: 12, height: 44 },
   searchIcon: { fontSize: 14, marginRight: 8, opacity: 0.4 },
   searchInput: { flex: 1, fontSize: 14, color: "#333", paddingVertical: 0 },

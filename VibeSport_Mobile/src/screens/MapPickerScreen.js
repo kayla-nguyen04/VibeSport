@@ -342,6 +342,7 @@ export default function MapPickerScreen({ navigation, route }) {
           address:
             address || `${markerCoord.lat.toFixed(6)}, ${markerCoord.lng.toFixed(6)}`,
         },
+        formDraft: route?.params?.formDraft,
       },
       merge: true,
     });
