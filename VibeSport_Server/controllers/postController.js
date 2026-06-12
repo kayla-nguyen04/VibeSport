@@ -1,6 +1,7 @@
 const Post = require('../models/Post');
 const PostLike = require('../models/PostLike');
 const Comment = require('../models/Comment');
+const CommentLike = require('../models/CommentLike');
 const { API_BASE_URL } = require('../utils/config');
 const {
   parseTagsInput,
@@ -32,8 +33,12 @@ async function buildPostTags({ tagsInput, sportType, content }) {
 
 exports.createPost = async (req, res) => {
   try {
+<<<<<<< HEAD
+    const { content, location, sportType } = req.body;
+=======
     const { content, location, sportType, tags } = req.body;
     const finalSportType = sportType || 'Bóng đá';
+>>>>>>> d39a000cbe2a334e7f488707b2daa7c615891cb8
 
     let mediaUrls = [];
     if (req.files && req.files.length > 0) {
@@ -56,8 +61,13 @@ exports.createPost = async (req, res) => {
     });
 
     await post.save();
+<<<<<<< HEAD
+
+    // Populate user info
+=======
     await updateTagUsageCounts([], resolvedTags);
 
+>>>>>>> d39a000cbe2a334e7f488707b2daa7c615891cb8
     const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
 
     res.status(201).json({
@@ -135,16 +145,51 @@ exports.getPostById = async (req, res) => {
       isLiked = !!like;
     }
 
-    const comments = await Comment.find({ postId: id })
+    // Fetch all comments for this post
+    const allComments = await Comment.find({ postId: id })
       .populate('userId', 'name picture favoriteSport')
       .sort({ createdAt: 1 });
+
+    // Fetch the comments liked by the logged-in user
+    let userLikedCommentIds = new Set();
+    if (req.userId) {
+      const likes = await CommentLike.find({ userId: req.userId });
+      userLikedCommentIds = new Set(likes.map((l) => l.commentId.toString()));
+    }
+
+    // Map comments to include isLiked flag
+    const commentMap = {};
+    const topLevelComments = [];
+
+    allComments.forEach((comment) => {
+      const cObj = comment.toObject();
+      cObj.isLiked = userLikedCommentIds.has(cObj._id.toString());
+      cObj.replies = [];
+      commentMap[cObj._id.toString()] = cObj;
+
+      if (!cObj.parentId) {
+        topLevelComments.push(cObj);
+      }
+    });
+
+    // Populate replies
+    allComments.forEach((comment) => {
+      if (comment.parentId) {
+        const parent = commentMap[comment.parentId.toString()];
+        if (parent) {
+          const cObj = commentMap[comment._id.toString()];
+          cObj.replyToName = parent.userId?.name || 'Thành viên';
+          parent.replies.push(cObj);
+        }
+      }
+    });
 
     res.status(200).json({
       success: true,
       data: {
         ...enrichPostTags(post),
         isLiked,
-        comments,
+        comments: topLevelComments,
       },
     });
   } catch (error) {
@@ -195,7 +240,7 @@ exports.likePost = async (req, res) => {
 exports.commentPost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { content } = req.body;
+    const { content, parentId } = req.body;
 
     let mediaUrl = null;
     if (req.file) {
@@ -216,6 +261,7 @@ exports.commentPost = async (req, res) => {
       userId: req.userId,
       content: content ? content.trim() : '',
       mediaUrl,
+      parentId: parentId || null,
     });
 
     await comment.save();
@@ -224,11 +270,17 @@ exports.commentPost = async (req, res) => {
     await post.save();
 
     const populatedComment = await Comment.findById(comment._id).populate('userId', 'name picture favoriteSport');
+    const commentObj = populatedComment.toObject();
+
+    if (parentId) {
+      const parentComment = await Comment.findById(parentId).populate('userId', 'name');
+      commentObj.replyToName = parentComment?.userId?.name || 'Thành viên';
+    }
 
     res.status(201).json({
       success: true,
       message: 'Đã thêm bình luận!',
-      data: populatedComment,
+      data: commentObj,
       commentsCount: post.commentsCount,
     });
   } catch (error) {
@@ -317,5 +369,43 @@ exports.updatePost = async (req, res) => {
   } catch (error) {
     console.error('Update post error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật bài viết' });
+  }
+};
+
+// 8. Like / Unlike a comment
+exports.likeComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const userId = req.userId;
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bình luận' });
+    }
+
+    const existingLike = await CommentLike.findOne({ commentId, userId });
+    let liked = false;
+
+    if (existingLike) {
+      await CommentLike.deleteOne({ _id: existingLike._id });
+      comment.likesCount = Math.max(0, comment.likesCount - 1);
+      liked = false;
+    } else {
+      const newLike = new CommentLike({ commentId, userId });
+      await newLike.save();
+      comment.likesCount += 1;
+      liked = true;
+    }
+
+    await comment.save();
+
+    res.status(200).json({
+      success: true,
+      liked,
+      likesCount: comment.likesCount,
+    });
+  } catch (error) {
+    console.error('Like comment error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi thích/bỏ thích bình luận' });
   }
 };
