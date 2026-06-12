@@ -18,6 +18,7 @@ const authRouter = require('./routes/auth');
 const otpRoutes = require("./routes/otp");
 const matchRoutes = require("./routes/matches");
 const postsRouter = require('./routes/posts');
+const savedPostsRouter = require('./routes/savedPosts');
 const tagsRouter = require('./routes/tags');
 const usersRouter = require('./routes/users');
 const seedTags = require('./scripts/seedTags');
@@ -43,6 +44,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Mount posts routes
 app.use('/api/posts', postsRouter);
+app.use('/api/saved-posts', savedPostsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/users', usersRouter);
 

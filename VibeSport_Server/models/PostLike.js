@@ -12,6 +12,11 @@ const postLikeSchema = new Schema(
       ref: 'User',
       required: true,
     },
+    reactionType: {
+      type: String,
+      enum: ['like', 'love', 'haha'],
+      default: 'like',
+    },
   },
   {
     timestamps: true,

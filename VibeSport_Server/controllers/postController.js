@@ -97,13 +97,29 @@ exports.getPosts = async (req, res) => {
     const mappedPosts = await Promise.all(
       posts.map(async (post) => {
         let isLiked = false;
+        let reactionType = null;
         if (req.userId) {
           const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
-          isLiked = !!like;
+          if (like) {
+            isLiked = true;
+            reactionType = like.reactionType;
+          }
         }
+
+        // Get top 2 reactions
+        const reactionsCount = await PostLike.aggregate([
+          { $match: { postId: post._id } },
+          { $group: { _id: '$reactionType', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 2 }
+        ]);
+        const topReactions = reactionsCount.map(r => r._id);
+
         return {
           ...enrichPostTags(post),
           isLiked,
+          reactionType,
+          topReactions,
         };
       })
     );
@@ -130,10 +146,23 @@ exports.getPostById = async (req, res) => {
     }
 
     let isLiked = false;
+    let reactionType = null;
     if (req.userId) {
       const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
-      isLiked = !!like;
+      if (like) {
+        isLiked = true;
+        reactionType = like.reactionType;
+      }
     }
+
+    // Get top 2 reactions
+    const reactionsCount = await PostLike.aggregate([
+      { $match: { postId: post._id } },
+      { $group: { _id: '$reactionType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 2 }
+    ]);
+    const topReactions = reactionsCount.map(r => r._id);
 
     const comments = await Comment.find({ postId: id })
       .populate('userId', 'name picture favoriteSport')
@@ -144,6 +173,8 @@ exports.getPostById = async (req, res) => {
       data: {
         ...enrichPostTags(post),
         isLiked,
+        reactionType,
+        topReactions,
         comments,
       },
     });
@@ -157,6 +188,7 @@ exports.getPostById = async (req, res) => {
 exports.likePost = async (req, res) => {
   try {
     const { id } = req.params;
+    const { reactionType = 'like' } = req.body;
     const userId = req.userId;
 
     const post = await Post.findById(id);
@@ -166,13 +198,24 @@ exports.likePost = async (req, res) => {
 
     const existingLike = await PostLike.findOne({ postId: id, userId });
     let liked = false;
+    let currentReaction = reactionType;
 
     if (existingLike) {
-      await PostLike.deleteOne({ _id: existingLike._id });
-      post.likesCount = Math.max(0, post.likesCount - 1);
-      liked = false;
+      if (existingLike.reactionType === reactionType) {
+        // Trùng reaction type thì unlike
+        await PostLike.deleteOne({ _id: existingLike._id });
+        post.likesCount = Math.max(0, post.likesCount - 1);
+        liked = false;
+        currentReaction = null;
+      } else {
+        // Khác reaction type thì cập nhật
+        existingLike.reactionType = reactionType;
+        await existingLike.save();
+        liked = true;
+      }
     } else {
-      const newLike = new PostLike({ postId: id, userId });
+      // Chưa like thì tạo mới
+      const newLike = new PostLike({ postId: id, userId, reactionType });
       await newLike.save();
       post.likesCount += 1;
       liked = true;
@@ -180,14 +223,116 @@ exports.likePost = async (req, res) => {
 
     await post.save();
 
+    // Get top 2 reactions
+    const reactionsCount = await PostLike.aggregate([
+      { $match: { postId: post._id } },
+      { $group: { _id: '$reactionType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 2 }
+    ]);
+    const topReactions = reactionsCount.map(r => r._id);
+
     res.status(200).json({
       success: true,
-      liked,
+      isLiked: liked,
+      reactionType: currentReaction,
       likesCount: post.likesCount,
+      topReactions,
     });
   } catch (error) {
     console.error('Like post error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi thích/bỏ thích bài viết' });
+  }
+};
+
+// 4b. Unlike a post directly
+exports.unlikePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    const existingLike = await PostLike.findOne({ postId: id, userId });
+    if (existingLike) {
+      await PostLike.deleteOne({ _id: existingLike._id });
+      post.likesCount = Math.max(0, post.likesCount - 1);
+      await post.save();
+    }
+
+    // Get top 2 reactions
+    const reactionsCount = await PostLike.aggregate([
+      { $match: { postId: post._id } },
+      { $group: { _id: '$reactionType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 2 }
+    ]);
+    const topReactions = reactionsCount.map(r => r._id);
+
+    res.status(200).json({
+      success: true,
+      isLiked: false,
+      reactionType: null,
+      likesCount: post.likesCount,
+      topReactions,
+    });
+  } catch (error) {
+    console.error('Unlike post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi bỏ thích bài viết' });
+  }
+};
+
+// 4c. Get list of users who liked the post
+exports.getPostLikes = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    const likes = await PostLike.find({ postId: id })
+      .populate('userId', 'name picture')
+      .sort({ createdAt: -1 });
+
+    const totalLikes = likes.length;
+
+    const reactions = {
+      like: 0,
+      love: 0,
+      haha: 0
+    };
+
+    likes.forEach(like => {
+      if (reactions[like.reactionType] !== undefined) {
+        reactions[like.reactionType]++;
+      } else {
+        reactions[like.reactionType] = 1;
+      }
+    });
+
+    const users = likes.map(like => {
+      if (!like.userId) return null;
+      return {
+        _id: like.userId._id,
+        name: like.userId.name,
+        avatar: like.userId.picture,
+        reactionType: like.reactionType
+      };
+    }).filter(Boolean);
+
+    res.status(200).json({
+      success: true,
+      totalLikes,
+      reactions,
+      users
+    });
+  } catch (error) {
+    console.error('Get post likes error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tải danh sách người thích' });
   }
 };
 
