@@ -16,11 +16,26 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchPosts, likePost, deletePost, setActiveTag } from '../redux/postSlice';
+import {
+  fetchPosts,
+  likePost,
+  unlikePost,
+  deletePost,
+  setActiveTag,
+  savePost,
+  unsavePost,
+} from '../redux/postSlice';
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
+import { getPostLikesRequest } from '../services/postApi';
 import { API_BASE_URL } from '../components/constants/api';
 import { Screen } from '../components/Screen';
+import {
+  LikesModal,
+  ReactionPickerModal,
+  ReactionsPreview,
+  getReactionMeta,
+} from '../components/PostReactions';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -44,6 +59,11 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const token = useSelector((state) => state.auth.token);
   const [optionsPost, setOptionsPost] = useState(null);
   const [catalogTags, setCatalogTags] = useState([]);
+  const [reactionPickerPost, setReactionPickerPost] = useState(null);
+  const [likesPost, setLikesPost] = useState(null);
+  const [likesSummary, setLikesSummary] = useState(null);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [activeReactionFilter, setActiveReactionFilter] = useState('all');
 
   useEffect(() => {
     getTagsRequest(token, 'sport')
@@ -70,8 +90,57 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     dispatch(setActiveTag(nextTag));
   };
 
-  const handleLike = (postId) => {
-    dispatch(likePost(postId));
+  const handleLike = (post) => {
+    if (post.isLiked) {
+      dispatch(unlikePost(post._id));
+      return;
+    }
+
+    dispatch(likePost({ postId: post._id, reactionType: 'like' }));
+  };
+
+  const handleSelectReaction = (reactionType) => {
+    if (!reactionPickerPost) return;
+    const post = reactionPickerPost;
+    setReactionPickerPost(null);
+
+    if (post.isLiked && post.reactionType === reactionType) {
+      return;
+    }
+
+    dispatch(likePost({ postId: post._id, reactionType }));
+  };
+
+  const handleOpenLikes = async (post) => {
+    setLikesPost(post);
+    setLikesSummary(null);
+    setActiveReactionFilter('all');
+    setLikesLoading(true);
+
+    try {
+      const response = await getPostLikesRequest(post._id, token);
+      setLikesSummary(response);
+    } catch (err) {
+      Alert.alert('Lỗi', err.message || 'Không thể tải danh sách cảm xúc.');
+      setLikesPost(null);
+    } finally {
+      setLikesLoading(false);
+    }
+  };
+
+  const handleToggleSave = (post) => {
+    const action = post.isSaved ? unsavePost(post._id) : savePost(post._id);
+    dispatch(action)
+      .unwrap()
+      .then(() => {
+        Alert.alert(
+          'Thành công',
+          post.isSaved ? 'Đã bỏ lưu bài viết.' : 'Đã lưu bài viết.'
+        );
+      })
+      .catch((err) => {
+        Alert.alert('Lỗi', err?.error || 'Không thể cập nhật trạng thái lưu bài viết.');
+      });
   };
 
   const handleShare = async (post) => {
@@ -162,6 +231,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const renderPostItem = ({ item }) => {
     const isOwner = user && item.userId && (user.id === item.userId._id || user._id === item.userId._id);
     const displayTags = item.tags?.length ? item.tags : item.sportType ? [item.sportType] : [];
+    const reactionMeta = getReactionMeta(item.reactionType);
 
     return (
       <View style={styles.postCard}>
@@ -235,19 +305,44 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           )}
         </TouchableOpacity>
 
+        {(item.likesCount > 0 || item.commentsCount > 0) ? (
+          <View style={styles.engagementRow}>
+            <ReactionsPreview
+              likesCount={item.likesCount || 0}
+              topReactions={item.topReactions || []}
+              onPress={() => handleOpenLikes(item)}
+            />
+            {item.commentsCount > 0 ? (
+              <TouchableOpacity onPress={() => navigation.navigate('PostDetail', { postId: item._id })}>
+                <Text style={styles.commentSummaryText}>{item.commentsCount} bình luận</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Divider */}
         <View style={styles.divider} />
 
         {/* Actions Bar */}
         <View style={styles.actionsBar}>
-          <TouchableOpacity onPress={() => handleLike(item._id)} style={styles.actionBtn}>
-            <Ionicons
-              name={item.isLiked ? 'heart' : 'heart-outline'}
-              size={20}
-              color={item.isLiked ? '#EF4444' : '#7C8190'}
-            />
-            <Text style={[styles.actionText, item.isLiked && styles.likedText]}>
-              {item.likesCount || 0} Thích
+          <TouchableOpacity
+            onPress={() => handleLike(item)}
+            onLongPress={() => setReactionPickerPost(item)}
+            delayLongPress={220}
+            style={styles.actionBtn}
+          >
+            {item.isLiked ? (
+              <Text style={styles.actionEmoji}>{reactionMeta.emoji}</Text>
+            ) : (
+              <Ionicons name="heart-outline" size={20} color="#7C8190" />
+            )}
+            <Text
+              style={[
+                styles.actionText,
+                item.isLiked && { color: reactionMeta.color },
+              ]}
+            >
+              {item.isLiked ? reactionMeta.label : 'Thích'}
             </Text>
           </TouchableOpacity>
 
@@ -385,6 +480,26 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           <View style={styles.bottomSheetContainer}>
             <View style={styles.bottomSheetHandle} />
             <Text style={styles.bottomSheetTitle}>TÙY CHỌN BÀI VIẾT</Text>
+
+            {optionsPost ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const post = optionsPost;
+                  setOptionsPost(null);
+                  handleToggleSave(post);
+                }}
+                style={styles.bottomSheetOption}
+              >
+                <Ionicons
+                  name={optionsPost.isSaved ? 'bookmark' : 'bookmark-outline'}
+                  size={20}
+                  color="#FF6B35"
+                />
+                <Text style={[styles.bottomSheetOptionText, { color: '#FF6B35' }]}>
+                  {optionsPost.isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             
             {optionsPost && user && (user.id === optionsPost.userId?._id || user._id === optionsPost.userId?._id) ? (
               <>
@@ -427,6 +542,21 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <ReactionPickerModal
+        visible={reactionPickerPost !== null}
+        onClose={() => setReactionPickerPost(null)}
+        onSelect={handleSelectReaction}
+      />
+
+      <LikesModal
+        visible={likesPost !== null}
+        loading={likesLoading}
+        summary={likesSummary}
+        activeFilter={activeReactionFilter}
+        onChangeFilter={setActiveReactionFilter}
+        onClose={() => setLikesPost(null)}
+      />
     </Screen>
   );
 }
@@ -648,6 +778,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     marginVertical: 12,
   },
+  engagementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 30,
+    marginTop: 10,
+  },
+  commentSummaryText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   actionsBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -665,6 +807,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#7C8190',
     fontWeight: '500',
+  },
+  actionEmoji: {
+    fontSize: 18,
+    width: 20,
+    textAlign: 'center',
   },
   likedText: {
     color: '#EF4444',

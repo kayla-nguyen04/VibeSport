@@ -21,6 +21,7 @@ import MapPickerScreen from '../screens/MapPickerScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import SavedPostsScreen from '../screens/SavedPostsScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -107,6 +108,7 @@ export function AuthNavigator() {
             <Stack.Screen name="CreatePost" component={CreatePostScreen} options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="PostDetail" component={PostDetailScreen} />
             <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+            <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
           </>
         ) : (
           <>

@@ -1,5 +1,6 @@
 const Post = require('../models/Post');
 const PostLike = require('../models/PostLike');
+const SavedPost = require('../models/SavedPost');
 const Comment = require('../models/Comment');
 const { API_BASE_URL } = require('../utils/config');
 const {
@@ -63,7 +64,13 @@ exports.createPost = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Đăng bài thành công!',
-      data: enrichPostTags(populatedPost),
+      data: {
+        ...enrichPostTags(populatedPost),
+        isLiked: false,
+        reactionType: null,
+        topReactions: [],
+        isSaved: false,
+      },
     });
   } catch (error) {
     console.error('Create post error:', error);
@@ -98,12 +105,14 @@ exports.getPosts = async (req, res) => {
       posts.map(async (post) => {
         let isLiked = false;
         let reactionType = null;
+        let isSaved = false;
         if (req.userId) {
           const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
           if (like) {
             isLiked = true;
             reactionType = like.reactionType;
           }
+          isSaved = Boolean(await SavedPost.exists({ postId: post._id, userId: req.userId }));
         }
 
         // Get top 2 reactions
@@ -120,6 +129,7 @@ exports.getPosts = async (req, res) => {
           isLiked,
           reactionType,
           topReactions,
+          isSaved,
         };
       })
     );
@@ -147,12 +157,14 @@ exports.getPostById = async (req, res) => {
 
     let isLiked = false;
     let reactionType = null;
+    let isSaved = false;
     if (req.userId) {
       const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
       if (like) {
         isLiked = true;
         reactionType = like.reactionType;
       }
+      isSaved = Boolean(await SavedPost.exists({ postId: post._id, userId: req.userId }));
     }
 
     // Get top 2 reactions
@@ -175,6 +187,7 @@ exports.getPostById = async (req, res) => {
         isLiked,
         reactionType,
         topReactions,
+        isSaved,
         comments,
       },
     });
@@ -400,6 +413,7 @@ exports.deletePost = async (req, res) => {
     await Post.deleteOne({ _id: id });
     await Comment.deleteMany({ postId: id });
     await PostLike.deleteMany({ postId: id });
+    await SavedPost.deleteMany({ postId: id });
 
     res.status(200).json({
       success: true,

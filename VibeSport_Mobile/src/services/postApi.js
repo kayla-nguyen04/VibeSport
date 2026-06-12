@@ -62,8 +62,34 @@ export const createPostRequest = async (formData, token = null) => {
   }, token);
 };
 
-export const likePostRequest = async (id, token = null) => {
-  return request(`/api/posts/${id}/like`, { method: 'POST' }, token);
+export const likePostRequest = async (id, token = null, reactionType = 'like') => {
+  return request(`/api/posts/${id}/like`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reactionType }),
+  }, token);
+};
+
+export const unlikePostRequest = async (id, token = null) => {
+  return request(`/api/posts/${id}/like`, { method: 'DELETE' }, token);
+};
+
+export const getPostLikesRequest = async (id, token = null) => {
+  return request(`/api/posts/${id}/likes`, {}, token);
+};
+
+export const savePostRequest = async (postId, token = null) => {
+  return request(`/api/saved-posts/${postId}`, { method: 'POST' }, token);
+};
+
+export const unsavePostRequest = async (postId, token = null) => {
+  return request(`/api/saved-posts/${postId}`, { method: 'DELETE' }, token);
+};
+
+export const getSavedPostsRequest = async (token = null) => {
+  return request('/api/saved-posts', {}, token);
 };
 
 export const commentPostRequest = async (id, payload, token = null) => {
