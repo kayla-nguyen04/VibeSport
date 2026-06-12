@@ -76,6 +76,10 @@ export const commentPostRequest = async (id, payload, token = null) => {
   }
 };
 
+export const likeCommentRequest = async (postId, commentId, token = null) => {
+  return request(`/api/posts/${postId}/comments/${commentId}/like`, { method: 'POST' }, token);
+};
+
 export const deletePostRequest = async (id, token = null) => {
   return request(`/api/posts/${id}`, { method: 'DELETE' }, token);
 };
