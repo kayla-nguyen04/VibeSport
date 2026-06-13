@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -63,6 +63,21 @@ const getAvatarColor = (name) => {
   return AVATAR_COLORS[charCodeSum % AVATAR_COLORS.length];
 };
 
+const renderCommentTextWithTags = (text) => {
+  if (!text) return null;
+  const parts = text.split(/(@[^\s]+)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('@')) {
+      return (
+        <Text key={index} style={{ color: '#0066cc', fontWeight: '600' }}>
+          {part}
+        </Text>
+      );
+    }
+    return <Text key={index}>{part}</Text>;
+  });
+};
+
 export default function PostDetailScreen({ route, navigation }) {
   const dispatch = useDispatch();
   const { postId } = route.params;
@@ -77,17 +92,69 @@ export default function PostDetailScreen({ route, navigation }) {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [expandedComments, setExpandedComments] = useState({});
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [showReplies, setShowReplies] = useState({});
+  const commentInputRef = useRef(null);
+  const isSubmittingRef = useRef(false);
   const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
   const [likesSummary, setLikesSummary] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [activeReactionFilter, setActiveReactionFilter] = useState('all');
 
+  const toggleShowReplies = (commentId) => {
+    setShowReplies((prev) => ({
+      ...prev,
+      [commentId]: !prev[commentId],
+    }));
+  };
+
   const toggleExpandComment = (commentId) => {
     setExpandedComments((prev) => ({
       ...prev,
       [commentId]: !prev[commentId],
     }));
+  };
+
+  const handleLikeComment = async (commentId) => {
+    const updateLike = (list) =>
+      list.map((c) => {
+        if (c._id === commentId) {
+          return {
+            ...c,
+            isLiked: !c.isLiked,
+            likesCount: (c.likesCount || 0) + (c.isLiked ? -1 : 1),
+          };
+        }
+        if (c.replies && c.replies.length > 0) {
+          return { ...c, replies: updateLike(c.replies) };
+        }
+        return c;
+      });
+
+    setComments((prev) => updateLike(prev));
+
+    try {
+      await likeCommentRequest(post._id, commentId, token);
+    } catch (err) {
+      console.error('Like comment error:', err);
+      // Rollback on error
+      setComments((prev) => updateLike(prev));
+    }
+  };
+
+  const handleReply = (comment) => {
+    const name = comment.userId?.name || 'Thành viên';
+    setReplyingTo({
+      _id: comment.parentId || comment._id,
+      name: name,
+    });
+    setCommentText(''); // Keep input blank like Facebook
+    setTimeout(() => commentInputRef.current?.focus(), 100);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
   };
 
   const loadPostDetails = useCallback(async () => {
@@ -221,9 +288,8 @@ export default function PostDetailScreen({ route, navigation }) {
     if (!post) return;
     try {
       await Share.share({
-        message: `${post.userId?.name || 'Ai đó'} chia sẻ trên VibeSport: "${post.content}"${
-          post.mediaUrls?.length > 0 ? `\n\nXem ảnh: ${fixMediaUrl(post.mediaUrls[0])}` : ''
-        }`,
+        message: `${post.userId?.name || 'Ai đó'} chia sẻ trên VibeSport: "${post.content}"${post.mediaUrls?.length > 0 ? `\n\nXem ảnh: ${fixMediaUrl(post.mediaUrls[0])}` : ''
+          }`,
       });
     } catch (error) {
       console.error('Share error:', error);
@@ -297,15 +363,20 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const handleCommentSubmit = async () => {
     if ((!commentText.trim() && !selectedImage) || !post) return;
-    
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     try {
       setSubmittingComment(true);
-      
+
       let res;
       if (selectedImage) {
         const formData = new FormData();
         formData.append('content', commentText.trim());
-        
+        if (replyingTo) {
+          formData.append('parentId', replyingTo._id);
+        }
+
         const uri = selectedImage.uri;
         const uriParts = uri.split('.');
         const fileType = uriParts[uriParts.length - 1];
@@ -316,24 +387,45 @@ export default function PostDetailScreen({ route, navigation }) {
           name: fileName || `comment-img.${fileType}`,
           type: `image/${fileType}`,
         });
-        
+
         res = await commentPostRequest(post._id, formData, token);
       } else {
-        res = await commentPostRequest(post._id, commentText.trim(), token);
+        const body = { content: commentText.trim() };
+        if (replyingTo) {
+          body.parentId = replyingTo._id;
+        }
+        res = await commentPostRequest(post._id, body, token);
       }
 
       if (res?.success && res?.data) {
-        // Add new comment to the list
-        setComments((prev) => [...prev, res.data]);
-        // Update comments count on post details
+        if (replyingTo) {
+          // Add reply to parent comment's replies array
+          setComments((prev) =>
+            prev.map((c) => {
+              if (c._id === replyingTo._id) {
+                return { ...c, replies: [...(c.replies || []), res.data] };
+              }
+              return c;
+            })
+          );
+          // Auto-expand replies list to show the new reply
+          setShowReplies((prev) => ({
+            ...prev,
+            [replyingTo._id]: true,
+          }));
+        } else {
+          // Add new top-level comment
+          setComments((prev) => [...prev, { ...res.data, replies: [] }]);
+        }
+        // Update comments count
         setPost((prev) => ({
           ...prev,
           commentsCount: res.commentsCount,
         }));
-        // Update comments count in Redux store for feed synchrony
         dispatch(updateCommentCountInFeed({ postId: post._id, commentsCount: res.commentsCount }));
         setCommentText('');
         setSelectedImage(null);
+        setReplyingTo(null);
       } else {
         Alert.alert('Lỗi', 'Không thể đăng bình luận');
       }
@@ -341,6 +433,7 @@ export default function PostDetailScreen({ route, navigation }) {
       Alert.alert('Lỗi', err.message || 'Gửi bình luận thất bại');
     } finally {
       setSubmittingComment(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -380,34 +473,49 @@ export default function PostDetailScreen({ route, navigation }) {
     return `${diffDays} ngày trước`;
   };
 
-  const renderCommentItem = ({ item }) => {
-    const avatarColor = getAvatarColor(item.userId?.name);
-    const isExpanded = expandedComments[item._id];
-    const shouldTruncate = item.content && item.content.length > 150;
-    
-    let displayContent = item.content;
+  const renderCommentBubble = (comment, isReply = false) => {
+    const avatarColor = getAvatarColor(comment.userId?.name);
+    const isExpanded = expandedComments[comment._id];
+    const shouldTruncate = comment.content && comment.content.length > 150;
+    let displayContent = comment.content;
     if (shouldTruncate && !isExpanded) {
-      displayContent = item.content.slice(0, 150) + '...';
+      displayContent = comment.content.slice(0, 150) + '...';
     }
-    
+
     return (
-      <View style={styles.commentItem}>
-        {item.userId?.picture ? (
-          <Image source={{ uri: item.userId.picture }} style={styles.commentAvatar} />
+      <View key={comment._id} style={[styles.commentItem, isReply && styles.replyItem]}>
+        {comment.userId?.picture ? (
+          <Image
+            source={{ uri: comment.userId.picture }}
+            style={[styles.commentAvatar, isReply && styles.replyAvatar]}
+          />
         ) : (
-          <View style={[styles.commentAvatarPlaceholder, { backgroundColor: avatarColor }]}>
-            <Text style={styles.avatarInitials}>{getInitials(item.userId?.name)}</Text>
+          <View
+            style={[
+              styles.commentAvatarPlaceholder,
+              isReply && styles.replyAvatar,
+              { backgroundColor: avatarColor },
+            ]}
+          >
+            <Text style={[styles.avatarInitials, isReply && { fontSize: 10 }]}>
+              {getInitials(comment.userId?.name)}
+            </Text>
           </View>
         )}
         <View style={styles.commentRight}>
           <View style={styles.commentTextContainer}>
-            <Text style={styles.commentAuthor}>{item.userId?.name || 'Thành viên'}</Text>
-            {item.content ? (
+            <Text style={styles.commentAuthor}>{comment.userId?.name || 'Thành viên'}</Text>
+            {comment.content ? (
               <Text style={styles.commentText}>
-                {displayContent}{' '}
+                {comment.replyToName ? (
+                  <Text style={{ color: '#0066cc', fontWeight: 'bold' }}>
+                    {comment.replyToName}{' '}
+                  </Text>
+                ) : null}
+                {renderCommentTextWithTags(displayContent)}{' '}
                 {shouldTruncate && (
                   <Text
-                    onPress={() => toggleExpandComment(item._id)}
+                    onPress={() => toggleExpandComment(comment._id)}
                     style={styles.seeMoreText}
                   >
                     {isExpanded ? 'Thu gọn' : 'Xem thêm'}
@@ -416,23 +524,79 @@ export default function PostDetailScreen({ route, navigation }) {
               </Text>
             ) : null}
           </View>
-          {item.mediaUrl ? (
+          {comment.mediaUrl ? (
             <Image
-              source={{ uri: fixMediaUrl(item.mediaUrl) }}
+              source={{ uri: fixMediaUrl(comment.mediaUrl) }}
               style={styles.commentImage}
               resizeMode="cover"
             />
           ) : null}
           <View style={styles.commentActions}>
-            <Text style={styles.commentTime}>{formatTime(item.createdAt)}</Text>
-            <TouchableOpacity style={styles.commentActionBtn}>
-              <Text style={styles.commentActionText}>Thích</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.commentActionBtn}>
-              <Text style={styles.commentActionText}>Trả lời</Text>
-            </TouchableOpacity>
+            <View style={styles.commentActionsLeft}>
+              <Text style={styles.commentTime}>{formatTime(comment.createdAt)}</Text>
+              <TouchableOpacity
+                style={styles.commentActionBtn}
+                onPress={() => handleReply(comment)}
+              >
+                <Text style={styles.commentActionText}>Trả lời</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.commentActionsRight}>
+              <TouchableOpacity
+                style={styles.thumbsUpBtn}
+                onPress={() => handleLikeComment(comment._id)}
+              >
+                <Ionicons
+                  name={comment.isLiked ? 'heart' : 'heart-outline'}
+                  size={16}
+                  color={comment.isLiked ? '#EF4444' : '#9CA3AF'}
+                />
+                {comment.likesCount > 0 ? (
+                  <Text style={[styles.likeCountText, comment.isLiked && { color: '#EF4444' }]}>
+                    {comment.likesCount}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+      </View>
+    );
+  };
+
+  const renderCommentItem = ({ item }) => {
+    const isRepliesShown = !!showReplies[item._id];
+    const hasReplies = item.replies && item.replies.length > 0;
+
+    return (
+      <View>
+        {renderCommentBubble(item, false)}
+        {hasReplies && (
+          <View style={styles.repliesContainer}>
+            {!isRepliesShown ? (
+              <TouchableOpacity
+                style={styles.toggleRepliesBtn}
+                onPress={() => toggleShowReplies(item._id)}
+              >
+                <View style={styles.toggleRepliesLine} />
+                <Text style={styles.toggleRepliesText}>
+                  Xem {item.replies.length} câu trả lời khác
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View>
+                {item.replies.map((reply) => renderCommentBubble(reply, true))}
+                <TouchableOpacity
+                  style={styles.toggleRepliesBtn}
+                  onPress={() => toggleShowReplies(item._id)}
+                >
+                  <View style={styles.toggleRepliesLine} />
+                  <Text style={styles.toggleRepliesText}>Ẩn câu trả lời</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -604,7 +768,7 @@ export default function PostDetailScreen({ route, navigation }) {
                   <Text style={styles.actionText}>Chia sẻ</Text>
                 </TouchableOpacity>
               </View>
-              
+
               <View style={styles.commentsHeaderBar}>
                 <Text style={styles.commentsHeaderText}>
                   {comments.length} BÌNH LUẬN
@@ -619,6 +783,21 @@ export default function PostDetailScreen({ route, navigation }) {
             </View>
           }
         />
+
+        {/* Reply indicator */}
+        {replyingTo && (
+          <View style={styles.replyIndicator}>
+            <View style={styles.replyIndicatorLeft}>
+              <Ionicons name="return-down-forward-outline" size={16} color="#0066cc" />
+              <Text style={styles.replyIndicatorText}>
+                Đang trả lời <Text style={{ fontWeight: 'bold' }}>{replyingTo.name}</Text>
+              </Text>
+            </View>
+            <TouchableOpacity onPress={cancelReply} style={styles.cancelReplyBtn}>
+              <Ionicons name="close" size={18} color="#7C8190" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Selected image preview */}
         {selectedImage && (
@@ -641,10 +820,11 @@ export default function PostDetailScreen({ route, navigation }) {
               <Text style={styles.inputAvatarText}>{getInitials(currentUser?.name)}</Text>
             </View>
           )}
-          
+
           <View style={styles.commentInputWrapper}>
             <TextInput
-              placeholder="Viết bình luận..."
+              ref={commentInputRef}
+              placeholder={replyingTo ? `Trả lời ${replyingTo.name}...` : 'Viết bình luận...'}
               placeholderTextColor="#9CA3AF"
               style={styles.commentTextInput}
               value={commentText}
@@ -656,7 +836,7 @@ export default function PostDetailScreen({ route, navigation }) {
               <Ionicons name="camera-outline" size={22} color="#7C8190" />
             </TouchableOpacity>
           </View>
-          
+
           <TouchableOpacity
             onPress={handleCommentSubmit}
             disabled={(!commentText.trim() && !selectedImage) || submittingComment}
@@ -706,6 +886,7 @@ export default function PostDetailScreen({ route, navigation }) {
                 {post.isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
               </Text>
             </TouchableOpacity>
+
 
             {isOwner ? (
               <>
@@ -941,7 +1122,8 @@ const styles = StyleSheet.create({
   commentItem: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 14,
   },
   commentAvatar: {
     width: 36,
@@ -983,9 +1165,9 @@ const styles = StyleSheet.create({
   commentActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 4,
     marginLeft: 4,
-    gap: 12,
   },
   commentTime: {
     fontSize: 11,
@@ -1144,5 +1326,91 @@ const styles = StyleSheet.create({
     color: '#0066cc',
     fontWeight: 'bold',
     fontSize: 13,
+  },
+  replyItem: {
+    paddingLeft: 50,
+  },
+  replyAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  repliesContainer: {
+    marginTop: 0,
+  },
+  commentActionTextLiked: {
+    color: '#EF4444',
+    fontWeight: 'bold',
+  },
+  commentActionsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  commentActionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  likeCountText: {
+    position: 'absolute',
+    bottom: -8,
+    left: 0,
+    right: 0,
+    fontSize: 9,
+    color: '#9CA3AF',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  thumbsUpBtn: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 32,
+    position: 'relative',
+  },
+  replyIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#F0F7FF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0EEFF',
+  },
+  replyIndicatorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+  },
+  replyIndicatorText: {
+    fontSize: 13,
+    color: '#0066cc',
+  },
+  cancelReplyBtn: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  toggleRepliesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 50,
+    paddingVertical: 8,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  toggleRepliesLine: {
+    width: 24,
+    height: 1,
+    backgroundColor: '#D1D5DB',
+    marginRight: 8,
+  },
+  toggleRepliesText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7C8190',
   },
 });

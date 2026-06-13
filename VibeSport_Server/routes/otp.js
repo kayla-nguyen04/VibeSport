@@ -19,6 +19,18 @@ router.post("/send-otp", async (req, res) => {
     otpStore[email] = otp;
     console.log(`[OTP ROUTE] Generated OTP for ${email}: ${otp}`);
 
+    // Dev bypass: nếu chưa cấu hình email thì in OTP ra console
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.log(`\n========================================`);
+      console.log(`[DEV MODE] OTP cho ${email}: ${otp}`);
+      console.log(`========================================\n`);
+      return res.json({
+        success: true,
+        message: "OTP sent successfully (dev mode - check server console)",
+        devOtp: otp,
+      });
+    }
+
     await sendOTP(email, otp);
 
     res.json({
@@ -30,15 +42,13 @@ router.post("/send-otp", async (req, res) => {
 
     let message = "Không gửi được mã OTP. Vui lòng thử lại sau.";
 
-    if (error.code === "EMAIL_NOT_CONFIGURED") {
-      message = "Server chưa cấu hình email. Liên hệ quản trị viên.";
-    } else if (
+    if (
       error.code === "EAUTH" ||
       String(error.message).includes("535") ||
       String(error.message).includes("Invalid login")
     ) {
       message =
-        "Lỗi xác thực Gmail. Hãy dùng App Password (không dùng mật khẩu đăng nhập thường). Xem hướng dẫn tại https://support.google.com/accounts/answer/185833";
+        "Lỗi xác thực Gmail. Hãy dùng App Password (không dùng mật khẩu đăng nhập thường).";
     } else if (String(error.message).includes("getaddrinfo")) {
       message = "Lỗi kết nối mạng. Vui lòng kiểm tra kết nối Internet.";
     }

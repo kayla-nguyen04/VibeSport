@@ -21,6 +21,16 @@ const commentSchema = new Schema(
       type: String,
       required: false,
     },
+    parentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Comment',
+      default: null,
+      index: true,
+    },
+    likesCount: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

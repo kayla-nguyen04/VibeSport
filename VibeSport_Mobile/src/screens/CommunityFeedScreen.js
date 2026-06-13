@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,6 +26,7 @@ import {
   savePost,
   unsavePost,
 } from '../redux/postSlice';
+import { fetchUnreadCount } from '../redux/notificationSlice';
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
 import { getPostLikesRequest } from '../services/postApi';
@@ -55,6 +57,7 @@ function fixMediaUrl(url) {
 export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
   const { posts, loading, refreshing, hasMore, page, activeTag } = useSelector((state) => state.posts);
+  const { unreadCount } = useSelector((state) => state.notifications);
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
   const [optionsPost, setOptionsPost] = useState(null);
@@ -65,6 +68,15 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const [likesLoading, setLikesLoading] = useState(false);
   const [activeReactionFilter, setActiveReactionFilter] = useState('all');
 
+  // ─── Search state ──────────────────────────────────────────────
+  const [isSearchMode, setIsSearchMode] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchActiveTag, setSearchActiveTag] = useState(null);
+  const searchDebounceRef = useRef(null);
+  const searchInputRef = useRef(null);
+
   useEffect(() => {
     getTagsRequest(token, 'sport')
       .then((res) => setCatalogTags(res.data || []))
@@ -72,8 +84,61 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   }, [token]);
 
   useEffect(() => {
+    if (token) {
+      dispatch(fetchUnreadCount());
+    }
+  }, [dispatch, token]);
+
+  useEffect(() => {
     dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
   }, [dispatch, activeTag]);
+
+  // ─── Search logic ──────────────────────────────────────────────
+  const executeSearch = useCallback((keyword, tag) => {
+    if (!keyword.trim() && !tag) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    searchPostsRequest(keyword.trim(), tag, 1, 20, token)
+      .then((res) => setSearchResults(res.data || []))
+      .catch(() => setSearchResults([]))
+      .finally(() => setSearchLoading(false));
+  }, [token]);
+
+  const handleSearchChange = (text) => {
+    setSearchKeyword(text);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!text.trim() && !searchActiveTag) {
+      setSearchResults([]);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => executeSearch(text, searchActiveTag), 400);
+  };
+
+  const handleSearchTagPress = (tagName) => {
+    const nextTag = searchActiveTag === tagName ? null : tagName;
+    setSearchActiveTag(nextTag);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    executeSearch(searchKeyword, nextTag);
+  };
+
+  const handleOpenSearch = () => {
+    setIsSearchMode(true);
+    setSearchKeyword('');
+    setSearchResults([]);
+    setSearchActiveTag(null);
+    setTimeout(() => searchInputRef.current?.focus(), 100);
+  };
+
+  const handleCloseSearch = () => {
+    setIsSearchMode(false);
+    setSearchKeyword('');
+    setSearchResults([]);
+    setSearchActiveTag(null);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+  };
 
   const handleRefresh = useCallback(() => {
     dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
@@ -367,30 +432,111 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     <Screen edges={['top', 'left', 'right']} style={styles.safeArea}>
       {/* App Header */}
       <View style={styles.header}>
-        <Text style={styles.logoText}>
-          Vibe<Text style={styles.logoHighlight}>Sport</Text>
-        </Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="search-outline" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="notifications-outline" size={24} color="#1F2937" />
-          </TouchableOpacity>
-        </View>
+        {isSearchMode ? (
+          // ─── Search mode header ──────────────────────────────────────
+          <>
+            <TouchableOpacity onPress={handleCloseSearch} style={styles.searchBackBtn}>
+              <Ionicons name="arrow-back" size={22} color="#FF6B35" />
+            </TouchableOpacity>
+            <View style={styles.searchInputWrapper}>
+              <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
+              <TextInput
+                ref={searchInputRef}
+                style={styles.searchInput}
+                placeholder="Tìm kiếm bài viết, tag, môn thể thao..."
+                placeholderTextColor="#9CA3AF"
+                value={searchKeyword}
+                onChangeText={handleSearchChange}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+              {searchKeyword.length > 0 && Platform.OS !== 'ios' && (
+                <TouchableOpacity onPress={() => handleSearchChange('')} style={styles.searchClearBtn}>
+                  <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        ) : (
+          // ─── Normal header ──────────────────────────────────────────
+          <>
+            <Text style={styles.logoText}>
+              Vibe<Text style={styles.logoHighlight}>Sport</Text>
+            </Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.iconButton} onPress={handleOpenSearch}>
+                <Ionicons name="search-outline" size={24} color="#1F2937" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => navigation.navigate('Notification')}
+              >
+                <View style={{ position: 'relative' }}>
+                  <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+                  {unreadCount > 0 && (
+                    <View style={styles.badgeContainer}>
+                      <Text style={styles.badgeText}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
 
+      {/* Search tag filter: hiện khi đang search mode */}
+      {isSearchMode && (
+        <View style={styles.searchTagContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.searchTagRow}
+          >
+            <TouchableOpacity
+              onPress={() => handleSearchTagPress(null)}
+              style={[styles.filterChip, !searchActiveTag && styles.filterChipActive]}
+            >
+              <Text style={[styles.filterChipText, !searchActiveTag && styles.filterChipTextActive]}>
+                Tất cả
+              </Text>
+            </TouchableOpacity>
+            {catalogTags.map((tag) => (
+              <TouchableOpacity
+                key={tag._id}
+                onPress={() => handleSearchTagPress(tag.name)}
+                style={[styles.filterChip, searchActiveTag === tag.name && styles.filterChipActive]}
+              >
+                <TagIcon
+                  color={searchActiveTag === tag.name ? '#FF6B35' : '#374151'}
+                  size={14}
+                  tagName={tag.name}
+                />
+                <Text style={[styles.filterChipText, searchActiveTag === tag.name && styles.filterChipTextActive]}>
+                  {tag.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       <FlatList
-        data={posts}
+        data={isSearchMode ? searchResults : posts}
         keyExtractor={(item) => item._id}
         renderItem={renderPostItem}
-        onEndReached={handleLoadMore}
+        onEndReached={isSearchMode ? null : handleLoadMore}
         onEndReachedThreshold={0.5}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF6B35']} />
+          !isSearchMode ? (
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF6B35']} />
+          ) : undefined
         }
         ListHeaderComponent={
-          <View>
+          isSearchMode ? null : (
+            <View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -424,15 +570,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
               ))}
             </ScrollView>
 
-            {activeTag ? (
-              <View style={styles.activeFilterBanner}>
-                <Text style={styles.activeFilterText}>Đang lọc: #{activeTag}</Text>
-                <TouchableOpacity onPress={() => handleTagPress(null)}>
-                  <Text style={styles.clearFilterText}>Bỏ lọc</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
           <View style={styles.bannerContainer}>
             <View style={styles.bannerCard}>
               <Text style={styles.bannerGreeting}>
@@ -449,19 +586,33 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             </View>
           </View>
           </View>
+          )
         }
         ListFooterComponent={
-          loading && !refreshing ? (
+          (isSearchMode ? searchLoading : (loading && !refreshing)) ? (
             <ActivityIndicator size="small" color="#FF6B35" style={styles.footerLoader} />
           ) : null
         }
         ListEmptyComponent={
-          !loading && !refreshing ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="newspaper-outline" size={48} color="#D1D5DB" />
-              <Text style={styles.emptyText}>Chưa có bài đăng nào. Hãy là người đầu tiên chia sẻ!</Text>
-            </View>
-          ) : null
+          isSearchMode ? (
+            !searchLoading ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyText}>
+                  {searchKeyword.length > 0 || searchActiveTag
+                    ? 'Không tìm thấy bài viết nào phù hợp.'
+                    : 'Nhập từ khóa hoặc chọn tag để tìm kiếm.'}
+                </Text>
+              </View>
+            ) : null
+          ) : (
+            !loading && !refreshing ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="newspaper-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyText}>Chưa có bài đăng nào. Hãy là người đầu tiên chia sẻ!</Text>
+              </View>
+            ) : null
+          )
         }
       />
 
@@ -593,6 +744,24 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 4,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   bannerContainer: {
     padding: 16,
@@ -920,5 +1089,160 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#374151',
     fontWeight: '700',
+  },
+
+  // ─── Search styles ─────────────────────────────────────────────
+  searchBackBtn: {
+    padding: 6,
+    marginRight: 4,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1F2937',
+    paddingVertical: 0,
+  },
+  searchClearBtn: {
+    padding: 2,
+    marginLeft: 4,
+  },
+  searchTagContainer: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    height: 52,
+    justifyContent: 'center',
+  },
+  searchTagRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+    alignItems: 'center',
+  },
+
+  // ─── Search result header ───────────────────────────────────────
+  searchResultHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  searchResultCount: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+
+  // ─── Suggestion Dropdown ────────────────────────────────────────
+  suggestionOverlay: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    elevation: 10,
+    zIndex: 999,
+    paddingBottom: 6,
+  },
+  suggSection: {
+    paddingTop: 2,
+  },
+  suggSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    letterSpacing: 0.8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  suggRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  suggTagIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFF0EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggTagText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  suggAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E5E7EB',
+  },
+  suggAvatarPlaceholder: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggAvatarText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  suggUserInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  suggUserName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  suggUserSport: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  suggDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 16,
+    marginVertical: 2,
+  },
+  suggSearchAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  suggSearchAllText: {
+    fontSize: 14,
+    color: '#374151',
+    flex: 1,
   },
 });

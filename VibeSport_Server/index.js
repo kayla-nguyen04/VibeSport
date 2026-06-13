@@ -14,6 +14,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 const path = require('node:path');
 const fs = require('node:fs');
+const http = require('node:http');
+const { Server } = require('socket.io');
+
 const authRouter = require('./routes/auth');
 const otpRoutes = require("./routes/otp");
 const matchRoutes = require("./routes/matches");
@@ -21,9 +24,35 @@ const postsRouter = require('./routes/posts');
 const savedPostsRouter = require('./routes/savedPosts');
 const tagsRouter = require('./routes/tags');
 const usersRouter = require('./routes/users');
+const notificationsRouter = require('./routes/notifications');
 const seedTags = require('./scripts/seedTags');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+  },
+});
+
+// Setup Socket.IO global reference
+global.io = io;
+
+io.on('connection', (socket) => {
+  console.log('[SOCKET] Client connected:', socket.id);
+
+  socket.on('join', (userId) => {
+    if (userId) {
+      socket.join(userId.toString());
+      console.log(`[SOCKET] User ${userId} joined room ${userId}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('[SOCKET] Client disconnected:', socket.id);
+  });
+});
+
 const PORT = 4000;
 const HOST = '0.0.0.0';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesport';
@@ -43,11 +72,12 @@ if (!fs.existsSync(uploadsDir)) {
 // Serve file static
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Mount posts routes
+// Mount routes
 app.use('/api/posts', postsRouter);
 app.use('/api/saved-posts', savedPostsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/notifications', notificationsRouter);
 
 app.get('/health', (_, response) => {
   response.json({
@@ -67,8 +97,8 @@ mongoose
     console.log('Connected to MongoDB');
     await seedTags();
     console.log('Tag catalog ready');
-    app.listen(PORT, HOST, () => {
-      console.log(`Auth API listening at http://${HOST}:${PORT}`);
+    server.listen(PORT, HOST, () => {
+      console.log(`Server listening at http://${HOST}:${PORT}`);
     });
   })
   .catch((error) => {

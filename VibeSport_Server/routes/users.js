@@ -7,6 +7,7 @@ const {
   getNotifications,
   markNotificationsRead,
   updatePresence,
+  searchUsers,
 } = require('../controllers/userController');
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.use(authMiddleware);
 router.get('/notifications', getNotifications);
 router.post('/notifications/read', markNotificationsRead);
 router.post('/presence', updatePresence);
+router.get('/search', searchUsers);
 router.get('/:id', getUserProfile);
 router.post('/:id/follow', toggleFollow);
 router.get('/:id/teams', getUserTeams);

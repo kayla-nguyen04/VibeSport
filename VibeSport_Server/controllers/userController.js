@@ -207,3 +207,31 @@ exports.markNotificationsRead = async (req, res) => {
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật thông báo' });
   }
 };
+
+exports.searchUsers = async (req, res) => {
+  try {
+    const keyword = String(req.query.keyword || '').trim();
+    if (!keyword) {
+      return res.json({ success: true, data: [] });
+    }
+    const users = await User.find({
+      name: { $regex: keyword, $options: 'i' },
+    })
+      .select('_id name picture favoriteSport')
+      .limit(8)
+      .lean();
+
+    res.json({
+      success: true,
+      data: users.map((u) => ({
+        id: u._id,
+        name: u.name,
+        picture: u.picture,
+        favoriteSport: u.favoriteSport,
+      })),
+    });
+  } catch (error) {
+    console.error('searchUsers error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tìm kiếm người dùng' });
+  }
+};
