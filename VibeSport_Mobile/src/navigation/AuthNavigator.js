@@ -8,6 +8,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { hydrateSession, logoutUser, updateProfile } from '../redux/authSlice';
 import { usePresenceHeartbeat } from '../hooks/usePresenceHeartbeat';
+import { useSocket } from '../hooks/useSocket';
 import { AuthScreen } from '../screens/AuthScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import { MainTabsScreen } from '../screens/MainTabsScreen';
@@ -22,6 +23,7 @@ import { CreatePostScreen } from '../screens/CreatePostScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import SavedPostsScreen from '../screens/SavedPostsScreen';
+import { NotificationScreen } from '../screens/NotificationScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -71,6 +73,7 @@ export function AuthNavigator() {
   const isProfileComplete = Boolean(user?.favoriteSport && user?.position && user?.area);
 
   usePresenceHeartbeat();
+  useSocket();
 
   useEffect(() => {
     dispatch(hydrateSession());
@@ -109,6 +112,7 @@ export function AuthNavigator() {
             <Stack.Screen name="PostDetail" component={PostDetailScreen} />
             <Stack.Screen name="UserProfile" component={UserProfileScreen} />
             <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
+            <Stack.Screen name="Notification" component={NotificationScreen} />
           </>
         ) : (
           <>

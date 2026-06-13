@@ -3,6 +3,8 @@ const PostLike = require('../models/PostLike');
 const SavedPost = require('../models/SavedPost');
 const Comment = require('../models/Comment');
 const CommentLike = require('../models/CommentLike');
+const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { API_BASE_URL } = require('../utils/config');
 const {
   parseTagsInput,
@@ -10,6 +12,35 @@ const {
   resolveCatalogTags,
   updateTagUsageCounts,
 } = require('../utils/tagHelpers');
+
+async function createAndSendNotification({ userId, fromUserId, type, message, postId, commentId, postThumbnail }) {
+  try {
+    const notification = new Notification({
+      userId,
+      fromUserId,
+      type,
+      message,
+      postId,
+      commentId,
+      postThumbnail,
+    });
+    await notification.save();
+
+    const populated = await Notification.findById(notification._id)
+      .populate('fromUserId', 'name picture')
+      .populate('postId', 'content mediaUrls');
+
+    if (global.io) {
+      global.io.to(userId.toString()).emit('new_notification', populated);
+      
+      const unreadCount = await Notification.countDocuments({ userId, read: false });
+      global.io.to(userId.toString()).emit('unread_count', { unreadCount });
+      console.log(`[SOCKET] Notification sent to user ${userId}, unread: ${unreadCount}`);
+    }
+  } catch (error) {
+    console.error('Error creating notification:', error);
+  }
+}
 
 // Helper to construct media absolute URLs
 function getAbsoluteUrl(req, filename) {
@@ -272,6 +303,32 @@ exports.likePost = async (req, res) => {
 
     await post.save();
 
+    // Gửi thông báo đến chủ bài viết nếu có cảm xúc mới và không tự thả tim bài của mình
+    if (liked && post.userId.toString() !== userId.toString()) {
+      const sender = await User.findById(userId);
+      const senderName = sender ? sender.name : 'Một thành viên';
+      
+      const sportEmojis = {
+        'Bóng đá': '⚽',
+        'Cầu lông': '🏸',
+        'Pickleball': '🏓'
+      };
+      
+      const activeSport = post.sportType || 'Bóng đá';
+      const emoji = sportEmojis[activeSport] || '🔔';
+      const message = `${emoji} ${senderName} đã thích bài viết của bạn`;
+      const postThumbnail = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : null;
+
+      await createAndSendNotification({
+        userId: post.userId,
+        fromUserId: userId,
+        type: 'like',
+        message,
+        postId: post._id,
+        postThumbnail,
+      });
+    }
+
     // Get top 2 reactions
     const reactionsCount = await PostLike.aggregate([
       { $match: { postId: post._id } },
@@ -421,9 +478,38 @@ exports.commentPost = async (req, res) => {
     const populatedComment = await Comment.findById(comment._id).populate('userId', 'name picture favoriteSport');
     const commentObj = populatedComment.toObject();
 
+    const commenterName = populatedComment.userId?.name || 'Một thành viên';
+    const postThumbnail = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : null;
+
     if (parentId) {
       const parentComment = await Comment.findById(parentId).populate('userId', 'name');
       commentObj.replyToName = parentComment?.userId?.name || 'Thành viên';
+
+      // Gửi thông báo reply đến chủ comment cha (nếu không tự trả lời chính mình)
+      if (parentComment && parentComment.userId && parentComment.userId._id.toString() !== req.userId.toString()) {
+        await createAndSendNotification({
+          userId: parentComment.userId._id,
+          fromUserId: req.userId,
+          type: 'reply',
+          message: `🔥 ${commenterName} đã trả lời bình luận của bạn`,
+          postId: post._id,
+          commentId: comment._id,
+          postThumbnail,
+        });
+      }
+    } else {
+      // Gửi thông báo comment đến chủ bài viết (nếu không tự bình luận bài của mình)
+      if (post.userId.toString() !== req.userId.toString()) {
+        await createAndSendNotification({
+          userId: post.userId,
+          fromUserId: req.userId,
+          type: 'comment',
+          message: `💬 ${commenterName} đã bình luận bài viết của bạn`,
+          postId: post._id,
+          commentId: comment._id,
+          postThumbnail,
+        });
+      }
     }
 
     res.status(201).json({

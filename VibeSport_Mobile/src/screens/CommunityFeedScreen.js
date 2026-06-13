@@ -25,6 +25,7 @@ import {
   savePost,
   unsavePost,
 } from '../redux/postSlice';
+import { fetchUnreadCount } from '../redux/notificationSlice';
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
 import { getPostLikesRequest } from '../services/postApi';
@@ -55,6 +56,7 @@ function fixMediaUrl(url) {
 export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
   const { posts, loading, refreshing, hasMore, page, activeTag } = useSelector((state) => state.posts);
+  const { unreadCount } = useSelector((state) => state.notifications);
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
   const [optionsPost, setOptionsPost] = useState(null);
@@ -70,6 +72,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
       .then((res) => setCatalogTags(res.data || []))
       .catch(() => setCatalogTags([]));
   }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      dispatch(fetchUnreadCount());
+    }
+  }, [dispatch, token]);
 
   useEffect(() => {
     dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
@@ -374,8 +382,20 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           <TouchableOpacity style={styles.iconButton}>
             <Ionicons name="search-outline" size={24} color="#1F2937" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => navigation.navigate('Notification')}
+          >
+            <View style={{ position: 'relative' }}>
+              <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+              {unreadCount > 0 && (
+                <View style={styles.badgeContainer}>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -593,6 +613,24 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 4,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   bannerContainer: {
     padding: 16,
