@@ -92,11 +92,15 @@ export default function PostDetailScreen({ route, navigation }) {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [expandedComments, setExpandedComments] = useState({});
-<<<<<<< HEAD
   const [replyingTo, setReplyingTo] = useState(null);
   const [showReplies, setShowReplies] = useState({});
   const commentInputRef = useRef(null);
   const isSubmittingRef = useRef(false);
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
+  const [likesVisible, setLikesVisible] = useState(false);
+  const [likesSummary, setLikesSummary] = useState(null);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [activeReactionFilter, setActiveReactionFilter] = useState('all');
 
   const toggleShowReplies = (commentId) => {
     setShowReplies((prev) => ({
@@ -104,13 +108,6 @@ export default function PostDetailScreen({ route, navigation }) {
       [commentId]: !prev[commentId],
     }));
   };
-=======
-  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
-  const [likesVisible, setLikesVisible] = useState(false);
-  const [likesSummary, setLikesSummary] = useState(null);
-  const [likesLoading, setLikesLoading] = useState(false);
-  const [activeReactionFilter, setActiveReactionFilter] = useState('all');
->>>>>>> Duc
 
   const toggleExpandComment = (commentId) => {
     setExpandedComments((prev) => ({
@@ -182,17 +179,8 @@ export default function PostDetailScreen({ route, navigation }) {
     loadPostDetails();
   }, [loadPostDetails]);
 
-<<<<<<< HEAD
-  const handleLikePost = async () => {
-    if (!post) return;
-
-    // Optimistic UI update locally
-    const wasLiked = post.isLiked;
-    setPost((prev) => ({
-=======
   const applyPostReaction = (payload) => {
     setPost((prev) => prev ? ({
->>>>>>> Duc
       ...prev,
       isLiked: payload.isLiked,
       reactionType: payload.reactionType,
@@ -882,8 +870,6 @@ export default function PostDetailScreen({ route, navigation }) {
             <View style={styles.bottomSheetHandle} />
             <Text style={styles.bottomSheetTitle}>TÙY CHỌN BÀI VIẾT</Text>
 
-<<<<<<< HEAD
-=======
             <TouchableOpacity
               onPress={() => {
                 setOptionsVisible(false);
@@ -901,7 +887,7 @@ export default function PostDetailScreen({ route, navigation }) {
               </Text>
             </TouchableOpacity>
 
->>>>>>> Duc
+
             {isOwner ? (
               <>
                 <TouchableOpacity

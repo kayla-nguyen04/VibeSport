@@ -58,13 +58,8 @@ exports.createPost = async (req, res) => {
     });
 
     await post.save();
-<<<<<<< HEAD
-
-    // Populate user info
-=======
     await updateTagUsageCounts([], resolvedTags);
 
->>>>>>> d39a000cbe2a334e7f488707b2daa7c615891cb8
     const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
 
     res.status(201).json({
@@ -173,10 +168,6 @@ exports.getPostById = async (req, res) => {
       isSaved = Boolean(await SavedPost.exists({ postId: post._id, userId: req.userId }));
     }
 
-<<<<<<< HEAD
-    // Fetch all comments for this post
-    const allComments = await Comment.find({ postId: id })
-=======
     // Get top 2 reactions
     const reactionsCount = await PostLike.aggregate([
       { $match: { postId: post._id } },
@@ -186,8 +177,8 @@ exports.getPostById = async (req, res) => {
     ]);
     const topReactions = reactionsCount.map(r => r._id);
 
-    const comments = await Comment.find({ postId: id })
->>>>>>> Duc
+    // Fetch all comments for this post
+    const allComments = await Comment.find({ postId: id })
       .populate('userId', 'name picture favoriteSport')
       .sort({ createdAt: 1 });
 
@@ -230,14 +221,10 @@ exports.getPostById = async (req, res) => {
       data: {
         ...enrichPostTags(post),
         isLiked,
-<<<<<<< HEAD
-        comments: topLevelComments,
-=======
         reactionType,
         topReactions,
         isSaved,
-        comments,
->>>>>>> Duc
+        comments: topLevelComments,
       },
     });
   } catch (error) {
