@@ -269,7 +269,7 @@ export function CreatePostScreen({ navigation, route }) {
             <View style={styles.dropdownOptions}>
               {(catalogTags.length
                 ? catalogTags
-                : [{ name: 'Bóng đá' }, { name: 'Bóng rổ' }, { name: 'Cầu lông' }]
+                : [{ name: 'Bóng đá' }, { name: 'Cầu lông' }, { name: 'Pickleball' }]
               ).map((tag) => (
                 <TouchableOpacity
                   key={tag._id || tag.name}
