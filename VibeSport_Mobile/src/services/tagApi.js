@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../components/constants/api';
+import { API_BASE_URL } from '../components/constants/api.example';
 
 async function request(path, token) {
   const headers = {};

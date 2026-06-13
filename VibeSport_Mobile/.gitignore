@@ -35,9 +35,6 @@ yarn-error.*
 .env*.local
 env
 
-# API URL local — copy từ api.example.js
-src/components/constants/api.js
-
 # IDE config
 .vscode/
 .idea/

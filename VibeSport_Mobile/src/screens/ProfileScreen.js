@@ -24,6 +24,16 @@ const POSITION_OPTIONS = {
   'Cầu lông': ['Đơn', 'Đôi', 'Đôi nam', 'Đôi nữ'],
   Pickleball: ['Forehand', 'Backhand', 'Đôi'],
 };
+
+function getProfileErrorMessage(error, fallback) {
+  if (typeof error === 'string') return error;
+  return error?.message || fallback;
+}
+
+function getUserId(user) {
+  return user?.id || user?._id;
+}
+
 export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
@@ -89,20 +99,32 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       }
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setIsSaving(true);
         const selectedAsset = result.assets[0];
-        const base64Image = `data:image/jpeg;base64,${selectedAsset.base64}`;
-        
-        const actionResult = await onUpdateProfile({
-          userId: user.id,
-          picture: base64Image,
-        });
-        
-        setIsSaving(false);
-        if (actionResult?.error) {
-          Alert.alert('Lỗi', actionResult.error.message || 'Cập nhật ảnh đại diện thất bại.');
-        } else {
+        if (!selectedAsset.base64) {
+          Alert.alert('Lỗi', 'Không đọc được dữ liệu ảnh. Vui lòng thử lại.');
+          return;
+        }
+
+        const userId = getUserId(user);
+        if (!userId) {
+          Alert.alert('Lỗi', 'Không xác định được tài khoản. Vui lòng đăng nhập lại.');
+          return;
+        }
+
+        const mimeType = selectedAsset.mimeType || 'image/jpeg';
+        const base64Image = `data:${mimeType};base64,${selectedAsset.base64}`;
+
+        setIsSaving(true);
+        try {
+          await onUpdateProfile({
+            userId,
+            picture: base64Image,
+          });
           Alert.alert('Thành công', 'Cập nhật ảnh đại diện thành công.');
+        } catch (error) {
+          Alert.alert('Lỗi', getProfileErrorMessage(error, 'Cập nhật ảnh đại diện thất bại.'));
+        } finally {
+          setIsSaving(false);
         }
       }
     } catch (err) {
@@ -118,23 +140,29 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       return;
     }
     
+    const userId = getUserId(user);
+    if (!userId) {
+      Alert.alert('Lỗi', 'Không xác định được tài khoản. Vui lòng đăng nhập lại.');
+      return;
+    }
+
     setIsSaving(true);
-    const actionResult = await onUpdateProfile({
-      userId: user?.id || user?._id,
-      name: editName.trim(),
-      phone: editPhone.trim(),
-      favoriteSport: editFavoriteSport,
-      position: editPosition,
-      area: editArea.trim(),
-      bio: editBio.trim(),
-    });
-    setIsSaving(false);
-    
-    if (actionResult?.error) {
-      Alert.alert('Lỗi', actionResult.error.message || 'Cập nhật thông tin hồ sơ thất bại.');
-    } else {
+    try {
+      await onUpdateProfile({
+        userId,
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        favoriteSport: editFavoriteSport,
+        position: editPosition,
+        area: editArea.trim(),
+        bio: editBio.trim(),
+      });
       Alert.alert('Thành công', 'Cập nhật hồ sơ thành công.');
       setIsEditModalVisible(false);
+    } catch (error) {
+      Alert.alert('Lỗi', getProfileErrorMessage(error, 'Cập nhật thông tin hồ sơ thất bại.'));
+    } finally {
+      setIsSaving(false);
     }
   };
 
