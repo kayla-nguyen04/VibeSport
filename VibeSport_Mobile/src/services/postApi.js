@@ -53,6 +53,18 @@ export const getPostsRequest = async (page = 1, limit = 10, token = null, tag = 
   return request(`/api/posts?${params.toString()}`, {}, token);
 };
 
+export const searchPostsRequest = async (keyword = '', tag = null, page = 1, limit = 10, token = null) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+
+  if (keyword) params.append('keyword', keyword);
+  if (tag) params.append('tag', tag);
+
+  return request(`/api/posts?${params.toString()}`, {}, token);
+};
+
 export const createPostRequest = async (formData, token = null) => {
   return request('/api/posts', {
     method: 'POST',

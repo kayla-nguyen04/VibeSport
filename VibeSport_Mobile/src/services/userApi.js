@@ -28,3 +28,6 @@ export const getNotificationsRequest = (token) =>
 
 export const updatePresenceRequest = (token) =>
   request('/api/users/presence', { method: 'POST' }, token);
+
+export const searchUsersRequest = (keyword, token) =>
+  request(`/api/users/search?keyword=${encodeURIComponent(keyword)}`, {}, token);

@@ -110,7 +110,7 @@ exports.createPost = async (req, res) => {
   }
 };
 
-// 2. Fetch list of posts (paginated)
+// 2. Fetch list of posts (paginated, searchable)
 exports.getPosts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -118,14 +118,17 @@ exports.getPosts = async (req, res) => {
     const skip = (page - 1) * limit;
     const tag = String(req.query.tag || req.query.sportType || '').trim();
     const userId = String(req.query.userId || '').trim();
+    const keyword = String(req.query.keyword || '').trim();
 
+    // ─── Keyword search: dùng aggregation để ưu tiên theo thứ tự ───
+    if (keyword) {
+      return await searchPostsWithPriority({ req, res, keyword, tag, userId, page, limit, skip });
+    }
+
+    // ─── Normal feed (không có keyword) ────────────────────────────
     const filter = {};
-    if (tag) {
-      filter.$or = [{ tags: tag }, { sportType: tag }];
-    }
-    if (userId) {
-      filter.userId = userId;
-    }
+    if (tag) filter.$or = [{ tags: tag }, { sportType: tag }];
+    if (userId) filter.userId = userId;
 
     const posts = await Post.find(filter)
       .populate('userId', 'name picture favoriteSport')
@@ -133,50 +136,160 @@ exports.getPosts = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    const mappedPosts = await Promise.all(
-      posts.map(async (post) => {
-        let isLiked = false;
-        let reactionType = null;
-        let isSaved = false;
-        if (req.userId) {
-          const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
-          if (like) {
-            isLiked = true;
-            reactionType = like.reactionType;
-          }
-          isSaved = Boolean(await SavedPost.exists({ postId: post._id, userId: req.userId }));
-        }
+    const mappedPosts = await mapPostInteractions(posts, req.userId);
 
-        // Get top 2 reactions
-        const reactionsCount = await PostLike.aggregate([
-          { $match: { postId: post._id } },
-          { $group: { _id: '$reactionType', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 2 }
-        ]);
-        const topReactions = reactionsCount.map(r => r._id);
-
-        return {
-          ...enrichPostTags(post),
-          isLiked,
-          reactionType,
-          topReactions,
-          isSaved,
-        };
-      })
-    );
-
-    res.status(200).json({
-      success: true,
-      data: mappedPosts,
-      page,
-      limit,
-    });
+    res.status(200).json({ success: true, data: mappedPosts, page, limit });
   } catch (error) {
     console.error('Get posts error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi tải danh sách bài viết' });
   }
 };
+
+// ─── Hàm search với ưu tiên: tên người → tag → nội dung ──────────
+async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, limit, skip }) {
+  try {
+    const keywordRegex = new RegExp(keyword, 'i');
+
+    // Tìm các userId có tên khớp keyword
+    const matchingUsers = await User.find({ name: keywordRegex }).select('_id').lean();
+    const matchingUserIds = matchingUsers.map(u => u._id);
+
+    // Điều kiện khớp: tên người HOẶC tag HOẶC sportType HOẶC nội dung
+    const orConditions = [];
+    if (matchingUserIds.length > 0) {
+      orConditions.push({ userId: { $in: matchingUserIds } });
+    }
+    orConditions.push(
+      { tags: { $regex: keyword, $options: 'i' } },
+      { sportType: { $regex: keyword, $options: 'i' } },
+      { content: { $regex: keyword, $options: 'i' } },
+    );
+
+    const matchFilter = { $or: orConditions };
+
+    // Thêm filter tag (bộ lọc môn) nếu có
+    if (tag) {
+      matchFilter.$and = [
+        { $or: [{ tags: tag }, { sportType: tag }] },
+      ];
+    }
+    if (userId) {
+      matchFilter.userId = userId;
+    }
+
+    // Score branches: tên người (30) > tag (20) > sportType (15) > nội dung (10)
+    const scoreBranches = [];
+    if (matchingUserIds.length > 0) {
+      scoreBranches.push({
+        case: { $in: ['$userId', matchingUserIds] },
+        then: 30,
+      });
+    }
+    scoreBranches.push(
+      {
+        // Tag array chứa ít nhất 1 phần tử khớp keyword
+        case: {
+          $gt: [
+            {
+              $size: {
+                $filter: {
+                  input: { $ifNull: ['$tags', []] },
+                  as: 't',
+                  cond: { $regexMatch: { input: '$$t', regex: keyword, options: 'i' } },
+                },
+              },
+            },
+            0,
+          ],
+        },
+        then: 20,
+      },
+      {
+        case: { $regexMatch: { input: { $ifNull: ['$sportType', ''] }, regex: keyword, options: 'i' } },
+        then: 15,
+      },
+      {
+        case: { $regexMatch: { input: { $ifNull: ['$content', ''] }, regex: keyword, options: 'i' } },
+        then: 10,
+      },
+    );
+
+    const pipeline = [
+      { $match: matchFilter },
+      // Gán điểm ưu tiên
+      {
+        $addFields: {
+          _searchScore: {
+            $switch: { branches: scoreBranches, default: 0 },
+          },
+        },
+      },
+      // Sắp xếp: điểm cao nhất → mới nhất
+      { $sort: { _searchScore: -1, createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      // Populate userId
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          pipeline: [{ $project: { name: 1, picture: 1, favoriteSport: 1 } }],
+          as: '_userArr',
+        },
+      },
+      {
+        $addFields: { userId: { $arrayElemAt: ['$_userArr', 0] } },
+      },
+      { $project: { _userArr: 0, _searchScore: 0 } },
+    ];
+
+    const rawPosts = await Post.aggregate(pipeline);
+    const mappedPosts = await mapPostInteractions(rawPosts, req.userId);
+
+    res.status(200).json({ success: true, data: mappedPosts, page, limit });
+  } catch (error) {
+    console.error('Search posts error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tìm kiếm bài viết' });
+  }
+}
+
+// ─── Helper: map interaction (liked, saved, topReactions) ────────
+async function mapPostInteractions(posts, currentUserId) {
+  return Promise.all(
+    posts.map(async (post) => {
+      const postId = post._id;
+      let isLiked = false;
+      let reactionType = null;
+      let isSaved = false;
+
+      if (currentUserId) {
+        const like = await PostLike.findOne({ postId, userId: currentUserId });
+        if (like) {
+          isLiked = true;
+          reactionType = like.reactionType;
+        }
+        isSaved = Boolean(await SavedPost.exists({ postId, userId: currentUserId }));
+      }
+
+      const reactionsCount = await PostLike.aggregate([
+        { $match: { postId } },
+        { $group: { _id: '$reactionType', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 2 },
+      ]);
+      const topReactions = reactionsCount.map(r => r._id);
+
+      return {
+        ...enrichPostTags(post),
+        isLiked,
+        reactionType,
+        topReactions,
+        isSaved,
+      };
+    })
+  );
+}
 
 // 3. Fetch single post details with comments
 exports.getPostById = async (req, res) => {
