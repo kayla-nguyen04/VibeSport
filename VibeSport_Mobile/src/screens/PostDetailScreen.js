@@ -23,7 +23,7 @@ import {
   getPostLikesRequest,
   deletePostRequest,
 } from '../services/postApi';
-import { API_BASE_URL } from '../components/constants/api';
+import { API_BASE_URL } from '../components/constants/api.example';
 import {
   likePost as likePostInFeed,
   unlikePost as unlikePostInFeed,

@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../components/constants/api";
+import { API_BASE_URL } from '../components/constants/api.example';
 
 const MATCHES_URL = `${API_BASE_URL}/api/matches`;
 
@@ -8,7 +8,7 @@ async function matchRequest(url, options) {
     response = await fetch(url, options);
   } catch {
     throw new Error(
-      `Không kết nối được máy chủ (${API_BASE_URL}). Kiểm tra server đang chạy và IP trong api.js.`
+      `Không kết nối được máy chủ (${API_BASE_URL}). Kiểm tra server đang chạy và IP trong api.example.js.`
     );
   }
 

@@ -215,7 +215,17 @@ router.put('/update-profile', async (request, response) => {
     const updateFields = {};
     if (name !== undefined) updateFields.name = name;
     if (phone !== undefined) updateFields.phone = phone;
-    if (picture !== undefined) updateFields.picture = picture;
+    if (picture !== undefined) {
+      if (picture && typeof picture === 'string' && picture.startsWith('data:image')) {
+        const base64Part = picture.split(',')[1] || '';
+        const approxBytes = Math.ceil((base64Part.length * 3) / 4);
+        if (approxBytes > 5 * 1024 * 1024) {
+          response.status(413).json({ message: 'Ảnh đại diện quá lớn. Vui lòng chọn ảnh nhỏ hơn 5MB.' });
+          return;
+        }
+      }
+      updateFields.picture = picture;
+    }
     if (favoriteSport !== undefined) updateFields.favoriteSport = favoriteSport;
     if (position !== undefined) updateFields.position = position;
     if (area !== undefined) updateFields.area = area;

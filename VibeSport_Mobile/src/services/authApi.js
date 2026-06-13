@@ -1,10 +1,11 @@
-import { API_BASE_URL } from '../components/constants/api';
+import { API_BASE_URL } from '../components/constants/api.example';
 
 const REQUEST_TIMEOUT_MS = 15000;
+const PROFILE_UPDATE_TIMEOUT_MS = 60000;
 
-async function request(path, options) {
+async function request(path, options, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let response;
   try {
@@ -20,7 +21,7 @@ async function request(path, options) {
     clearTimeout(timeoutId);
     if (err?.name === 'AbortError') {
       throw new Error(
-        `Hết thời gian chờ kết nối (${API_BASE_URL}). Kiểm tra server đang chạy và IP đúng trong api.js.`
+        `Hết thời gian chờ kết nối (${API_BASE_URL}). Kiểm tra server đang chạy và IP đúng trong api.example.js.`
       );
     }
     const msg = err?.message || '';
@@ -33,7 +34,7 @@ async function request(path, options) {
     if (isNetworkError) {
       throw new Error(
         `Không kết nối được máy chủ (${API_BASE_URL}). ` +
-          'Kiểm tra: server đang chạy, điện thoại cùng Wi‑Fi, IP đúng trong api.js, tường lửa mở cổng 4000.'
+          'Kiểm tra: server đang chạy, điện thoại cùng Wi‑Fi, IP đúng trong api.example.js, tường lửa mở cổng 4000.'
       );
     }
     throw new Error(msg || 'Network request failed.');
@@ -86,8 +87,13 @@ export function googleLoginRequest(payload) {
 }
 
 export function updateProfileRequest(payload) {
-  return request('/auth/update-profile', {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
+  const hasPicture = payload?.picture != null;
+  return request(
+    '/auth/update-profile',
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
+    hasPicture ? PROFILE_UPDATE_TIMEOUT_MS : REQUEST_TIMEOUT_MS
+  );
 }

@@ -47,7 +47,7 @@ function HomeScreen({ navigation, route }) {
         activeTab={activeTab}
         onChangeTab={setActiveTab}
         onLogout={() => dispatch(logoutUser())}
-        onUpdateProfile={(payload) => dispatch(updateProfile(payload))}
+        onUpdateProfile={(payload) => dispatch(updateProfile(payload)).unwrap()}
         user={user}
         navigation={navigation}
       />

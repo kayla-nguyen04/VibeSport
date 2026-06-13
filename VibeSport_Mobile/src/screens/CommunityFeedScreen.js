@@ -28,7 +28,7 @@ import {
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
 import { getPostLikesRequest } from '../services/postApi';
-import { API_BASE_URL } from '../components/constants/api';
+import { API_BASE_URL } from '../components/constants/api.example';
 import { Screen } from '../components/Screen';
 import {
   LikesModal,

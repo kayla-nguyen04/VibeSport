@@ -29,7 +29,8 @@ const HOST = '0.0.0.0';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesport';
 
 app.use(cors());
-app.use(express.json());
+// Cho phép upload ảnh đại diện dạng base64 trong JSON (mặc định express chỉ ~100KB)
+app.use(express.json({ limit: '10mb' }));
 app.use("/api/otp", otpRoutes);
 app.use("/api/matches", matchRoutes);
 
