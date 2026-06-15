@@ -39,13 +39,18 @@ export function CreatePostScreen({ navigation, route }) {
   // Check if we are in edit mode
   const editPost = route?.params?.editPost ?? null;
   const isEditMode = !!editPost;
+  const isFindTeam = editPost?.tags?.includes('Tìm đội') || false;
 
   const [content, setContent] = React.useState(editPost?.content ?? '');
   const [selectedMedia, setSelectedMedia] = React.useState([]);
   const [catalogTags, setCatalogTags] = React.useState([]);
-  const [selectedTag, setSelectedTag] = React.useState(
-    editPost?.tags?.[0] ?? editPost?.sportType ?? 'Bóng đá'
-  );
+  const [selectedTag, setSelectedTag] = React.useState(() => {
+    if (editPost) {
+      const sportTag = editPost.tags?.find((t) => t !== 'Tìm đội');
+      return sportTag || editPost.sportType || 'Bóng đá';
+    }
+    return 'Bóng đá';
+  });
   const [showTagDropdown, setShowTagDropdown] = React.useState(false);
 
   // Location states
@@ -274,7 +279,7 @@ export function CreatePostScreen({ navigation, route }) {
           {showTagDropdown ? (
             <View style={styles.dropdownOptions}>
               {(catalogTags.length
-                ? catalogTags
+                ? catalogTags.filter((t) => ['Bóng đá', 'Cầu lông', 'Pickleball'].includes(t.name))
                 : [{ name: 'Bóng đá' }, { name: 'Cầu lông' }, { name: 'Pickleball' }]
               ).map((tag) => (
                 <TouchableOpacity
@@ -365,10 +370,12 @@ export function CreatePostScreen({ navigation, route }) {
           )}
 
           {/* Add Media Button */}
-          <TouchableOpacity onPress={handlePickMedia} style={styles.addMediaBtn}>
-            <Ionicons name="image-outline" size={24} color="#FF6B35" />
-            <Text style={styles.addMediaText}>Thêm ảnh / video</Text>
-          </TouchableOpacity>
+          {!isEditMode && (
+            <TouchableOpacity onPress={handlePickMedia} style={styles.addMediaBtn}>
+              <Ionicons name="image-outline" size={24} color="#FF6B35" />
+              <Text style={styles.addMediaText}>Thêm ảnh / video</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -604,5 +611,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  tagDropdownDisabled: {
+    backgroundColor: '#E5E7EB',
+    opacity: 0.8,
   },
 });

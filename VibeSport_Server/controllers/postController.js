@@ -125,9 +125,19 @@ exports.getPosts = async (req, res) => {
       return await searchPostsWithPriority({ req, res, keyword, tag, userId, page, limit, skip });
     }
 
-    // ─── Normal feed (không có keyword) ────────────────────────────
     const filter = {};
-    if (tag) filter.$or = [{ tags: tag }, { sportType: tag }];
+    if (tag) {
+      if (tag === 'Tìm đội') {
+        filter.$or = [{ tags: tag }, { sportType: tag }];
+      } else {
+        filter.$and = [
+          { $or: [{ tags: tag }, { sportType: tag }] },
+          { tags: { $ne: 'Tìm đội' } }
+        ];
+      }
+    } else {
+      filter.tags = { $ne: 'Tìm đội' };
+    }
     if (userId) filter.userId = userId;
 
     const posts = await Post.find(filter)
@@ -169,9 +179,18 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
 
     // Thêm filter tag (bộ lọc môn) nếu có
     if (tag) {
-      matchFilter.$and = [
-        { $or: [{ tags: tag }, { sportType: tag }] },
-      ];
+      if (tag === 'Tìm đội') {
+        matchFilter.$and = [
+          { $or: [{ tags: tag }, { sportType: tag }] },
+        ];
+      } else {
+        matchFilter.$and = [
+          { $or: [{ tags: tag }, { sportType: tag }] },
+          { tags: { $ne: 'Tìm đội' } },
+        ];
+      }
+    } else {
+      matchFilter.tags = { $ne: 'Tìm đội' };
     }
     if (userId) {
       matchFilter.userId = userId;
