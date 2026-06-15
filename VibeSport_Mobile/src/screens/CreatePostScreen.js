@@ -160,11 +160,17 @@ export function CreatePostScreen({ navigation, route }) {
       setLocationLoading(false);
     }
 
+    const originalTags = editPost?.tags || [];
+    const isFindTeam = originalTags.includes('Tìm đội');
+    const finalTags = isFindTeam
+      ? ['Tìm đội', selectedTag]
+      : [selectedTag];
+
     const formData = new FormData();
     formData.append('content', content.trim());
     formData.append('location', location);
     formData.append('sportType', sportType);
-    formData.append('tags', JSON.stringify([selectedTag]));
+    formData.append('tags', JSON.stringify(finalTags));
 
     selectedMedia.forEach((asset, index) => {
       const uri = asset.uri;

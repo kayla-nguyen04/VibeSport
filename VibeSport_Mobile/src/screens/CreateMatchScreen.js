@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSelector } from "react-redux";
 import {
@@ -13,10 +13,14 @@ import {
   Platform,
   Modal,
   FlatList,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Ionicons } from "@expo/vector-icons";
 
 import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
+import { getPostsRequest } from "../services/postApi";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 
@@ -52,12 +56,54 @@ const SPORT_LIMITS = {
   },
 };
 
+const SPORT_MAP = {
+  football: "Bóng đá",
+  badminton: "Cầu lông",
+  pickleball: "Pickleball",
+};
+
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
+  const token = useSelector((state) => state.auth.token);
   const editMatch = route?.params?.editMatch ?? null;
   const isEditMode = !!editMatch;
 
   const [sport, setSport] = useState(editMatch?.sport || "football");
+  const [findTeamPosts, setFindTeamPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    let isMounted = true;
+    const loadPosts = async () => {
+      try {
+        setLoadingPosts(true);
+        const res = await getPostsRequest(1, 50, token, "Tìm đội");
+        if (isMounted) {
+          setFindTeamPosts(res.data || []);
+        }
+      } catch (err) {
+        console.log("Load find team posts error:", err);
+      } finally {
+        if (isMounted) {
+          setLoadingPosts(false);
+        }
+      }
+    };
+    loadPosts();
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  const filteredPosts = findTeamPosts.filter((post) => {
+    const targetSport = SPORT_MAP[sport];
+    return (
+      post.sportType === targetSport ||
+      post.tags?.includes(targetSport)
+    );
+  });
+
   const [title, setTitle] = useState(editMatch?.title || "");
   const [selectedDate, setSelectedDate] = useState(
     editMatch?.date ? parseDateString(editMatch.date) : new Date()
@@ -400,6 +446,63 @@ export default function CreateMatchScreen({ navigation, route }) {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* NGƯỜI CHƠI ĐANG TÌM ĐỘI */}
+        <Text style={styles.sectionLabel}>NGƯỜI CHƠI ĐANG TÌM ĐỘI ({SPORT_MAP[sport]?.toUpperCase()})</Text>
+        {loadingPosts ? (
+          <View style={styles.loadingPostsContainer}>
+            <ActivityIndicator size="small" color="#ff5722" />
+            <Text style={styles.loadingPostsText}>Đang tải danh sách tìm đội...</Text>
+          </View>
+        ) : filteredPosts.length === 0 ? (
+          <View style={styles.emptyPostsBox}>
+            <Text style={styles.emptyPostsText}>Chưa có bài đăng tìm đội nào cho môn này.</Text>
+          </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.findTeamScroll}
+          >
+            {filteredPosts.map((item) => {
+              const author = item.userId;
+              const authorName = author?.name || "Người dùng";
+              const authorInitial = authorName.charAt(0).toUpperCase();
+              const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString("vi-VN") : "";
+
+              return (
+                <TouchableOpacity
+                  key={item._id}
+                  style={styles.findTeamCard}
+                  activeOpacity={0.9}
+                  onPress={() => navigation?.navigate?.("PostDetail", { postId: item._id, post: item })}
+                >
+                  <View style={styles.cardHeaderRow}>
+                    {author?.picture ? (
+                      <Image source={{ uri: author.picture }} style={styles.cardAvatar} />
+                    ) : (
+                      <View style={styles.cardAvatarPlaceholder}>
+                        <Text style={styles.cardAvatarText}>{authorInitial}</Text>
+                      </View>
+                    )}
+                    <View style={styles.cardMeta}>
+                      <Text style={styles.cardAuthorName} numberOfLines={1}>
+                        {authorName}
+                      </Text>
+                      <Text style={styles.cardDate}>{dateStr}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.cardContent} numberOfLines={3}>
+                    {item.content}
+                  </Text>
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.cardDetailLink}>Xem chi tiết ›</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* TÊN TRẬN ĐẤU */}
         <Text style={styles.sectionLabel}>TÊN TRẬN ĐẤU</Text>
@@ -1087,5 +1190,105 @@ const styles = StyleSheet.create({
     color: "#ef4444",
     fontWeight: "700",
     fontSize: 15,
+  },
+  // Find team posts section in CreateMatchScreen
+  loadingPostsContainer: {
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f9f9f9",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ebebeb",
+  },
+  loadingPostsText: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 6,
+  },
+  emptyPostsBox: {
+    paddingVertical: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fafafa",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    borderStyle: "dashed",
+  },
+  emptyPostsText: {
+    fontSize: 13,
+    color: "#999",
+    fontStyle: "italic",
+  },
+  findTeamScroll: {
+    paddingVertical: 4,
+    gap: 12,
+  },
+  findTeamCard: {
+    width: 250,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#ffdcd0",
+    shadowColor: "#ff5722",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    marginRight: 8,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  cardAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#eee",
+  },
+  cardAvatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#ff5722",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardAvatarText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  cardMeta: {
+    marginLeft: 8,
+    flex: 1,
+  },
+  cardAuthorName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#333",
+  },
+  cardDate: {
+    fontSize: 10,
+    color: "#aaa",
+  },
+  cardContent: {
+    fontSize: 12,
+    color: "#555",
+    lineHeight: 16,
+    height: 48,
+  },
+  cardFooter: {
+    marginTop: 8,
+    alignItems: "flex-end",
+  },
+  cardDetailLink: {
+    fontSize: 11,
+    color: "#ff5722",
+    fontWeight: "600",
   },
 });

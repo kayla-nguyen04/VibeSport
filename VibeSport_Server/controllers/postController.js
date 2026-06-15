@@ -688,8 +688,17 @@ exports.updatePost = async (req, res) => {
     if (location !== undefined) post.location = location;
 
     if (tags !== undefined || sportType !== undefined) {
+      let tagsInput = tags !== undefined ? tags : post.tags;
+      if (previousTags.includes('Tìm đội')) {
+        const parsed = parseTagsInput(tagsInput);
+        if (!parsed.includes('Tìm đội')) {
+          parsed.push('Tìm đội');
+        }
+        tagsInput = JSON.stringify(parsed);
+      }
+
       const resolvedTags = await buildPostTags({
-        tagsInput: tags !== undefined ? tags : post.tags,
+        tagsInput,
         sportType: sportType !== undefined ? sportType : post.sportType,
         content: content !== undefined ? content : post.content,
       });
