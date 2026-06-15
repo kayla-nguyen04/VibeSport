@@ -22,6 +22,7 @@ import {
   commentPostRequest,
   getPostLikesRequest,
   deletePostRequest,
+  likeCommentRequest,
 } from '../services/postApi';
 import { API_BASE_URL } from '../components/constants/api.example';
 import {
@@ -41,6 +42,7 @@ import {
   ReactionsPreview,
   getReactionMeta,
 } from '../components/PostReactions';
+import { ReportModal } from '../components/ReportModal';
 
 function fixMediaUrl(url) {
   if (!url) return url;
@@ -101,6 +103,7 @@ export default function PostDetailScreen({ route, navigation }) {
   const [likesSummary, setLikesSummary] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [activeReactionFilter, setActiveReactionFilter] = useState('all');
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const toggleShowReplies = (commentId) => {
     setShowReplies((prev) => ({
@@ -456,6 +459,11 @@ export default function PostDetailScreen({ route, navigation }) {
         },
       },
     ]);
+  };
+
+  const handleReportPost = (reason) => {
+    setReportModalVisible(false);
+    Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
   };
 
   const formatTime = (dateString) => {
@@ -916,7 +924,7 @@ export default function PostDetailScreen({ route, navigation }) {
               <TouchableOpacity
                 onPress={() => {
                   setOptionsVisible(false);
-                  Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+                  setReportModalVisible(true);
                 }}
                 style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
               >

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import io from 'socket.io-client/dist/socket.io';
+import io from 'socket.io-client';
 import { API_BASE_URL } from '../components/constants/api';
 import { addNotification, setUnreadCount } from '../redux/notificationSlice';
 
