@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../components/constants/api.example';
+import { API_BASE_URL } from '../components/constants/api';
 
 const REQUEST_TIMEOUT_MS = 15000;
 const PROFILE_UPDATE_TIMEOUT_MS = 60000;

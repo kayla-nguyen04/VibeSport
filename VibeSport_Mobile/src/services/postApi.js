@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../components/constants/api.example';
+import { API_BASE_URL } from '../components/constants/api';
 
 /**
  * Common request helper with Authorization token
