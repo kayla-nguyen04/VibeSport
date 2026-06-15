@@ -31,7 +31,7 @@ const Stack = createNativeStackNavigator();
 function HomeScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState('posts');
 
   useFocusEffect(
     useCallback(() => {
