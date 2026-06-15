@@ -15,7 +15,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { getPostsRequest } from '../services/postApi';
 import { getUserProfileRequest, getUserTeamsRequest, toggleFollowRequest } from '../services/userApi';
-import { API_BASE_URL } from '../components/constants/api.example';
+import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';

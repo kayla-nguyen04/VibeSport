@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -29,8 +30,9 @@ import {
 import { fetchUnreadCount } from '../redux/notificationSlice';
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
-import { getPostLikesRequest } from '../services/postApi';
-import { API_BASE_URL } from '../components/constants/api.example';
+import { getPostLikesRequest, searchPostsRequest } from '../services/postApi';
+import { searchUsersRequest, toggleFollowRequest } from '../services/userApi';
+import { API_BASE_URL } from '../components/constants/api';
 import { Screen } from '../components/Screen';
 import {
   LikesModal,
@@ -39,6 +41,18 @@ import {
   getReactionMeta,
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
+
+// ─── Tab tìm kiếm cố định ────────────────────────────────────────────
+const SEARCH_TABS = [
+  { id: 'all',        label: 'Tất cả',    tag: null,         special: null },
+  { id: 'bongda',    label: 'Bóng đá',   tag: 'Bóng đá',   special: null },
+  { id: 'caulong',   label: 'Cầu lông', tag: 'Cầu lông', special: null },
+  { id: 'pickle',    label: 'Pickle',     tag: 'Pickleball', special: null },
+  { id: 'timDoi',   label: 'Tìm đội',   tag: null,         special: 'team' },
+  { id: 'timTran',  label: 'Tìm trận',  tag: null,         special: 'match' },
+];
+
+const MAX_HISTORY = 10;
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -76,62 +90,128 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchActiveTag, setSearchActiveTag] = useState(null);
+  const [searchActiveTab, setSearchActiveTab] = useState(SEARCH_TABS[0]);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const [userResults, setUserResults] = useState([]);
+  const [followingMap, setFollowingMap] = useState({});
   const searchDebounceRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  useEffect(() => {
-    getTagsRequest(token, 'sport')
-      .then((res) => setCatalogTags(res.data || []))
-      .catch(() => setCatalogTags([]));
-  }, [token]);
+  // Key lưu lịch sử theo user
+  const historyKey = user?._id || user?.id
+    ? `@vs_search_history_${user?._id || user?.id}`
+    : null;
 
-  useEffect(() => {
-    if (token) {
-      dispatch(fetchUnreadCount());
-    }
-  }, [dispatch, token]);
+  // Load lịch sử khi mở search
+  const loadHistory = useCallback(async () => {
+    if (!historyKey) return;
+    try {
+      const raw = await AsyncStorage.getItem(historyKey);
+      setSearchHistory(raw ? JSON.parse(raw) : []);
+    } catch { setSearchHistory([]); }
+  }, [historyKey]);
 
-  useEffect(() => {
-    dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
-  }, [dispatch, activeTag]);
+  // Lưu từ khóa vào lịch sử
+  const saveToHistory = useCallback(async (keyword) => {
+    if (!historyKey || !keyword.trim()) return;
+    try {
+      const raw = await AsyncStorage.getItem(historyKey);
+      const prev = raw ? JSON.parse(raw) : [];
+      const filtered = prev.filter((k) => k !== keyword.trim());
+      const next = [keyword.trim(), ...filtered].slice(0, MAX_HISTORY);
+      await AsyncStorage.setItem(historyKey, JSON.stringify(next));
+      setSearchHistory(next);
+    } catch {}
+  }, [historyKey]);
+
+  // Xóa 1 mục lịch sử
+  const removeHistoryItem = useCallback(async (keyword) => {
+    if (!historyKey) return;
+    try {
+      const next = searchHistory.filter((k) => k !== keyword);
+      await AsyncStorage.setItem(historyKey, JSON.stringify(next));
+      setSearchHistory(next);
+    } catch {}
+  }, [historyKey, searchHistory]);
+
+  // Xóa toàn bộ lịch sử
+  const clearHistory = useCallback(async () => {
+    if (!historyKey) return;
+    try {
+      await AsyncStorage.removeItem(historyKey);
+      setSearchHistory([]);
+    } catch {}
+  }, [historyKey]);
 
   // ─── Search logic ──────────────────────────────────────────────
-  const executeSearch = useCallback((keyword, tag) => {
-    if (!keyword.trim() && !tag) {
+  const executeSearch = useCallback((keyword, tab) => {
+    const activeTab = tab || searchActiveTab;
+    // Tab đặc biệt: chuyển sang tab Teams trên bottom bar
+    if (activeTab.special === 'team' || activeTab.special === 'match') {
+      // Điều hướng sang màn hình Teams
+      navigation.navigate('Home', { activeTab: 'teams' });
+      return;
+    }
+    if (!keyword.trim() && !activeTab.tag) {
       setSearchResults([]);
       setSearchLoading(false);
       return;
     }
     setSearchLoading(true);
-    searchPostsRequest(keyword.trim(), tag, 1, 20, token)
+    // Tìm bài viết + người dùng song song (chỉ tìm user khi tab 'Tất cả')
+    const postsPromise = searchPostsRequest(keyword.trim(), activeTab.tag, 1, 20, token)
       .then((res) => setSearchResults(res.data || []))
-      .catch(() => setSearchResults([]))
-      .finally(() => setSearchLoading(false));
-  }, [token]);
+      .catch(() => setSearchResults([]));
+    const usersPromise = (!activeTab.tag)
+      ? searchUsersRequest(keyword.trim(), token)
+          .then((res) => setUserResults(res.data || []))
+          .catch(() => setUserResults([]))
+      : Promise.resolve(setUserResults([]));
+    Promise.all([postsPromise, usersPromise]).finally(() => setSearchLoading(false));
+  }, [token, searchActiveTab, navigation]);
 
   const handleSearchChange = (text) => {
     setSearchKeyword(text);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    if (!text.trim() && !searchActiveTag) {
+    if (!text.trim() && !searchActiveTab.tag) {
       setSearchResults([]);
       return;
     }
-    searchDebounceRef.current = setTimeout(() => executeSearch(text, searchActiveTag), 400);
+    searchDebounceRef.current = setTimeout(() => executeSearch(text, searchActiveTab), 400);
   };
 
-  const handleSearchTagPress = (tagName) => {
-    const nextTag = searchActiveTag === tagName ? null : tagName;
-    setSearchActiveTag(nextTag);
+  const handleSearchSubmit = () => {
+    if (searchKeyword.trim()) {
+      saveToHistory(searchKeyword);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      executeSearch(searchKeyword, searchActiveTab);
+    }
+  };
+
+  const handleHistorySelect = (keyword) => {
+    setSearchKeyword(keyword);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    executeSearch(searchKeyword, nextTag);
+    saveToHistory(keyword);
+    executeSearch(keyword, searchActiveTab);
+  };
+
+  const handleTabPress = (tab) => {
+    setSearchActiveTab(tab);
+    if (tab.special === 'team' || tab.special === 'match') {
+      // Chuyển sang tab Teams
+      navigation.navigate('Home', { activeTab: 'teams' });
+      return;
+    }
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    executeSearch(searchKeyword, tab);
   };
 
   const handleOpenSearch = () => {
     setIsSearchMode(true);
     setSearchKeyword('');
     setSearchResults([]);
-    setSearchActiveTag(null);
+    setSearchActiveTab(SEARCH_TABS[0]);
+    loadHistory();
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -139,9 +219,75 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     setIsSearchMode(false);
     setSearchKeyword('');
     setSearchResults([]);
-    setSearchActiveTag(null);
+    setUserResults([]);
+    setSearchActiveTab(SEARCH_TABS[0]);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
   };
+
+  // ─── Toggle follow user từ kết quả search ──────────────────────
+  const handleToggleFollowUser = async (userId) => {
+    try {
+      const res = await toggleFollowRequest(userId, token);
+      setFollowingMap((prev) => ({ ...prev, [userId]: res.following }));
+    } catch {}
+  };
+
+  // ─── Render 1 user trong kết quả search ────────────────────────
+  const renderUserItem = (u) => {
+    const uid = String(u.id || u._id);
+    const isSelf = uid === String(user?._id || user?.id);
+    const isFollowing = followingMap[uid] ?? u.isFollowing ?? false;
+    return (
+      <TouchableOpacity
+        key={uid}
+        style={styles.userResultRow}
+        activeOpacity={0.75}
+        onPress={() => navigation.navigate('UserProfile', { userId: uid })}
+      >
+        {u.picture ? (
+          <Image source={{ uri: fixMediaUrl(u.picture) }} style={styles.userResultAvatar} />
+        ) : (
+          <View style={[styles.userResultAvatarPlaceholder, { backgroundColor: getAvatarColor(u.name) }]}>
+            <Text style={styles.userResultAvatarText}>
+              {u.name ? u.name.charAt(0).toUpperCase() : '?'}
+            </Text>
+          </View>
+        )}
+        <View style={styles.userResultInfo}>
+          <Text style={styles.userResultName} numberOfLines={1}>{u.name}</Text>
+          {u.favoriteSport ? (
+            <Text style={styles.userResultSport} numberOfLines={1}>{u.favoriteSport}</Text>
+          ) : null}
+        </View>
+        {!isSelf && (
+          <TouchableOpacity
+            style={[styles.followBtn, isFollowing && styles.followBtnActive]}
+            onPress={() => handleToggleFollowUser(uid)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextActive]}>
+              {isFollowing ? 'Đang theo dõi' : '+ Theo dõi'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // ─── Effects ────────────────────────────────────────────────────
+  useEffect(() => {
+    getTagsRequest(token, 'sport')
+      .then((res) => setCatalogTags(res.data || []))
+      .catch(() => setCatalogTags([]));
+  }, [token]);
+
+  useEffect(() => {
+    if (token) dispatch(fetchUnreadCount());
+  }, [dispatch, token]);
+
+  useEffect(() => {
+    dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
+  }, [dispatch, activeTag]);
 
   const handleRefresh = useCallback(() => {
     dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
@@ -456,6 +602,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 placeholderTextColor="#9CA3AF"
                 value={searchKeyword}
                 onChangeText={handleSearchChange}
+                onSubmitEditing={handleSearchSubmit}
                 returnKeyType="search"
                 clearButtonMode="while-editing"
               />
@@ -496,35 +643,29 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         )}
       </View>
 
-      {/* Search tag filter: hiện khi đang search mode */}
+      {/* ── Tab filter tìm kiếm cố định ─────────────────────────────── */}
       {isSearchMode && (
-        <View style={styles.searchTagContainer}>
+        <View style={styles.searchTabContainer}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.searchTagRow}
+            contentContainerStyle={styles.searchTabRow}
           >
-            <TouchableOpacity
-              onPress={() => handleSearchTagPress(null)}
-              style={[styles.filterChip, !searchActiveTag && styles.filterChipActive]}
-            >
-              <Text style={[styles.filterChipText, !searchActiveTag && styles.filterChipTextActive]}>
-                Tất cả
-              </Text>
-            </TouchableOpacity>
-            {catalogTags.map((tag) => (
+            {SEARCH_TABS.map((tab) => (
               <TouchableOpacity
-                key={tag._id}
-                onPress={() => handleSearchTagPress(tag.name)}
-                style={[styles.filterChip, searchActiveTag === tag.name && styles.filterChipActive]}
+                key={tab.id}
+                onPress={() => handleTabPress(tab)}
+                style={[
+                  styles.searchTab,
+                  searchActiveTab.id === tab.id && styles.searchTabActive,
+                ]}
+                activeOpacity={0.75}
               >
-                <TagIcon
-                  color={searchActiveTag === tag.name ? '#FF6B35' : '#374151'}
-                  size={14}
-                  tagName={tag.name}
-                />
-                <Text style={[styles.filterChipText, searchActiveTag === tag.name && styles.filterChipTextActive]}>
-                  {tag.name}
+                <Text style={[
+                  styles.searchTabText,
+                  searchActiveTab.id === tab.id && styles.searchTabTextActive,
+                ]}>
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -532,98 +673,157 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         </View>
       )}
 
-      <FlatList
-        data={isSearchMode ? searchResults : posts}
-        keyExtractor={(item) => item._id}
-        renderItem={renderPostItem}
-        onEndReached={isSearchMode ? null : handleLoadMore}
-        onEndReachedThreshold={0.5}
-        refreshControl={
-          !isSearchMode ? (
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF6B35']} />
-          ) : undefined
-        }
-        ListHeaderComponent={
-          isSearchMode ? null : (
-            <View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tagFilterRow}
-            >
-              <TouchableOpacity
-                onPress={() => handleTagPress(null)}
-                style={[styles.filterChip, !activeTag && styles.filterChipActive]}
-              >
-                <Text style={[styles.filterChipText, !activeTag && styles.filterChipTextActive]}>
-                  Tất cả
-                </Text>
-              </TouchableOpacity>
-              {catalogTags.map((tag) => (
+      {/* ── Nội dung search: lịch sử hoặc kết quả ─────────────────── */}
+      {isSearchMode && searchKeyword.length === 0 && !searchActiveTab.tag ? (
+        // ── Hiện lịch sử khi search bar rỗng
+        <View style={styles.historyContainer}>
+          {searchHistory.length > 0 ? (
+            <>
+              <View style={styles.historyHeader}>
+                <Text style={styles.historyTitle}>Mới đây</Text>
+                <TouchableOpacity onPress={clearHistory}>
+                  <Text style={styles.historyClear}>Xóa tất cả</Text>
+                </TouchableOpacity>
+              </View>
+              {searchHistory.map((kw, idx) => (
                 <TouchableOpacity
-                  key={tag._id}
-                  onPress={() => handleTagPress(tag.name)}
-                  style={[styles.filterChip, activeTag === tag.name && styles.filterChipActive]}
+                  key={idx}
+                  style={styles.historyRow}
+                  onPress={() => handleHistorySelect(kw)}
+                  activeOpacity={0.7}
                 >
-                  <TagIcon
-                    color={activeTag === tag.name ? '#FF6B35' : '#374151'}
-                    size={14}
-                    tagName={tag.name}
-                  />
-                  <Text
-                    style={[styles.filterChipText, activeTag === tag.name && styles.filterChipTextActive]}
+                  <Ionicons name="time-outline" size={18} color="#9CA3AF" style={{ marginRight: 12 }} />
+                  <Text style={styles.historyKeyword} numberOfLines={1}>{kw}</Text>
+                  <TouchableOpacity
+                    onPress={() => removeHistoryItem(kw)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    {tag.name}
-                  </Text>
+                    <Ionicons name="close" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-
-          <View style={styles.bannerContainer}>
-            <View style={styles.bannerCard}>
-              <Text style={styles.bannerGreeting}>
-                Xin chào {user?.name || 'Thành viên'} 👋
-              </Text>
-              <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CreatePost')}
-                style={styles.createPostBtn}
-              >
-                <MaterialCommunityIcons name="pencil-box-outline" size={20} color="#FFFFFF" />
-                <Text style={styles.createPostBtnText}>Đăng bài lên cộng đồng</Text>
-              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={styles.historyEmpty}>
+              <Ionicons name="search-outline" size={40} color="#D1D5DB" />
+              <Text style={styles.historyEmptyText}>Nhập từ khóa để tìm kiếm bài viết</Text>
             </View>
-          </View>
-          </View>
-          )
-        }
-        ListFooterComponent={
-          (isSearchMode ? searchLoading : (loading && !refreshing)) ? (
-            <ActivityIndicator size="small" color="#FF6B35" style={styles.footerLoader} />
-          ) : null
-        }
-        ListEmptyComponent={
-          isSearchMode ? (
-            !searchLoading ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="search-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyText}>
-                  {searchKeyword.length > 0 || searchActiveTag
-                    ? 'Không tìm thấy bài viết nào phù hợp.'
-                    : 'Nhập từ khóa hoặc chọn tag để tìm kiếm.'}
-                </Text>
+          )}
+        </View>
+      ) : isSearchMode ? (
+        // ── Hiện kết quả: Mọi người + Bài viết
+        <FlatList
+          data={searchResults}
+          keyExtractor={(item) => item._id}
+          renderItem={renderPostItem}
+          ListHeaderComponent={
+            searchLoading ? (
+              <ActivityIndicator size="small" color="#FF6B35" style={{ marginVertical: 24 }} />
+            ) : userResults.length > 0 ? (
+              <View style={styles.userResultsSection}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionHeaderTitle}>Mọi người</Text>
+                </View>
+                {userResults.map((u) => renderUserItem(u))}
+                {searchResults.length > 0 && (
+                  <View style={styles.sectionDivider} />
+                )}
+                {searchResults.length > 0 && (
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionHeaderTitle}>Bài viết</Text>
+                  </View>
+                )}
+              </View>
+            ) : searchResults.length > 0 ? (
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeaderTitle}>Bài viết</Text>
               </View>
             ) : null
-          ) : (
+          }
+          ListEmptyComponent={
+            !searchLoading && userResults.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyText}>Không tìm thấy kết quả phù hợp.</Text>
+              </View>
+            ) : null
+          }
+        />
+      ) : (
+        // ── Feed bình thường
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item._id}
+          renderItem={renderPostItem}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF6B35']} />
+          }
+          ListHeaderComponent={
+            <View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tagFilterRow}
+              >
+                <TouchableOpacity
+                  onPress={() => handleTagPress(null)}
+                  style={[styles.filterChip, !activeTag && styles.filterChipActive]}
+                >
+                  <Text style={[styles.filterChipText, !activeTag && styles.filterChipTextActive]}>
+                    Tất cả
+                  </Text>
+                </TouchableOpacity>
+                {catalogTags.map((tag) => (
+                  <TouchableOpacity
+                    key={tag._id}
+                    onPress={() => handleTagPress(tag.name)}
+                    style={[styles.filterChip, activeTag === tag.name && styles.filterChipActive]}
+                  >
+                    <TagIcon
+                      color={activeTag === tag.name ? '#FF6B35' : '#374151'}
+                      size={14}
+                      tagName={tag.name}
+                    />
+                    <Text style={[styles.filterChipText, activeTag === tag.name && styles.filterChipTextActive]}>
+                      {tag.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <View style={styles.bannerContainer}>
+                <View style={styles.bannerCard}>
+                  <Text style={styles.bannerGreeting}>
+                    Xin chào {user?.name || 'Thành viên'} 👋
+                  </Text>
+                  <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('CreatePost')}
+                    style={styles.createPostBtn}
+                  >
+                    <MaterialCommunityIcons name="pencil-box-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.createPostBtnText}>Đăng bài lên cộng đồng</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          }
+          ListFooterComponent={
+            loading && !refreshing ? (
+              <ActivityIndicator size="small" color="#FF6B35" style={styles.footerLoader} />
+            ) : null
+          }
+          ListEmptyComponent={
             !loading && !refreshing ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="newspaper-outline" size={48} color="#D1D5DB" />
                 <Text style={styles.emptyText}>Chưa có bài đăng nào. Hãy là người đầu tiên chia sẻ!</Text>
               </View>
             ) : null
-          )
-        }
-      />
+          }
+        />
+      )}
 
       {/* Bottom Sheet Modal for options */}
       <Modal
@@ -1264,5 +1464,165 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     flex: 1,
+  },
+
+  // ─── Search Tab bar ─────────────────────────────────────────────
+  searchTabContainer: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  searchTabRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+  },
+  searchTabActive: {
+    backgroundColor: '#FF6B35',
+  },
+  searchTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  searchTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // ─── Search History ──────────────────────────────────────────────
+  historyContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 8,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  historyClear: {
+    fontSize: 14,
+    color: '#FF6B35',
+    fontWeight: '600',
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F9FAFB',
+  },
+  historyKeyword: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+  },
+  historyEmpty: {
+    alignItems: 'center',
+    paddingTop: 60,
+    gap: 12,
+  },
+  historyEmptyText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+
+  // ─── User search results ────────────────────────────────────────
+  userResultsSection: {
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+  },
+  sectionHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  sectionHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  sectionDivider: {
+    height: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  userResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  userResultAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E5E7EB',
+  },
+  userResultAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userResultAvatarText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  userResultInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  userResultName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  userResultSport: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  followBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  followBtnActive: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+  },
+  followBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  followBtnTextActive: {
+    color: '#6B7280',
   },
 });
