@@ -34,6 +34,7 @@ yarn-error.*
 .env
 .env*.local
 env
+src/components/constants/api.js
 
 # IDE config
 .vscode/
