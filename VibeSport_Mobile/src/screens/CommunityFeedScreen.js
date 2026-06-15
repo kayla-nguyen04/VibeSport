@@ -38,6 +38,7 @@ import {
   ReactionsPreview,
   getReactionMeta,
 } from '../components/PostReactions';
+import { ReportModal } from '../components/ReportModal';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -67,6 +68,8 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const [likesSummary, setLikesSummary] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
   const [activeReactionFilter, setActiveReactionFilter] = useState('all');
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [postToReport, setPostToReport] = useState(null);
 
   // ─── Search state ──────────────────────────────────────────────
   const [isSearchMode, setIsSearchMode] = useState(false);
@@ -238,6 +241,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         },
       },
     ]);
+  };
+
+  const handleReportPost = (reason) => {
+    setReportModalVisible(false);
+    setPostToReport(null);
+    Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
   };
 
   const handleMoreOptions = (post) => {
@@ -681,8 +690,10 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             ) : (
               <TouchableOpacity
                 onPress={() => {
+                  const post = optionsPost;
                   setOptionsPost(null);
-                  Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+                  setPostToReport(post);
+                  setReportModalVisible(true);
                 }}
                 style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
               >
@@ -707,6 +718,15 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         activeFilter={activeReactionFilter}
         onChangeFilter={setActiveReactionFilter}
         onClose={() => setLikesPost(null)}
+      />
+
+      <ReportModal
+        visible={reportModalVisible}
+        onClose={() => {
+          setReportModalVisible(false);
+          setPostToReport(null);
+        }}
+        onSelectReason={handleReportPost}
       />
     </Screen>
   );
