@@ -16,7 +16,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { fetchSavedPosts } from '../redux/postSlice';
-import { API_BASE_URL } from '../components/constants/api.example';
+import { API_BASE_URL } from '../components/constants/api';
 
 function fixMediaUrl(url) {
   if (!url) return url;

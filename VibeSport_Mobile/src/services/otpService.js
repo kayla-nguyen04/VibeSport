@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../components/constants/api.example';
+import { API_BASE_URL } from '../components/constants/api';
 
 export const sendOtp = async (email) => {
   const response = await fetch(

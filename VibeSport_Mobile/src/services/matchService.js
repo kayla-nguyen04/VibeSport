@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../components/constants/api.example';
+import { API_BASE_URL } from '../components/constants/api';
 
 const MATCHES_URL = `${API_BASE_URL}/api/matches`;
 
