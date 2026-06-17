@@ -74,7 +74,7 @@ export const createPostRequest = async (formData, token = null) => {
   }, token);
 };
 
-export const likePostRequest = async (id, token = null, reactionType = 'like') => {
+export const likePostRequest = async (id, token = null, reactionType = 'vibe') => {
   return request(`/api/posts/${id}/like`, {
     method: 'POST',
     headers: {

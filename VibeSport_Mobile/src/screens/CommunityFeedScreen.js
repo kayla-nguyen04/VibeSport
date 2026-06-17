@@ -29,14 +29,14 @@ import {
 import { fetchUnreadCount } from '../redux/notificationSlice';
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
-import { getPostLikesRequest,searchPostsRequest } from '../services/postApi';
-import { API_BASE_URL } from '../components/constants/api.example';
+import { getPostLikesRequest, searchPostsRequest } from '../services/postApi';
+import { API_BASE_URL } from '../components/constants/api';
 import { Screen } from '../components/Screen';
 import {
   LikesModal,
-  ReactionPickerModal,
   ReactionsPreview,
-  getReactionMeta,
+  VibeReactionIcon,
+  VIBE_REACTION,
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
 
@@ -63,11 +63,9 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const token = useSelector((state) => state.auth.token);
   const [optionsPost, setOptionsPost] = useState(null);
   const [catalogTags, setCatalogTags] = useState([]);
-  const [reactionPickerPost, setReactionPickerPost] = useState(null);
   const [likesPost, setLikesPost] = useState(null);
   const [likesSummary, setLikesSummary] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
-  const [activeReactionFilter, setActiveReactionFilter] = useState('all');
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [postToReport, setPostToReport] = useState(null);
 
@@ -164,25 +162,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
       return;
     }
 
-    dispatch(likePost({ postId: post._id, reactionType: 'like' }));
-  };
-
-  const handleSelectReaction = (reactionType) => {
-    if (!reactionPickerPost) return;
-    const post = reactionPickerPost;
-    setReactionPickerPost(null);
-
-    if (post.isLiked && post.reactionType === reactionType) {
-      return;
-    }
-
-    dispatch(likePost({ postId: post._id, reactionType }));
+    dispatch(likePost({ postId: post._id, reactionType: 'vibe' }));
   };
 
   const handleOpenLikes = async (post) => {
     setLikesPost(post);
     setLikesSummary(null);
-    setActiveReactionFilter('all');
     setLikesLoading(true);
 
     try {
@@ -305,7 +290,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const renderPostItem = ({ item }) => {
     const isOwner = user && item.userId && (user.id === item.userId._id || user._id === item.userId._id);
     const displayTags = item.tags?.length ? item.tags : item.sportType ? [item.sportType] : [];
-    const reactionMeta = getReactionMeta(item.reactionType);
 
     return (
       <View style={styles.postCard}>
@@ -401,22 +385,20 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         <View style={styles.actionsBar}>
           <TouchableOpacity
             onPress={() => handleLike(item)}
-            onLongPress={() => setReactionPickerPost(item)}
-            delayLongPress={220}
             style={styles.actionBtn}
           >
             {item.isLiked ? (
-              <Text style={styles.actionEmoji}>{reactionMeta.emoji}</Text>
+              <VibeReactionIcon size={20} />
             ) : (
               <Ionicons name="heart-outline" size={20} color="#7C8190" />
             )}
             <Text
               style={[
                 styles.actionText,
-                item.isLiked && { color: reactionMeta.color },
+                item.isLiked && { color: VIBE_REACTION.color },
               ]}
             >
-              {item.isLiked ? reactionMeta.label : 'Thích'}
+              {item.isLiked ? VIBE_REACTION.label : 'Vibe'}
             </Text>
           </TouchableOpacity>
 
@@ -705,18 +687,10 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         </TouchableOpacity>
       </Modal>
 
-      <ReactionPickerModal
-        visible={reactionPickerPost !== null}
-        onClose={() => setReactionPickerPost(null)}
-        onSelect={handleSelectReaction}
-      />
-
       <LikesModal
         visible={likesPost !== null}
         loading={likesLoading}
         summary={likesSummary}
-        activeFilter={activeReactionFilter}
-        onChangeFilter={setActiveReactionFilter}
         onClose={() => setLikesPost(null)}
       />
 

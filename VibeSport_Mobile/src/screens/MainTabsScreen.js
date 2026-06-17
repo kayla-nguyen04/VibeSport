@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ProfileScreen } from './ProfileScreen';
 import TeamsScreen from './TeamsScreen';
 import { CommunityFeedScreen } from './CommunityFeedScreen';
+import ChatListScreen from './ChatListScreen';
 
 
 const FONT_SIZE = 13;
@@ -47,6 +49,7 @@ const TAB_BAR_HEIGHT = 70;
 
 export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfile, user, navigation }) {
   const insets = useSafeAreaInsets();
+  const chatUnreadCount = useSelector((state) => state.chat.unreadCount);
   const currentTab = TABS.find((tab) => tab.key === activeTab) ?? TABS[4];
 
   return (
@@ -56,6 +59,8 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
           navigation={navigation}
           onGoToProfile={() => onChangeTab('profile')}
         />
+      ) : activeTab === 'social' ? (
+        <ChatListScreen navigation={navigation} />
       ) : (
         <Screen
           edges={['top', 'left', 'right']}
@@ -90,6 +95,7 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
           {TABS.map((tab) => {
             const isActive = tab.key === activeTab;
             const color = isActive ? ACTIVE_COLOR : INACTIVE_COLOR;
+            const showChatBadge = tab.key === 'social' && chatUnreadCount > 0;
 
             return (
               <Pressable
@@ -99,6 +105,13 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
               >
                 <View style={[styles.iconFrame, isActive && styles.activeIconFrame]}>
                   {tab.icon({ color, size: 24 })}
+                  {showChatBadge ? (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>
+                        {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -176,6 +189,25 @@ const styles = StyleSheet.create({
   },
   activeIconFrame: {
     backgroundColor: 'rgba(11, 116, 255, 0.12)',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  tabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   tabLabel: {
     fontSize: 11,

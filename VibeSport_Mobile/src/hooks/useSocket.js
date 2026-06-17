@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../components/constants/api';
 import { addNotification, setUnreadCount } from '../redux/notificationSlice';
+import { fetchChatUnreadCount, receiveMessage, setChatUnreadCount } from '../redux/chatSlice';
 
 export function useSocket() {
   const dispatch = useDispatch();
@@ -32,6 +33,7 @@ export function useSocket() {
     socket.on('connect', () => {
       console.log('[SOCKET] Connected with socket ID:', socket.id);
       socket.emit('join', userId);
+      dispatch(fetchChatUnreadCount());
     });
 
     socket.on('new_notification', (notification) => {
@@ -42,6 +44,14 @@ export function useSocket() {
     socket.on('unread_count', ({ unreadCount }) => {
       console.log('[SOCKET] Received unread count:', unreadCount);
       dispatch(setUnreadCount(unreadCount));
+    });
+
+    socket.on('new_message', (payload) => {
+      dispatch(receiveMessage({ ...payload, currentUserId: userId }));
+    });
+
+    socket.on('unread_messages_count', ({ unreadCount }) => {
+      dispatch(setChatUnreadCount(unreadCount));
     });
 
     socket.on('disconnect', () => {

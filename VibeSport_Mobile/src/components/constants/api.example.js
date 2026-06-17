@@ -2,5 +2,5 @@
 // Android emulator: http://10.0.2.2:4000
 // iOS simulator / thiết bị thật: http://<IP-LAN-máy-chạy-server>:4000
 
-export const API_BASE_URL = "http://192.168.1.143:4000";
-export const API_URL = "http://192.168.1.143:4000/api";
+export const API_BASE_URL = "http://192.168.1.7:4000";
+export const API_URL = "http://192.168.1.7:4000/api";
