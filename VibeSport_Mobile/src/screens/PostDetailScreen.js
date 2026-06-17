@@ -38,9 +38,9 @@ import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
 import {
   LikesModal,
-  ReactionPickerModal,
   ReactionsPreview,
-  getReactionMeta,
+  VibeReactionIcon,
+  VIBE_REACTION,
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
 
@@ -98,11 +98,9 @@ export default function PostDetailScreen({ route, navigation }) {
   const [showReplies, setShowReplies] = useState({});
   const commentInputRef = useRef(null);
   const isSubmittingRef = useRef(false);
-  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
   const [likesVisible, setLikesVisible] = useState(false);
   const [likesSummary, setLikesSummary] = useState(null);
   const [likesLoading, setLikesLoading] = useState(false);
-  const [activeReactionFilter, setActiveReactionFilter] = useState('all');
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const toggleShowReplies = (commentId) => {
@@ -239,13 +237,7 @@ export default function PostDetailScreen({ route, navigation }) {
       handleUnlikePost();
       return;
     }
-    handleReactToPost('like');
-  };
-
-  const handleSelectReaction = (reactionType) => {
-    setReactionPickerVisible(false);
-    if (!post || (post.isLiked && post.reactionType === reactionType)) return;
-    handleReactToPost(reactionType);
+    handleReactToPost('vibe');
   };
 
   const handleOpenLikes = async () => {
@@ -253,7 +245,6 @@ export default function PostDetailScreen({ route, navigation }) {
 
     setLikesVisible(true);
     setLikesSummary(null);
-    setActiveReactionFilter('all');
     setLikesLoading(true);
 
     try {
@@ -636,7 +627,6 @@ export default function PostDetailScreen({ route, navigation }) {
   const isOwner = currentUser && post.userId && (currentUser.id === post.userId._id || currentUser._id === post.userId._id);
   const posterAvatarColor = getAvatarColor(post.userId?.name);
   const displayTags = post.tags?.length ? post.tags : post.sportType ? [post.sportType] : [];
-  const reactionMeta = getReactionMeta(post.reactionType);
 
   const handleTagPress = (tagName) => {
     dispatch(setActiveTag(tagName));
@@ -747,22 +737,20 @@ export default function PostDetailScreen({ route, navigation }) {
               <View style={styles.actionsBar}>
                 <TouchableOpacity
                   onPress={handleLikePost}
-                  onLongPress={() => setReactionPickerVisible(true)}
-                  delayLongPress={220}
                   style={styles.actionBtn}
                 >
                   {post.isLiked ? (
-                    <Text style={styles.actionEmoji}>{reactionMeta.emoji}</Text>
+                    <VibeReactionIcon size={20} />
                   ) : (
                     <Ionicons name="heart-outline" size={20} color="#7C8190" />
                   )}
                   <Text
                     style={[
                       styles.actionText,
-                      post.isLiked && { color: reactionMeta.color },
+                      post.isLiked && { color: VIBE_REACTION.color },
                     ]}
                   >
-                    {post.isLiked ? reactionMeta.label : 'Thích'}
+                    {post.isLiked ? VIBE_REACTION.label : 'Vibe'}
                   </Text>
                 </TouchableOpacity>
 
@@ -936,18 +924,10 @@ export default function PostDetailScreen({ route, navigation }) {
         </TouchableOpacity>
       </Modal>
 
-      <ReactionPickerModal
-        visible={reactionPickerVisible}
-        onClose={() => setReactionPickerVisible(false)}
-        onSelect={handleSelectReaction}
-      />
-
       <LikesModal
         visible={likesVisible}
         loading={likesLoading}
         summary={likesSummary}
-        activeFilter={activeReactionFilter}
-        onChangeFilter={setActiveReactionFilter}
         onClose={() => setLikesVisible(false)}
       />
     </Screen>

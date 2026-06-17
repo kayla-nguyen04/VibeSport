@@ -25,6 +25,7 @@ const savedPostsRouter = require('./routes/savedPosts');
 const tagsRouter = require('./routes/tags');
 const usersRouter = require('./routes/users');
 const notificationsRouter = require('./routes/notifications');
+const chatRouter = require('./routes/chat');
 const seedTags = require('./scripts/seedTags');
 
 const app = express();
@@ -78,6 +79,7 @@ app.use('/api/saved-posts', savedPostsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/chat', chatRouter);
 
 app.get('/health', (_, response) => {
   response.json({

@@ -400,7 +400,7 @@ exports.getPostById = async (req, res) => {
 exports.likePost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reactionType = 'like' } = req.body;
+    const { reactionType = 'vibe' } = req.body;
     const userId = req.userId;
 
     const post = await Post.findById(id);
@@ -414,13 +414,11 @@ exports.likePost = async (req, res) => {
 
     if (existingLike) {
       if (existingLike.reactionType === reactionType) {
-        // Trùng reaction type thì unlike
         await PostLike.deleteOne({ _id: existingLike._id });
         post.likesCount = Math.max(0, post.likesCount - 1);
         liked = false;
         currentReaction = null;
       } else {
-        // Khác reaction type thì cập nhật
         existingLike.reactionType = reactionType;
         await existingLike.save();
         liked = true;
@@ -440,15 +438,7 @@ exports.likePost = async (req, res) => {
       const sender = await User.findById(userId);
       const senderName = sender ? sender.name : 'Một thành viên';
       
-      const sportEmojis = {
-        'Bóng đá': '⚽',
-        'Cầu lông': '🏸',
-        'Pickleball': '🏓'
-      };
-      
-      const activeSport = post.sportType || 'Bóng đá';
-      const emoji = sportEmojis[activeSport] || '🔔';
-      const message = `${emoji} ${senderName} đã thích bài viết của bạn`;
+      const message = `${senderName} đã Vibe bài viết của bạn`;
       const postThumbnail = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : null;
 
       await createAndSendNotification({

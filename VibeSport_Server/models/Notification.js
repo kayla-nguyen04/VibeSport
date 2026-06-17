@@ -27,6 +27,11 @@ const notificationSchema = new Schema(
       ref: 'Post',
       default: null,
     },
+    conversationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Conversation',
+      default: null,
+    },
     commentId: {
       type: Schema.Types.ObjectId,
       ref: 'Comment',

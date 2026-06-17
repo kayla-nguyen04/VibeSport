@@ -55,6 +55,22 @@ export function NotificationScreen({ navigation }) {
       dispatch(markNotificationRead(item._id));
     }
 
+    if (item.type === 'message') {
+      const conversationId = item.conversationId?._id || item.conversationId;
+      const fromUser = item.fromUserId;
+      if (conversationId && fromUser) {
+        navigation.navigate('ChatDetail', {
+          conversationId,
+          peer: {
+            _id: fromUser._id,
+            name: fromUser.name,
+            picture: fromUser.picture,
+          },
+        });
+        return;
+      }
+    }
+
     const postId = item.postId?._id || item.postId;
     if (postId) {
       navigation.navigate('PostDetail', { postId });

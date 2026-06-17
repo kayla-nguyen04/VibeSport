@@ -24,6 +24,7 @@ import PostDetailScreen from '../screens/PostDetailScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import SavedPostsScreen from '../screens/SavedPostsScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
+import ChatDetailScreen from '../screens/ChatDetailScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -113,6 +114,7 @@ export function AuthNavigator() {
             <Stack.Screen name="UserProfile" component={UserProfileScreen} />
             <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
             <Stack.Screen name="Notification" component={NotificationScreen} />
+            <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
           </>
         ) : (
           <>

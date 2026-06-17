@@ -12,9 +12,10 @@ import {
   View,
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { getPostsRequest } from '../services/postApi';
 import { getUserProfileRequest, getUserTeamsRequest, toggleFollowRequest } from '../services/userApi';
+import { openConversation } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
 import { Screen } from '../components/Screen';
@@ -113,6 +114,7 @@ function TeamCard({ team, past }) {
 }
 
 export default function UserProfileScreen({ route, navigation }) {
+  const dispatch = useDispatch();
   const { userId } = route.params;
   const token = useSelector((state) => state.auth.token);
 
@@ -182,8 +184,16 @@ export default function UserProfileScreen({ route, navigation }) {
     }
   };
 
-  const handleMessage = () => {
-    Alert.alert('Nhắn tin', 'Tính năng tin nhắn sẽ sớm có mặt.');
+  const handleMessage = async () => {
+    try {
+      const result = await dispatch(openConversation(userId)).unwrap();
+      navigation.navigate('ChatDetail', {
+        conversationId: result.data._id,
+        peer: result.data.peer,
+      });
+    } catch (err) {
+      Alert.alert('Lỗi', err?.message || err || 'Không thể mở cuộc trò chuyện');
+    }
   };
 
   const presence = useMemo(

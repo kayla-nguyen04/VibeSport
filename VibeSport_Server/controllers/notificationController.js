@@ -10,6 +10,7 @@ exports.getNotifications = async (req, res) => {
     const notifications = await Notification.find({ userId: req.userId })
       .populate('fromUserId', 'name picture')
       .populate('postId', 'content mediaUrls')
+      .populate('conversationId', 'lastMessage lastMessageAt')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

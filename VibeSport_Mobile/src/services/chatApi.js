@@ -1,0 +1,44 @@
+import { API_BASE_URL } from '../components/constants/api';
+
+async function request(path, options = {}, token) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const json = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(json?.message || 'Yêu cầu thất bại');
+  }
+
+  return json;
+}
+
+export const getConversationsRequest = (token) =>
+  request('/api/chat/conversations', {}, token);
+
+export const getChatUnreadCountRequest = (token) =>
+  request('/api/chat/unread-count', {}, token);
+
+export const createOrGetConversationRequest = (recipientId, token) =>
+  request('/api/chat/conversations', {
+    method: 'POST',
+    body: JSON.stringify({ recipientId }),
+  }, token);
+
+export const getMessagesRequest = (conversationId, token, page = 1, limit = 30) =>
+  request(`/api/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`, {}, token);
+
+export const sendMessageRequest = (conversationId, content, token) =>
+  request(`/api/chat/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  }, token);
+
+export const markConversationReadRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/read`, {
+    method: 'PUT',
+  }, token);

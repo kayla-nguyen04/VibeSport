@@ -21,7 +21,7 @@ const normalizePost = (post) => ({
 });
 
 const getPostIdFromArg = (arg) => (typeof arg === 'string' ? arg : arg?.postId);
-const getReactionTypeFromArg = (arg) => (typeof arg === 'string' ? 'like' : arg?.reactionType || 'like');
+const getReactionTypeFromArg = (arg) => (typeof arg === 'string' ? 'vibe' : arg?.reactionType || 'vibe');
 
 const snapshotPostInteraction = (post) => post
   ? {

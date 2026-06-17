@@ -14,8 +14,8 @@ const postLikeSchema = new Schema(
     },
     reactionType: {
       type: String,
-      enum: ['like', 'love', 'haha'],
-      default: 'like',
+      enum: ['vibe', 'like', 'love', 'haha'],
+      default: 'vibe',
     },
   },
   {
