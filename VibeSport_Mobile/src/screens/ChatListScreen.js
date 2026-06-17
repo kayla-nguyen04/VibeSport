@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -6,6 +6,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -13,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
-import { ScreenHeader } from '../components/ScreenHeader';
 import { fetchChatUnreadCount, fetchConversations } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 
@@ -57,6 +57,10 @@ const formatTime = (dateString) => {
 export default function ChatListScreen({ navigation }) {
   const dispatch = useDispatch();
   const { conversations, loadingConversations } = useSelector((state) => state.chat);
+  const user = useSelector((state) => state.auth.user);
+  const [searchText, setSearchText] = useState('');
+  const [filteredConversations, setFilteredConversations] = useState(conversations);
+  const searchRef = useRef(null);
 
   const loadData = useCallback(() => {
     dispatch(fetchConversations());
@@ -68,6 +72,26 @@ export default function ChatListScreen({ navigation }) {
       loadData();
     }, [loadData])
   );
+
+  const handleSearchChange = (text) => {
+    setSearchText(text);
+  };
+
+  const handleAvatarPress = () => {
+    navigation.navigate('UserProfile', { userId: user?._id || user?.id });
+  };
+
+  const computedConversations = useMemo(() => {
+    if (!searchText.trim()) return conversations;
+    return conversations.filter((item) => {
+      const peerName = item.peer?.name || 'Thành viên VibeSport';
+      const lastMessage = item.lastMessage || '';
+      return (
+        peerName.toLowerCase().includes(searchText.toLowerCase()) ||
+        lastMessage.toLowerCase().includes(searchText.toLowerCase())
+      );
+    });
+  }, [conversations, searchText]);
 
   const renderItem = ({ item }) => {
     const peer = item.peer;
@@ -87,7 +111,7 @@ export default function ChatListScreen({ navigation }) {
         {peer?.picture ? (
           <Image source={{ uri: fixMediaUrl(peer.picture) }} style={styles.avatar} />
         ) : (
-          <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
+          <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(peerName) }]}> 
             <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
           </View>
         )}
@@ -118,9 +142,36 @@ export default function ChatListScreen({ navigation }) {
 
   return (
     <Screen style={styles.screen}>
-      <ScreenHeader style={styles.header}>
-        <Text style={styles.headerTitle}>Tin nhắn</Text>
-      </ScreenHeader>
+      <View style={styles.headerTop}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerSmall}>Chat VibeSport</Text>
+            <Text style={styles.headerTitle}>Tin nhắn</Text>
+          </View>
+          <TouchableOpacity style={styles.profileAvatarWrapper} onPress={handleAvatarPress} activeOpacity={0.8}>
+            {user?.picture ? (
+              <Image source={{ uri: fixMediaUrl(user.picture) }} style={styles.profileAvatar} />
+            ) : (
+              <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(user?.name) }]}> 
+                <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={20} color="#64748B" />
+          <TextInput
+            ref={searchRef}
+            value={searchText}
+            onChangeText={handleSearchChange}
+            placeholder="Tìm kiếm cuộc hội thoại"
+            placeholderTextColor="#94A3B8"
+            style={styles.searchInput}
+            returnKeyType="search"
+          />
+        </View>
+      </View>
 
       {loadingConversations && conversations.length === 0 ? (
         <View style={styles.centerState}>
@@ -128,19 +179,19 @@ export default function ChatListScreen({ navigation }) {
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={computedConversations}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
           refreshControl={
             <RefreshControl refreshing={loadingConversations} onRefresh={loadData} tintColor="#0b74ff" />
           }
-          contentContainerStyle={conversations.length === 0 ? styles.emptyList : styles.listContent}
+          contentContainerStyle={computedConversations.length === 0 ? styles.emptyList : styles.listContent}
           ListEmptyComponent={
             <View style={styles.centerState}>
               <Ionicons name="chatbubbles-outline" size={48} color="#CBD5E1" />
-              <Text style={styles.emptyTitle}>Chưa có tin nhắn</Text>
+              <Text style={styles.emptyTitle}>Không có đoạn chat nào</Text>
               <Text style={styles.emptySubtitle}>
-                Vào trang cá nhân của bạn bè và nhấn Nhắn tin để bắt đầu.
+                Bắt đầu chat với bạn bè để xem ở đây.
               </Text>
             </View>
           }
@@ -193,6 +244,58 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
+  },
+  headerTop: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  headerSmall: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginBottom: 4,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  profileAvatarWrapper: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  profileAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#E5E7EB',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: '#111827',
   },
   conversationBody: {
     flex: 1,
