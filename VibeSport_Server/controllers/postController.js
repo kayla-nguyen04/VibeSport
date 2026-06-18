@@ -4,6 +4,7 @@ const SavedPost = require('../models/SavedPost');
 const Comment = require('../models/Comment');
 const CommentLike = require('../models/CommentLike');
 const User = require('../models/User');
+const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
 const { API_BASE_URL } = require('../utils/config');
 const {
@@ -33,7 +34,11 @@ async function createAndSendNotification({ userId, fromUserId, type, message, po
     if (global.io) {
       global.io.to(userId.toString()).emit('new_notification', populated);
       
-      const unreadCount = await Notification.countDocuments({ userId, read: false });
+      const unreadCount = await Notification.countDocuments({
+        userId,
+        read: false,
+        type: { $ne: 'message' },
+      });
       global.io.to(userId.toString()).emit('unread_count', { unreadCount });
       console.log(`[SOCKET] Notification sent to user ${userId}, unread: ${unreadCount}`);
     }
@@ -140,13 +145,45 @@ exports.getPosts = async (req, res) => {
     }
     if (userId) filter.userId = userId;
 
-    const posts = await Post.find(filter)
-      .populate('userId', 'name picture favoriteSport')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    // Ưu tiên bài viết từ người đang follow
+    let followingIds = [];
+    let sortStage = { createdAt: -1 };
+    if (req.userId && !userId) {
+      followingIds = await Follow.find({ followerId: req.userId }).distinct('followingId');
+      if (followingIds.length > 0) {
+        sortStage = { isFollowing: -1, createdAt: -1 };
+      }
+    }
 
-    const mappedPosts = await mapPostInteractions(posts, req.userId);
+    const aggregatePipeline = [
+      { $match: filter },
+      {
+        $addFields: {
+          isFollowing: {
+            $cond: {
+              if: req.userId && followingIds && followingIds.length > 0,
+              then: { $in: ['$userId', followingIds] },
+              else: false,
+            },
+          },
+        },
+      },
+      { $sort: sortStage },
+      { $skip: skip },
+      { $limit: limit },
+    ];
+
+    const posts = await Post.aggregate(aggregatePipeline);
+
+    // Populate user info
+    const populatedPosts = await Promise.all(
+      posts.map(async (post) => {
+        const user = await User.findById(post.userId).select('name picture favoriteSport').lean();
+        return { ...post, userId: user };
+      })
+    );
+
+    const mappedPosts = await mapPostInteractions(populatedPosts, req.userId);
 
     res.status(200).json({ success: true, data: mappedPosts, page, limit });
   } catch (error) {

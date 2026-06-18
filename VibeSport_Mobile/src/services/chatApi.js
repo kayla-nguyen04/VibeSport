@@ -42,3 +42,38 @@ export const markConversationReadRequest = (conversationId, token) =>
   request(`/api/chat/conversations/${conversationId}/read`, {
     method: 'PUT',
   }, token);
+
+export const acceptConversationRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/accept`, {
+    method: 'PUT',
+  }, token);
+
+export const blockConversationRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/block`, {
+    method: 'PUT',
+  }, token);
+
+export const unblockConversationRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/unblock`, {
+    method: 'PUT',
+  }, token);
+
+export const deleteConversationRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}`, {
+    method: 'DELETE',
+  }, token);
+
+export const muteConversationRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/mute`, {
+    method: 'PUT',
+  }, token);
+
+export const unmuteConversationRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/unmute`, {
+    method: 'PUT',
+  }, token);
+
+export const deletePendingMessagesRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/delete-pending`, {
+    method: 'PUT',
+  }, token);

@@ -1,23 +1,27 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
-import { fetchChatUnreadCount, fetchConversations } from '../redux/chatSlice';
+import { fetchChatUnreadCount, fetchConversations, acceptConversation, blockConversation, unblockConversation, deleteConversation, muteConversation, unmuteConversation } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
+const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời', 'Đã xác minh'];
 
 const getAvatarColor = (name) => {
   if (!name) return AVATAR_COLORS[0];
@@ -48,10 +52,10 @@ const formatTime = (dateString) => {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMins < 1) return 'Vừa xong';
-  if (diffMins < 60) return `${diffMins} phút`;
-  if (diffHours < 24) return `${diffHours} giờ`;
-  if (diffDays < 7) return `${diffDays} ngày`;
-  return date.toLocaleDateString('vi-VN');
+  if (diffMins < 60) return `${diffMins}p`;
+  if (diffHours < 24) return `${diffHours}g`;
+  if (diffDays < 7) return `${diffDays}n`;
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
 export default function ChatListScreen({ navigation }) {
@@ -59,8 +63,10 @@ export default function ChatListScreen({ navigation }) {
   const { conversations, loadingConversations } = useSelector((state) => state.chat);
   const user = useSelector((state) => state.auth.user);
   const [searchText, setSearchText] = useState('');
-  const [filteredConversations, setFilteredConversations] = useState(conversations);
-  const searchRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('inbox');
+  const [activeFilter, setActiveFilter] = useState('Tất cả');
+  const [showFilter, setShowFilter] = useState(false);
+  const [unblockingId, setUnblockingId] = useState(null);
 
   const loadData = useCallback(() => {
     dispatch(fetchConversations());
@@ -73,45 +79,338 @@ export default function ChatListScreen({ navigation }) {
     }, [loadData])
   );
 
-  const handleSearchChange = (text) => {
-    setSearchText(text);
-  };
+  const applyFilter = useCallback(
+    (items) => {
+      return items.filter((item) => {
+        if (activeFilter === 'Chưa đọc') return item.unreadCount > 0;
+        if (activeFilter === 'Chưa trả lời')
+          return item.isPending && item.myPendingCount > 0 && !item.isFriend;
+        if (activeFilter === 'Đã xác minh') return item.isFriend;
+        return true;
+      });
+    },
+    [activeFilter]
+  );
 
-  const handleAvatarPress = () => {
-    navigation.navigate('UserProfile', { userId: user?._id || user?.id });
-  };
-
-  const computedConversations = useMemo(() => {
-    if (!searchText.trim()) return conversations;
+  const allConversations = React.useMemo(() => {
+    const keyword = searchText.trim().toLowerCase();
     return conversations.filter((item) => {
+      if (!keyword) return true;
       const peerName = item.peer?.name || 'Thành viên VibeSport';
       const lastMessage = item.lastMessage || '';
       return (
-        peerName.toLowerCase().includes(searchText.toLowerCase()) ||
-        lastMessage.toLowerCase().includes(searchText.toLowerCase())
+        peerName.toLowerCase().includes(keyword) ||
+        lastMessage.toLowerCase().includes(keyword)
       );
     });
   }, [conversations, searchText]);
 
-  const renderItem = ({ item }) => {
+  // DEBUG: Log all conversations before filtering
+  React.useEffect(() => {
+    if (allConversations.length === 0) return;
+    console.log('[DEBUG ChatListScreen] allConversations:', allConversations.map((item) => ({
+      _id: item._id,
+      viewState: item.viewState,
+      hasOtherPendingRequest: item.hasOtherPendingRequest,
+      blockedByMe: item.blockedByMe,
+      isHidden: item.isHidden,
+      status: item.status,
+    })));
+    console.log('[DEBUG ChatListScreen] inboxConversations ids:', inboxConversations.map((i) => i._id));
+    console.log('[DEBUG ChatListScreen] pendingConversations ids:', pendingConversations.map((i) => i._id));
+  }, [allConversations, inboxConversations, pendingConversations]);
+
+  const inboxConversations = React.useMemo(() => {
+    return applyFilter(
+      allConversations.filter((item) => !item.isHidden && !item.hasOtherPendingRequest)
+    );
+  }, [allConversations, applyFilter]);
+
+  const pendingConversations = React.useMemo(() => {
+    return applyFilter(
+      allConversations.filter(
+        (item) =>
+          item.hasOtherPendingRequest &&
+          !item.blockedByMe
+      )
+    );
+  }, [allConversations, applyFilter]);
+
+  const blockedConversations = React.useMemo(() => {
+    return allConversations.filter((item) => item.blockedByMe);
+  }, [allConversations]);
+
+  const activeData =
+    activeTab === 'inbox'
+      ? inboxConversations
+      : activeTab === 'requests'
+        ? pendingConversations
+        : blockedConversations;
+
+  const handleUnblock = async (item) => {
+    setUnblockingId(item._id);
+    try {
+      await dispatch(unblockConversation(item._id)).unwrap();
+      await dispatch(fetchConversations()).unwrap();
+
+      // Check conversation - if has pending from other, go to requests, otherwise inbox
+      if (item.hasOtherPendingRequest) {
+        setActiveTab('requests');
+      } else {
+        setActiveTab('inbox');
+      }
+    } catch (e) {
+      // handle error silently
+    } finally {
+      setUnblockingId(null);
+    }
+  };
+
+  const handleDeleteConversation = (item) => {
+    Alert.alert(
+      'Xóa cuộc trò chuyện',
+      `Bạn có chắc muốn xóa cuộc trò chuyện với ${item.peer?.name || 'thành viên này'} không?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Deleting conversation:', item._id);
+              await dispatch(deleteConversation(item._id)).unwrap();
+              await dispatch(fetchConversations()).unwrap();
+            } catch (e) {
+              console.error('Delete error:', e);
+              Alert.alert('Lỗi', 'Không thể xóa cuộc trò chuyện');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAcceptConversation = (item) => {
+    Alert.alert(
+      'Chấp nhận yêu cầu',
+      `Bạn có muốn nhận tin nhắn từ ${item.peer?.name || 'người này'} không?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Chấp nhận',
+          onPress: async () => {
+            try {
+              console.log('Accepting conversation:', item._id);
+              await dispatch(acceptConversation(item._id)).unwrap();
+              await dispatch(fetchConversations()).unwrap();
+            } catch (e) {
+              console.error('Accept error:', e);
+              Alert.alert('Lỗi', 'Không thể chấp nhận yêu cầu');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBlockConversation = (item) => {
+    Alert.alert(
+      'Chặn người dùng',
+      `Bạn có muốn chặn ${item.peer?.name || 'người này'} không? Họ sẽ không thể nhắn tin cho bạn.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Chặn',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Blocking conversation:', item._id);
+              await dispatch(blockConversation(item._id)).unwrap();
+              await dispatch(fetchConversations()).unwrap();
+            } catch (e) {
+              console.error('Block error:', e);
+              Alert.alert('Lỗi', 'Không thể chặn người dùng');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleToggleMute = (item) => {
+    Alert.alert(
+      item.isMuted ? 'Bật thông báo' : 'Tắt thông báo',
+      `Bạn có muốn ${item.isMuted ? 'bật' : 'tắt'} thông báo từ ${item.peer?.name || 'thành viên này'} không?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: item.isMuted ? 'Bật' : 'Tắt',
+          onPress: async () => {
+            try {
+              console.log('Toggle mute:', item._id, 'isMuted:', item.isMuted);
+              if (item.isMuted) {
+                await dispatch(unmuteConversation(item._id)).unwrap();
+              } else {
+                await dispatch(muteConversation(item._id)).unwrap();
+              }
+              await dispatch(fetchConversations()).unwrap();
+            } catch (e) {
+              console.error('Mute error:', e);
+              Alert.alert('Lỗi', 'Không thể cập nhật thông báo');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openChat = (item) => {
+    navigation.navigate('ChatDetail', {
+      conversationId: item._id,
+      peer: item.peer,
+    });
+  };
+
+  const renderConversationItem = ({ item }) => {
     const peer = item.peer;
     const peerName = peer?.name || 'Thành viên VibeSport';
+    const isPending = item.isPending && !item.blockedByMe;
+    const hasOtherPendingMessages = (item.otherPendingMessages?.length || 0) > 0;
+    const subtitle = isPending
+      ? (hasOtherPendingMessages
+          ? item.otherPendingMessages?.[0]?.content || 'Tin nhắn chờ xác nhận'
+          : 'Chờ bạn chấp nhận')
+      : item.lastMessage || 'Bắt đầu trò chuyện';
+    const subtitleColor = isPending ? '#0b74ff' : '#6B7280';
+    const unreadCount = item.unreadCount || 0;
+
+    return (
+      <View style={styles.conversationItem}>
+        <TouchableOpacity
+          style={styles.conversationItemTouchable}
+          activeOpacity={0.85}
+          onPress={() => openChat(item)}
+        >
+          {peer?.picture ? (
+            <Image
+              source={{ uri: fixMediaUrl(peer.picture) }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View
+              style={[
+                styles.avatarFallback,
+                { backgroundColor: getAvatarColor(peerName) },
+              ]}
+            >
+              <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
+            </View>
+          )}
+
+          <View style={styles.conversationBody}>
+            <View style={styles.conversationTopRow}>
+              <Text
+                style={[
+                  styles.peerName,
+                  unreadCount > 0 && styles.peerNameUnread,
+                ]}
+                numberOfLines={1}
+              >
+                {peerName}
+              </Text>
+              <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
+            </View>
+            <View style={styles.conversationBottomRow}>
+              {isPending && <View style={styles.pendingDot} />}
+              <Text
+                style={[
+                  styles.lastMessage,
+                  unreadCount > 0 && styles.lastMessageUnread,
+                  { color: subtitleColor },
+                ]}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {isPending ? (
+          <View style={styles.itemActions}>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => handleAcceptConversation(item)}
+            >
+              <Ionicons name="checkmark-circle-outline" size={22} color="#10B981" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => handleDeleteConversation(item)}
+            >
+              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => handleBlockConversation(item)}
+            >
+              <Ionicons name="hand-right-outline" size={20} color="#F59E0B" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.itemActions}>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => handleToggleMute(item)}
+            >
+              <Ionicons
+                name={item.isMuted ? 'notifications' : 'notifications-off-outline'}
+                size={20}
+                color={item.isMuted ? '#10B981' : '#6B7280'}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => handleDeleteConversation(item)}
+            >
+              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderBlockedItem = ({ item }) => {
+    const peer = item.peer;
+    const peerName = peer?.name || 'Thành viên VibeSport';
+    const isUnblocking = unblockingId === item._id;
 
     return (
       <TouchableOpacity
         style={styles.conversationItem}
         activeOpacity={0.85}
-        onPress={() =>
-          navigation.navigate('ChatDetail', {
-            conversationId: item._id,
-            peer,
-          })
-        }
+        onPress={() => openChat(item)}
       >
         {peer?.picture ? (
-          <Image source={{ uri: fixMediaUrl(peer.picture) }} style={styles.avatar} />
+          <Image
+            source={{ uri: fixMediaUrl(peer.picture) }}
+            style={styles.avatar}
+          />
         ) : (
-          <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(peerName) }]}> 
+          <View
+            style={[
+              styles.avatarFallback,
+              { backgroundColor: getAvatarColor(peerName) },
+            ]}
+          >
             <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
           </View>
         )}
@@ -121,82 +420,222 @@ export default function ChatListScreen({ navigation }) {
             <Text style={styles.peerName} numberOfLines={1}>
               {peerName}
             </Text>
-            <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
+            <Ionicons name="ban" size={14} color="#DC2626" />
           </View>
           <View style={styles.conversationBottomRow}>
-            <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]} numberOfLines={1}>
+            <Text style={styles.lastMessage} numberOfLines={1}>
               {item.lastMessage || 'Bắt đầu trò chuyện'}
             </Text>
-            {item.unreadCount > 0 ? (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadBadgeText}>
-                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
-                </Text>
-              </View>
-            ) : null}
           </View>
         </View>
+
+        <TouchableOpacity
+          style={styles.unblockButton}
+          onPress={() => handleUnblock(item)}
+          disabled={isUnblocking}
+          activeOpacity={0.7}
+        >
+          {isUnblocking ? (
+            <ActivityIndicator size="small" color="#0b74ff" />
+          ) : (
+            <Text style={styles.unblockButtonText}>Bỏ chặn</Text>
+          )}
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
 
+  const renderEmptyInbox = () => (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name="chatbubbles-outline" size={52} color="#D1D5DB" />
+      </View>
+      <Text style={styles.emptyTitle}>Tin nhắn</Text>
+      <Text style={styles.emptySubtitle}>
+        Gửi tin nhắn cho bạn bè hoặc người theo dõi để bắt đầu trò chuyện.
+      </Text>
+    </View>
+  );
+
+  const renderEmptyPending = () => (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name="mail-outline" size={52} color="#D1D5DB" />
+      </View>
+      <Text style={styles.emptyTitle}>Không có yêu cầu</Text>
+      <Text style={styles.emptySubtitle}>
+        Khi ai đó muốn nhắn tin với bạn, yêu cầu sẽ xuất hiện ở đây.
+      </Text>
+    </View>
+  );
+
+  const renderEmptyBlocked = () => (
+    <View style={styles.emptyBlockedState}>
+      <Ionicons name="ban-outline" size={32} color="#D1D5DB" />
+      <Text style={styles.emptyBlockedText}>Không có tin nhắn bị chặn</Text>
+    </View>
+  );
+
+  const renderItem =
+    activeTab === 'blocked' ? renderBlockedItem : renderConversationItem;
+  const emptyComponent =
+    activeTab === 'inbox'
+      ? renderEmptyInbox
+      : activeTab === 'requests'
+        ? renderEmptyPending
+        : renderEmptyBlocked;
+
   return (
     <Screen style={styles.screen}>
-      <View style={styles.headerTop}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerSmall}>Chat VibeSport</Text>
-            <Text style={styles.headerTitle}>Tin nhắn</Text>
-          </View>
-          <TouchableOpacity style={styles.profileAvatarWrapper} onPress={handleAvatarPress} activeOpacity={0.8}>
-            {user?.picture ? (
-              <Image source={{ uri: fixMediaUrl(user.picture) }} style={styles.profileAvatar} />
-            ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(user?.name) }]}> 
-                <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.headerLeftBtn}
+          activeOpacity={0.7}
+          onPress={() => setShowFilter(true)}
+        >
+          <Ionicons name="options-outline" size={24} color="#262626" />
+        </TouchableOpacity>
+
+        <View style={styles.headerTabs}>
+          {['inbox', 'requests', 'blocked'].map((tab) => {
+            const count =
+              tab === 'requests'
+                ? pendingConversations.length
+                : tab === 'blocked'
+                  ? blockedConversations.length
+                  : 0;
+            const label =
+              tab === 'inbox'
+                ? 'Hộp thư'
+                : tab === 'requests'
+                  ? 'Yêu cầu'
+                  : 'Bị chặn';
+
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[
+                  styles.headerTab,
+                  activeTab === tab && styles.headerTabActive,
+                ]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.headerTabInner}>
+                  <Text
+                    style={[
+                      styles.headerTabText,
+                      activeTab === tab && styles.headerTabTextActive,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                  {count > 0 && (
+                    <View
+                      style={[
+                        styles.tabBadge,
+                        tab === 'blocked' && styles.tabBadgeRed,
+                      ]}
+                    >
+                      <Text style={styles.tabBadgeText}>{count}</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
+        <TouchableOpacity
+          style={styles.headerRightBtn}
+          activeOpacity={0.7}
+          onPress={() => {}}
+        >
+          <Ionicons name="create-outline" size={26} color="#262626" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchWrap}>
         <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={20} color="#64748B" />
+          <Ionicons name="search" size={18} color="#8E8E8E" />
           <TextInput
-            ref={searchRef}
             value={searchText}
-            onChangeText={handleSearchChange}
-            placeholder="Tìm kiếm cuộc hội thoại"
-            placeholderTextColor="#94A3B8"
+            onChangeText={setSearchText}
+            placeholder="Tìm kiếm"
+            placeholderTextColor="#8E8E8E"
             style={styles.searchInput}
             returnKeyType="search"
           />
         </View>
       </View>
 
-      {loadingConversations && conversations.length === 0 ? (
-        <View style={styles.centerState}>
+      {loadingConversations && activeData.length === 0 ? (
+        <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#0b74ff" />
         </View>
       ) : (
         <FlatList
-          data={computedConversations}
+          data={activeData}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
           refreshControl={
-            <RefreshControl refreshing={loadingConversations} onRefresh={loadData} tintColor="#0b74ff" />
+            <RefreshControl
+              refreshing={loadingConversations}
+              onRefresh={loadData}
+              tintColor="#0b74ff"
+            />
           }
-          contentContainerStyle={computedConversations.length === 0 ? styles.emptyList : styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.centerState}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#CBD5E1" />
-              <Text style={styles.emptyTitle}>Không có đoạn chat nào</Text>
-              <Text style={styles.emptySubtitle}>
-                Bắt đầu chat với bạn bè để xem ở đây.
-              </Text>
-            </View>
+          contentContainerStyle={
+            activeData.length === 0 ? styles.emptyList : styles.listContent
           }
+          ListEmptyComponent={emptyComponent}
         />
       )}
+
+      <Modal
+        visible={showFilter}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFilter(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowFilter(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.filterPopup}>
+                <View style={styles.filterHeader}>
+                  <Text style={styles.filterTitle}>Bộ lọc</Text>
+                  <TouchableOpacity onPress={() => setShowFilter(false)}>
+                    <Ionicons name="close" size={20} color="#262626" />
+                  </TouchableOpacity>
+                </View>
+                {FILTERS.map((filter) => (
+                  <TouchableOpacity
+                    key={filter}
+                    style={styles.filterOption}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setActiveFilter(filter);
+                      setShowFilter(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.filterOptionText,
+                        activeFilter === filter && styles.filterOptionTextActive,
+                      ]}
+                    >
+                      {filter}
+                    </Text>
+                    {activeFilter === filter && (
+                      <Ionicons name="checkmark" size={18} color="#0b74ff" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </Screen>
   );
 }
@@ -204,102 +643,147 @@ export default function ChatListScreen({ navigation }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
+    backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#DBDBDB',
+    backgroundColor: '#FFFFFF',
   },
-  headerTitle: {
-    fontSize: 24,
+  headerLeftBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerRightBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTab: {
+    paddingHorizontal: 12,
+    height: 44,
+    justifyContent: 'center',
+  },
+  headerTabInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerTabText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#8E8E8E',
+  },
+  headerTabTextActive: {
+    color: '#262626',
+    fontWeight: '700',
+  },
+  tabBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ED4956',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tabBadgeRed: {
+    backgroundColor: '#DC2626',
+  },
+  tabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: '800',
-    color: '#111827',
+  },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#DBDBDB',
+    backgroundColor: '#FAFAFA',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFEFEF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#262626',
+    padding: 0,
   },
   listContent: {
-    paddingBottom: 24,
+    paddingBottom: 8,
+  },
+  emptyList: {
+    flexGrow: 1,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   conversationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEF2F7',
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#DBDBDB',
+  },
+  conversationItemTouchable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  itemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 8,
+  },
+  actionIconBtn: {
+    padding: 8,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#E5E7EB',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
   },
   avatarFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  headerTop: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  headerSmall: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginBottom: 4,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  profileAvatarWrapper: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  profileAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#E5E7EB',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 15,
-    color: '#111827',
+    fontSize: 20,
+    fontWeight: '700',
   },
   conversationBody: {
     flex: 1,
     marginLeft: 12,
+    justifyContent: 'center',
   },
   conversationTopRow: {
     flexDirection: 'row',
@@ -308,64 +792,147 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   peerName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#262626',
     flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
+  },
+  peerNameUnread: {
+    fontWeight: '800',
   },
   timeText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#8E8E8E',
   },
   conversationBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
-    gap: 8,
+    marginTop: 3,
+    gap: 6,
+  },
+  pendingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0b74ff',
   },
   lastMessage: {
     flex: 1,
     fontSize: 14,
-    color: '#64748B',
+    color: '#8E8E8E',
+    lineHeight: 18,
   },
   lastMessageUnread: {
-    color: '#111827',
     fontWeight: '600',
+    color: '#262626',
   },
   unreadBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#EF4444',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#ED4956',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
   },
   unreadBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
   },
-  centerState: {
+  blockedLabel: {
+    fontSize: 14,
+    color: '#DC2626',
+  },
+  unblockButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#DBDBDB',
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  unblockButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#262626',
+  },
+  emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 40,
+    paddingBottom: 100,
   },
-  emptyList: {
-    flexGrow: 1,
+  emptyIconWrap: {
+    marginBottom: 16,
   },
   emptyTitle: {
-    marginTop: 12,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
+    color: '#262626',
+    marginBottom: 8,
   },
   emptySubtitle: {
-    marginTop: 8,
     fontSize: 14,
-    color: '#64748B',
+    color: '#8E8E8E',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  emptyBlockedState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 20,
+  },
+  emptyBlockedText: {
+    fontSize: 14,
+    color: '#8E8E8E',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterPopup: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    width: '80%',
+    maxWidth: 300,
+    overflow: 'hidden',
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#DBDBDB',
+  },
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#262626',
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EFEFEF',
+  },
+  filterOptionText: {
+    fontSize: 15,
+    color: '#262626',
+  },
+  filterOptionTextActive: {
+    fontWeight: '700',
+    color: '#0b74ff',
   },
 });

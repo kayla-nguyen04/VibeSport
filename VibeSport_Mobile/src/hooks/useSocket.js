@@ -3,7 +3,17 @@ import { useDispatch, useSelector } from 'react-redux';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../components/constants/api';
 import { addNotification, setUnreadCount } from '../redux/notificationSlice';
-import { fetchChatUnreadCount, receiveMessage, setChatUnreadCount } from '../redux/chatSlice';
+import {
+  fetchChatUnreadCount,
+  receiveMessage,
+  receivePendingMessage,
+  setChatUnreadCount,
+  conversationAccepted,
+  conversationBlocked,
+  conversationUnblocked,
+  conversationDeleted,
+  pendingMessagesDeletedByOther,
+} from '../redux/chatSlice';
 
 export function useSocket() {
   const dispatch = useDispatch();
@@ -37,6 +47,7 @@ export function useSocket() {
     });
 
     socket.on('new_notification', (notification) => {
+      if (notification?.type === 'message') return;
       console.log('[SOCKET] Received new notification:', notification);
       dispatch(addNotification(notification));
     });
@@ -50,8 +61,28 @@ export function useSocket() {
       dispatch(receiveMessage({ ...payload, currentUserId: userId }));
     });
 
+    socket.on('new_pending_message', (payload) => {
+      dispatch(receivePendingMessage({ ...payload, currentUserId: userId }));
+    });
+
     socket.on('unread_messages_count', ({ unreadCount }) => {
       dispatch(setChatUnreadCount(unreadCount));
+    });
+
+    socket.on('conversation_accepted', (payload) => {
+      dispatch(conversationAccepted({ ...payload, currentUserId: userId }));
+    });
+
+    socket.on('conversation_blocked', (payload) => {
+      dispatch(conversationBlocked(payload));
+    });
+
+    socket.on('conversation_unblocked', (payload) => {
+      dispatch(conversationUnblocked(payload));
+    });
+
+    socket.on('pending_messages_deleted', (payload) => {
+      dispatch(pendingMessagesDeletedByOther(payload));
     });
 
     socket.on('disconnect', () => {

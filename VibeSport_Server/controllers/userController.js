@@ -45,10 +45,11 @@ exports.getUserProfile = async (req, res) => {
 
     const followingByTarget = await Follow.find({ followerId: id }).distinct('followingId');
 
-    const [followerCount, followingCount, isFollowing, mutualFriends] = await Promise.all([
+    const [followerCount, followingCount, isFollowing, isFollowedBy, mutualFriends] = await Promise.all([
       Follow.countDocuments({ followingId: id }),
       Follow.countDocuments({ followerId: id }),
       viewerId ? Follow.exists({ followerId: viewerId, followingId: id }) : false,
+      viewerId ? Follow.exists({ followerId: id, followingId: viewerId }) : false,
       viewerId && String(viewerId) !== String(id)
         ? Follow.countDocuments({ followerId: viewerId, followingId: { $in: followingByTarget } })
         : 0,
@@ -75,6 +76,7 @@ exports.getUserProfile = async (req, res) => {
         followingCount,
         mutualFriends,
         isFollowing: Boolean(isFollowing),
+        isFollowedBy: Boolean(isFollowedBy),
         isSelf: String(viewerId) === String(id),
         presence,
       },
@@ -103,9 +105,11 @@ exports.toggleFollow = async (req, res) => {
 
     if (existing) {
       await Follow.deleteOne({ _id: existing._id });
+      const isFollowedBy = await Follow.exists({ followerId: id, followingId: followerId });
       return res.json({
         success: true,
         following: false,
+        isFollowedBy: Boolean(isFollowedBy),
         message: 'Đã bỏ theo dõi',
       });
     }
@@ -120,9 +124,12 @@ exports.toggleFollow = async (req, res) => {
       message: `${follower?.name || 'Ai đó'} đã bắt đầu theo dõi bạn`,
     });
 
+    const isFollowedBy = await Follow.exists({ followerId: id, followingId: followerId });
+
     res.json({
       success: true,
       following: true,
+      isFollowedBy: Boolean(isFollowedBy),
       message: 'Đã theo dõi',
     });
   } catch (error) {

@@ -37,6 +37,7 @@ export function NotificationScreen({ navigation }) {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
   const { notifications, loading, unreadCount } = useSelector((state) => state.notifications);
+  const visibleNotifications = notifications.filter((item) => item.type !== 'message');
 
   useEffect(() => {
     dispatch(fetchNotifications());
@@ -53,22 +54,6 @@ export function NotificationScreen({ navigation }) {
   const handleNotificationPress = (item) => {
     if (!item.read) {
       dispatch(markNotificationRead(item._id));
-    }
-
-    if (item.type === 'message') {
-      const conversationId = item.conversationId?._id || item.conversationId;
-      const fromUser = item.fromUserId;
-      if (conversationId && fromUser) {
-        navigation.navigate('ChatDetail', {
-          conversationId,
-          peer: {
-            _id: fromUser._id,
-            name: fromUser.name,
-            picture: fromUser.picture,
-          },
-        });
-        return;
-      }
     }
 
     const postId = item.postId?._id || item.postId;
@@ -162,7 +147,7 @@ export function NotificationScreen({ navigation }) {
       </ScreenHeader>
 
       <FlatList
-        data={notifications}
+        data={visibleNotifications}
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
         refreshControl={
