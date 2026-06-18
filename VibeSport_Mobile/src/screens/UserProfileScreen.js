@@ -175,6 +175,7 @@ export default function UserProfileScreen({ route, navigation }) {
       setProfile((prev) => ({
         ...prev,
         isFollowing: res.following,
+        isFollowedBy: res.isFollowedBy,
         followerCount: prev.followerCount + (res.following ? 1 : -1),
       }));
     } catch (err) {
@@ -373,7 +374,11 @@ export default function UserProfileScreen({ route, navigation }) {
                 <Text style={styles.actionBtnText}>Nhắn tin</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionBtn, profile.isFollowing && styles.actionBtnFollowing]}
+                style={[
+                  styles.actionBtn,
+                  profile.isFollowing && styles.actionBtnFollowing,
+                  profile.isFollowedBy && !profile.isFollowing && styles.actionBtnMutual,
+                ]}
                 onPress={handleFollow}
                 disabled={followLoading}
               >
@@ -381,9 +386,23 @@ export default function UserProfileScreen({ route, navigation }) {
                   <ActivityIndicator size="small" color={ACCENT} />
                 ) : (
                   <>
-                    <Feather name={profile.isFollowing ? 'user-check' : 'user-plus'} size={18} color={ACCENT} />
+                    <Feather
+                      name={
+                        profile.isFollowing
+                          ? 'user-check'
+                          : profile.isFollowedBy
+                          ? 'user-minus'
+                          : 'user-plus'
+                      }
+                      size={18}
+                      color={ACCENT}
+                    />
                     <Text style={[styles.actionBtnText, styles.followText]}>
-                      {profile.isFollowing ? 'Đang theo dõi' : 'Follow'}
+                      {profile.isFollowing
+                        ? 'Đang theo dõi'
+                        : profile.isFollowedBy
+                        ? 'Follow lại'
+                        : 'Follow'}
                     </Text>
                   </>
                 )}
@@ -513,6 +532,7 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   actionBtnFollowing: { backgroundColor: '#FFF0EA', borderColor: '#FFD4C2' },
+  actionBtnMutual: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
   actionBtnText: { color: '#1F2937', fontSize: 14, fontWeight: '600' },
   followText: { color: ACCENT },
   mutualText: { color: '#68707f', fontSize: 12, textAlign: 'center', marginTop: 12 },
