@@ -93,6 +93,25 @@ const matchSchema = new Schema(
       maxlength: 200,
     },
 
+    selectedPositionIds: {
+      type: [String],
+      default: [],
+    },
+
+    benchMembersTeam1: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 3,
+    },
+
+    benchMembersTeam2: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 3,
+    },
+
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

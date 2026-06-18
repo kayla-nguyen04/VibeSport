@@ -427,9 +427,9 @@ export default function TeamsScreen({ navigation }) {
                 </View>
               )}
               <View style={styles.detailInfoRow}>
-                <Text style={styles.detailInfoIcon}>⚽</Text>
+                <Text style={styles.detailInfoIcon}>{icon}</Text>
                 <Text style={styles.detailInfoText}>
-                  {Math.floor(maxCount / 2)} vs {Math.floor(maxCount / 2)}
+                  {item.sport === "football" ? "11 vs 11" : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}
                 </Text>
               </View>
             </View>
