@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native';
 export function BackButton({ onPress, style }) {
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
+      activeOpacity={0.7}
       onPress={onPress}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       style={[styles.button, style]}
@@ -15,21 +15,15 @@ export function BackButton({ onPress, style }) {
 
 const styles = StyleSheet.create({
   button: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    shadowColor: '#000000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
   },
   icon: {
-    fontSize: 22,
+    fontSize: 28,
     color: '#111111',
-    marginTop: -2,
+    fontWeight: '300',
   },
 });
