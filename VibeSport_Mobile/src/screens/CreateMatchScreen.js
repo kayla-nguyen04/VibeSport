@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSelector } from "react-redux";
 import {
@@ -15,6 +15,7 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,6 +25,8 @@ import { getPostsRequest } from "../services/postApi";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
 const parseDateString = (dateStr) => {
   if (!dateStr) return new Date();
   const parts = dateStr.split("/");
@@ -32,19 +35,79 @@ const parseDateString = (dateStr) => {
   return new Date(year, month - 1, day);
 };
 
-const DEFAULT_POSITIONS = [
-  { key: "goalkeeper", label: "Thủ môn", icon: "🧤", quantity: 1 },
-  { key: "defender", label: "Hậu vệ", icon: "🛡️", quantity: 2 },
-  { key: "midfielder", label: "Tiền vệ", icon: "👟", quantity: 1 },
-  { key: "striker", label: "Tiền đạo", icon: "⚡", quantity: 1 },
+// ─── Football formations ────────────────────────────────────────────────────
+// Each position: { id, label, role, x, y } – x/y in 0..1 relative to pitch
+// y=0 = top (forward zone), y=1 = bottom (goalkeeper zone)
+// Team 1 occupies top half (y: 0..0.5), Team 2 occupies bottom half (y: 0.5..1)
+
+const TEAM1_POSITIONS = [
+  // Goalkeeper
+  { id: "t1_gk",  label: "Thủ môn", role: "goalkeeper", x: 0.50, y: 0.05 },
+  // Defenders
+  { id: "t1_lb",  label: "Hậu vệ",  role: "defender",   x: 0.15, y: 0.15 },
+  { id: "t1_cb1", label: "Hậu vệ",  role: "defender",   x: 0.38, y: 0.15 },
+  { id: "t1_cb2", label: "Hậu vệ",  role: "defender",   x: 0.62, y: 0.15 },
+  { id: "t1_rb",  label: "Hậu vệ",  role: "defender",   x: 0.85, y: 0.15 },
+  // Defensive Midfielders
+  { id: "t1_dm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.24 },
+  { id: "t1_dm2", label: "Tiền vệ",  role: "midfielder", x: 0.65, y: 0.24 },
+  // Attacking Midfielders / Wingers
+  { id: "t1_lm",  label: "Tiền vệ",  role: "midfielder", x: 0.18, y: 0.33 },
+  { id: "t1_am",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.33 },
+  { id: "t1_rm",  label: "Tiền vệ",  role: "midfielder", x: 0.82, y: 0.33 },
+  // Striker
+  { id: "t1_st",  label: "Tiền đạo", role: "striker",    x: 0.50, y: 0.42 },
 ];
 
+const TEAM2_POSITIONS = [
+  // Striker
+  { id: "t2_st",  label: "Tiền đạo", role: "striker",    x: 0.50, y: 0.58 },
+  // Attacking Midfielders / Wingers
+  { id: "t2_lm",  label: "Tiền vệ",  role: "midfielder", x: 0.18, y: 0.67 },
+  { id: "t2_am",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.67 },
+  { id: "t2_rm",  label: "Tiền vệ",  role: "midfielder", x: 0.82, y: 0.67 },
+  // Defensive Midfielders
+  { id: "t2_dm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.76 },
+  { id: "t2_dm2", label: "Tiền vệ",  role: "midfielder", x: 0.65, y: 0.76 },
+  // Defenders
+  { id: "t2_lb",  label: "Hậu vệ",  role: "defender",   x: 0.15, y: 0.85 },
+  { id: "t2_cb1", label: "Hậu vệ",  role: "defender",   x: 0.38, y: 0.85 },
+  { id: "t2_cb2", label: "Hậu vệ",  role: "defender",   x: 0.62, y: 0.85 },
+  { id: "t2_rb",  label: "Hậu vệ",  role: "defender",   x: 0.85, y: 0.85 },
+  // Goalkeeper
+  { id: "t2_gk",  label: "Thủ môn", role: "goalkeeper", x: 0.50, y: 0.95 },
+];
+
+const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
+
+const ROLE_COLORS = {
+  goalkeeper: "#22c55e",
+  defender:   "#3b82f6",
+  midfielder: "#f59e0b",
+  striker:    "#ef4444",
+};
+
+// Role label short
+const ROLE_ICONS = {
+  goalkeeper: "TM",
+  defender:   "HV",
+  midfielder: "TV",
+  striker:    "TĐ",
+};
+
 const MAX_COST_PER_PERSON = 1000000;
+const MAX_BENCH = 6;
+
+const SPORT_MAP = {
+  football: "Bóng đá",
+  badminton: "Cầu lông",
+  pickleball: "Pickleball",
+};
 
 const SPORT_LIMITS = {
   football: {
-    maxPlayers: 10,
-    maxPlayersHint: "Tối đa 10 người (5v5) • Ví dụ: 5v5 → 10 người",
+    maxPlayers: 22,
+    maxPlayersHint: "Ví dụ: 5v5 → 10 người • 7v7 → 14 người",
   },
   badminton: {
     maxPlayers: 4,
@@ -56,12 +119,267 @@ const SPORT_LIMITS = {
   },
 };
 
-const SPORT_MAP = {
-  football: "Bóng đá",
-  badminton: "Cầu lông",
-  pickleball: "Pickleball",
-};
+// ─── Pitch SVG-like component rendered with Views ──────────────────────────
+const PITCH_ASPECT = 1.45; // height / width ratio
 
+function FootballPitch({ selectedIds, onToggle }) {
+  const pitchWidth = SCREEN_WIDTH - 48;
+  const pitchHeight = pitchWidth * PITCH_ASPECT;
+
+  return (
+    <View style={[pitchStyles.pitch, { width: pitchWidth, height: pitchHeight }]}>
+      {/* Field markings */}
+      <View style={pitchStyles.outerBorder} />
+      {/* Center line */}
+      <View style={[pitchStyles.centerLine, { top: pitchHeight * 0.5 }]} />
+      {/* Center circle */}
+      <View
+        style={[
+          pitchStyles.centerCircle,
+          {
+            top: pitchHeight * 0.5 - pitchWidth * 0.18,
+            left: pitchWidth * 0.5 - pitchWidth * 0.18,
+            width: pitchWidth * 0.36,
+            height: pitchWidth * 0.36,
+            borderRadius: pitchWidth * 0.18,
+          },
+        ]}
+      />
+      {/* Center dot */}
+      <View
+        style={[
+          pitchStyles.centerDot,
+          {
+            top: pitchHeight * 0.5 - 3,
+            left: pitchWidth * 0.5 - 3,
+          },
+        ]}
+      />
+      {/* Top penalty box */}
+      <View
+        style={[
+          pitchStyles.penaltyBox,
+          {
+            top: 0,
+            left: pitchWidth * 0.22,
+            width: pitchWidth * 0.56,
+            height: pitchHeight * 0.14,
+          },
+        ]}
+      />
+      {/* Top goal box */}
+      <View
+        style={[
+          pitchStyles.goalBox,
+          {
+            top: 0,
+            left: pitchWidth * 0.34,
+            width: pitchWidth * 0.32,
+            height: pitchHeight * 0.06,
+          },
+        ]}
+      />
+      {/* Bottom penalty box */}
+      <View
+        style={[
+          pitchStyles.penaltyBox,
+          {
+            bottom: 0,
+            left: pitchWidth * 0.22,
+            width: pitchWidth * 0.56,
+            height: pitchHeight * 0.14,
+          },
+        ]}
+      />
+      {/* Bottom goal box */}
+      <View
+        style={[
+          pitchStyles.goalBox,
+          {
+            bottom: 0,
+            left: pitchWidth * 0.34,
+            width: pitchWidth * 0.32,
+            height: pitchHeight * 0.06,
+          },
+        ]}
+      />
+
+      {/* Team labels */}
+      <View style={[pitchStyles.teamLabel, { top: 8, left: 8 }]}>
+        <Text style={pitchStyles.teamLabelText}>ĐỘI 1</Text>
+      </View>
+      <View style={[pitchStyles.teamLabel, { bottom: 8, left: 8 }]}>
+        <Text style={pitchStyles.teamLabelText}>ĐỘI 2</Text>
+      </View>
+
+      {/* Player positions */}
+      {ALL_POSITIONS.map((pos) => {
+        const isSelected = selectedIds.includes(pos.id);
+        const color = ROLE_COLORS[pos.role];
+        const dotSize = 36;
+        const left = pos.x * pitchWidth - dotSize / 2;
+        const top = pos.y * pitchHeight - dotSize / 2;
+
+        return (
+          <TouchableOpacity
+            key={pos.id}
+            style={[
+              pitchStyles.playerDot,
+              {
+                left,
+                top,
+                width: dotSize,
+                height: dotSize,
+                borderRadius: dotSize / 2,
+                backgroundColor: isSelected ? color : "rgba(255,255,255,0.25)",
+                borderColor: isSelected ? color : "rgba(255,255,255,0.6)",
+                borderWidth: isSelected ? 0 : 2,
+              },
+            ]}
+            onPress={() => onToggle(pos.id)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                pitchStyles.playerDotText,
+                { color: isSelected ? "#fff" : "rgba(255,255,255,0.85)" },
+              ]}
+            >
+              {ROLE_ICONS[pos.role]}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+const pitchStyles = StyleSheet.create({
+  pitch: {
+    backgroundColor: "#3a8a3a",
+    borderRadius: 8,
+    overflow: "hidden",
+    alignSelf: "center",
+  },
+  outerBorder: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    right: 6,
+    bottom: 6,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.5)",
+    borderRadius: 4,
+  },
+  centerLine: {
+    position: "absolute",
+    left: 6,
+    right: 6,
+    height: 2,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  centerCircle: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.5)",
+    backgroundColor: "transparent",
+  },
+  centerDot: {
+    position: "absolute",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.6)",
+  },
+  penaltyBox: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.5)",
+    backgroundColor: "transparent",
+  },
+  goalBox: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.5)",
+    backgroundColor: "transparent",
+  },
+  teamLabel: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  teamLabelText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  playerDot: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  playerDotText: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+});
+
+// ─── Legend row ──────────────────────────────────────────────────────────────
+function RoleLegend() {
+  const entries = [
+    { role: "goalkeeper", label: "Thủ môn" },
+    { role: "defender",   label: "Hậu vệ" },
+    { role: "midfielder", label: "Tiền vệ" },
+    { role: "striker",    label: "Tiền đạo" },
+  ];
+  return (
+    <View style={legendStyles.row}>
+      {entries.map((e) => (
+        <View key={e.role} style={legendStyles.item}>
+          <View style={[legendStyles.dot, { backgroundColor: ROLE_COLORS[e.role] }]} />
+          <Text style={legendStyles.label}>{e.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const legendStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  label: {
+    fontSize: 11,
+    color: "#555",
+    fontWeight: "500",
+  },
+});
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
@@ -111,9 +429,6 @@ export default function CreateMatchScreen({ navigation, route }) {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(editMatch?.startTime || "19:00");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [maxPlayers, setMaxPlayers] = useState(
-    editMatch?.maxPlayers ? String(editMatch.maxPlayers) : "10"
-  );
   const [costPerPerson, setCostPerPerson] = useState(
     editMatch?.costPerPerson ? String(editMatch.costPerPerson) : ""
   );
@@ -124,6 +439,32 @@ export default function CreateMatchScreen({ navigation, route }) {
       : null
   );
   const [note, setNote] = useState(editMatch?.note || "");
+
+  // ── Position map state ──
+  // selectedPositionIds: list of position ids ticked on the pitch
+  const [selectedPositionIds, setSelectedPositionIds] = useState(() => {
+    if (editMatch?.selectedPositionIds?.length) {
+      return editMatch.selectedPositionIds;
+    }
+    return [];
+  });
+  const [showPitchModal, setShowPitchModal] = useState(false);
+
+  // Bench members for Team 1 and Team 2 (optional, max 3 each)
+  const [benchMembersTeam1, setBenchMembersTeam1] = useState(
+    editMatch?.benchMembersTeam1 ? String(editMatch.benchMembersTeam1) : ""
+  );
+  const [benchMembersTeam2, setBenchMembersTeam2] = useState(
+    editMatch?.benchMembersTeam2 ? String(editMatch.benchMembersTeam2) : ""
+  );
+
+  // Auto-calculate số người cần tìm = selected positions + reserves of both teams
+  const totalNeeded = selectedPositionIds.length + Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0);
+
+  // For non-football sports keep a manual maxPlayers field
+  const [maxPlayersOther, setMaxPlayersOther] = useState(
+    editMatch?.maxPlayers ? String(editMatch.maxPlayers) : "2"
+  );
 
   // Format helpers
   const formatDate = (d) => {
@@ -174,20 +515,18 @@ export default function CreateMatchScreen({ navigation, route }) {
     return d;
   };
 
-  const [positionsNeeded, setPositionsNeeded] = useState(
-    editMatch?.positionsNeeded?.length ? editMatch.positionsNeeded : DEFAULT_POSITIONS
-  );
-
   const buildFormDraft = useCallback(
     () => ({
       sport,
       title,
       selectedDate: selectedDate.toISOString(),
       selectedTimeSlot,
-      maxPlayers,
+      maxPlayersOther,
       costPerPerson,
       note,
-      positionsNeeded,
+      selectedPositionIds,
+      benchMembersTeam1,
+      benchMembersTeam2,
       locationName,
       locationCoords,
     }),
@@ -196,10 +535,12 @@ export default function CreateMatchScreen({ navigation, route }) {
       title,
       selectedDate,
       selectedTimeSlot,
-      maxPlayers,
+      maxPlayersOther,
       costPerPerson,
       note,
-      positionsNeeded,
+      selectedPositionIds,
+      benchMembersTeam1,
+      benchMembersTeam2,
       locationName,
       locationCoords,
     ]
@@ -211,15 +552,17 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (draft.title != null) setTitle(draft.title);
     if (draft.selectedDate) setSelectedDate(new Date(draft.selectedDate));
     if (draft.selectedTimeSlot) setSelectedTimeSlot(draft.selectedTimeSlot);
-    if (draft.maxPlayers != null) setMaxPlayers(String(draft.maxPlayers));
+    if (draft.maxPlayersOther != null) setMaxPlayersOther(String(draft.maxPlayersOther));
     if (draft.costPerPerson != null) setCostPerPerson(String(draft.costPerPerson));
     if (draft.note != null) setNote(draft.note);
-    if (draft.positionsNeeded?.length) setPositionsNeeded(draft.positionsNeeded);
+    if (draft.selectedPositionIds != null) setSelectedPositionIds(draft.selectedPositionIds);
+    if (draft.benchMembersTeam1 != null) setBenchMembersTeam1(String(draft.benchMembersTeam1));
+    if (draft.benchMembersTeam2 != null) setBenchMembersTeam2(String(draft.benchMembersTeam2));
     if (draft.locationName != null) setLocationName(draft.locationName);
     if (draft.locationCoords) setLocationCoords(draft.locationCoords);
   }, []);
 
-  // Khôi phục form khi quay lại từ MapPicker (tránh mất dữ liệu đã nhập)
+  // Khôi phục form khi quay lại từ MapPicker
   useFocusEffect(
     useCallback(() => {
       const draft = route?.params?.formDraft;
@@ -244,25 +587,21 @@ export default function CreateMatchScreen({ navigation, route }) {
 
   const handleSelectSport = (selectedSport) => {
     setSport(selectedSport);
-
-    if (selectedSport === "football") {
-      setMaxPlayers("10");
-      setPositionsNeeded(DEFAULT_POSITIONS);
-    } else {
-      setMaxPlayers("2");
+    if (selectedSport !== "football") {
+      setMaxPlayersOther("2");
+      setSelectedPositionIds([]);
     }
   };
 
-  const sportLimits = SPORT_LIMITS[sport] || SPORT_LIMITS.football;
-
-  const handleMaxPlayersChange = (text) => {
+  const handleMaxPlayersOtherChange = (text) => {
     const digits = text.replace(/[^0-9]/g, "");
     if (!digits) {
-      setMaxPlayers("");
+      setMaxPlayersOther("");
       return;
     }
     const num = parseInt(digits, 10);
-    setMaxPlayers(String(Math.min(num, sportLimits.maxPlayers)));
+    const limit = SPORT_LIMITS[sport]?.maxPlayers || 4;
+    setMaxPlayersOther(String(Math.min(num, limit)));
   };
 
   const handleCostChange = (text) => {
@@ -275,43 +614,82 @@ export default function CreateMatchScreen({ navigation, route }) {
     setCostPerPerson(String(Math.min(num, MAX_COST_PER_PERSON)));
   };
 
-  const increasePosition = (key) => {
-    setPositionsNeeded((prev) =>
-      prev.map((item) =>
-        item.key === key
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      )
+  const handleBenchTeam1Change = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setBenchMembersTeam1("");
+      return;
+    }
+    const num = parseInt(digits, 10);
+    setBenchMembersTeam1(String(Math.min(num, 3)));
+  };
+
+  const handleBenchTeam2Change = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setBenchMembersTeam2("");
+      return;
+    }
+    const num = parseInt(digits, 10);
+    setBenchMembersTeam2(String(Math.min(num, 3)));
+  };
+
+  const togglePosition = (id) => {
+    setSelectedPositionIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
-  const decreasePosition = (key) => {
-    setPositionsNeeded((prev) =>
-      prev.map((item) =>
-        item.key === key && item.quantity > 0
-          ? { ...item, quantity: item.quantity - 1 }
-          : item
-      )
-    );
+  // Build role summary from selected positions
+  const selectedRoleSummary = useMemo(() => {
+    const counts = {};
+    ALL_POSITIONS.filter((p) => selectedPositionIds.includes(p.id)).forEach((p) => {
+      counts[p.role] = (counts[p.role] || 0) + 1;
+    });
+    return counts;
+  }, [selectedPositionIds]);
+
+  const roleLabels = {
+    goalkeeper: "Thủ môn",
+    defender: "Hậu vệ",
+    midfielder: "Tiền vệ",
+    striker: "Tiền đạo",
   };
 
-  const buildPayload = () => ({
-    sport,
-    title: title.trim(),
-    date: formatDate(selectedDate),
-    startTime: selectedTimeSlot,
-    maxPlayers: Number(maxPlayers),
-    positionsNeeded: sport === "football" ? positionsNeeded : [],
-    costPerPerson: Number(costPerPerson || 0),
-    locationName: locationName.trim(),
-    location: {
-      lat: locationCoords?.lat || null,
-      lng: locationCoords?.lng || null,
-      address: locationName.trim(),
-    },
-    note: note.trim(),
-    ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
-  });
+  const buildPayload = () => {
+    const maxPlayers = sport === "football" ? totalNeeded : Number(maxPlayersOther);
+    // Build positionsNeeded from selected positions for backward-compat
+    const positionsNeeded = Object.entries(selectedRoleSummary).map(([role, qty]) => ({
+      key: role,
+      label: roleLabels[role] || role,
+      quantity: qty,
+    }));
+
+    const b1 = Number(benchMembersTeam1 || 0);
+    const b2 = Number(benchMembersTeam2 || 0);
+
+    return {
+      sport,
+      title: title.trim(),
+      date: formatDate(selectedDate),
+      startTime: selectedTimeSlot,
+      maxPlayers,
+      positionsNeeded: sport === "football" ? positionsNeeded : [],
+      selectedPositionIds: sport === "football" ? selectedPositionIds : [],
+      benchMembers: sport === "football" ? (b1 + b2) : 0,
+      benchMembersTeam1: sport === "football" ? b1 : 0,
+      benchMembersTeam2: sport === "football" ? b2 : 0,
+      costPerPerson: Number(costPerPerson || 0),
+      locationName: locationName.trim(),
+      location: {
+        lat: locationCoords?.lat || null,
+        lng: locationCoords?.lng || null,
+        address: locationName.trim(),
+      },
+      note: note.trim(),
+      ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
+    };
+  };
 
   const validateForm = () => {
     if (!title.trim()) {
@@ -330,17 +708,12 @@ export default function CreateMatchScreen({ navigation, route }) {
       Alert.alert("Thiếu thông tin", "Vui lòng chọn địa điểm sân trên bản đồ");
       return false;
     }
-    if (!maxPlayers || Number(maxPlayers) <= 0) {
-      Alert.alert("Dữ liệu không hợp lệ", "Số người tối đa phải lớn hơn 0");
+    if (sport === "football" && totalNeeded === 0) {
+      Alert.alert("Thiếu thông tin", "Vui lòng chọn ít nhất 1 vị trí cần tìm trên sơ đồ");
       return false;
     }
-    const limits = SPORT_LIMITS[sport] || SPORT_LIMITS.football;
-    const playerCount = Number(maxPlayers);
-    if (playerCount > limits.maxPlayers) {
-      Alert.alert(
-        "Dữ liệu không hợp lệ",
-        `Số người tối đa cho môn này là ${limits.maxPlayers} người`
-      );
+    if (sport !== "football" && (!maxPlayersOther || Number(maxPlayersOther) <= 0)) {
+      Alert.alert("Dữ liệu không hợp lệ", "Số người tham gia phải lớn hơn 0");
       return false;
     }
     const cost = Number(costPerPerson || 0);
@@ -350,6 +723,16 @@ export default function CreateMatchScreen({ navigation, route }) {
         `Chi phí tối đa là ${MAX_COST_PER_PERSON.toLocaleString("vi-VN")} VND/người`
       );
       return false;
+    }
+    if (sport === "football") {
+      if (benchMembersTeam1 && Number(benchMembersTeam1) > 3) {
+        Alert.alert("Dữ liệu không hợp lệ", "Đội 1 tối đa là 3 thành viên dự bị");
+        return false;
+      }
+      if (benchMembersTeam2 && Number(benchMembersTeam2) > 3) {
+        Alert.alert("Dữ liệu không hợp lệ", "Đội 2 tối đa là 3 thành viên dự bị");
+        return false;
+      }
     }
     return true;
   };
@@ -399,6 +782,132 @@ export default function CreateMatchScreen({ navigation, route }) {
     );
   };
 
+  // ─── Pitch Selection Modal ────────────────────────────────────────────────
+  const renderPitchModal = () => (
+    <Modal
+      visible={showPitchModal}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={() => setShowPitchModal(false)}
+    >
+      <View style={pitchModal.safeArea}>
+        {/* Header */}
+        <View style={pitchModal.header}>
+          <TouchableOpacity
+            style={pitchModal.closeBtn}
+            onPress={() => setShowPitchModal(false)}
+          >
+            <Text style={pitchModal.closeBtnText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={pitchModal.title}>Chọn vị trí cần tìm (11 vs 11)</Text>
+          <TouchableOpacity
+            style={pitchModal.doneBtn}
+            onPress={() => setShowPitchModal(false)}
+          >
+            <Text style={pitchModal.doneBtnText}>Xong</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={pitchModal.scrollContent}
+        >
+          {/* Instruction */}
+          <Text style={pitchModal.instruction}>
+            Nhấn vào từng vị trí trên sơ đồ để chọn cần tìm
+          </Text>
+
+          {/* Legend */}
+          <RoleLegend />
+
+          {/* Count badge */}
+          <View style={pitchModal.countBadge}>
+            <Text style={pitchModal.countBadgeText}>
+              Đã chọn:{" "}
+              <Text style={pitchModal.countBadgeNum}>{selectedPositionIds.length}</Text>
+              {" "}vị trí
+            </Text>
+          </View>
+
+          {/* Pitch */}
+          <FootballPitch
+            selectedIds={selectedPositionIds}
+            onToggle={togglePosition}
+          />
+
+          {/* Role breakdown */}
+          {Object.keys(selectedRoleSummary).length > 0 && (
+            <View style={pitchModal.breakdownBox}>
+              <Text style={pitchModal.breakdownTitle}>Vị trí đã chọn:</Text>
+              <View style={pitchModal.breakdownRow}>
+                {Object.entries(selectedRoleSummary).map(([role, qty]) => (
+                  <View
+                    key={role}
+                    style={[
+                      pitchModal.breakdownChip,
+                      { backgroundColor: ROLE_COLORS[role] + "22", borderColor: ROLE_COLORS[role] },
+                    ]}
+                  >
+                    <View
+                      style={[pitchModal.breakdownDot, { backgroundColor: ROLE_COLORS[role] }]}
+                    />
+                    <Text style={[pitchModal.breakdownText, { color: ROLE_COLORS[role] }]}>
+                      {roleLabels[role]} × {qty}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Bench */}
+          <View style={pitchModal.benchSection}>
+            <Text style={pitchModal.benchLabel}>🪑 Thành viên dự bị (không bắt buộc)</Text>
+            <Text style={pitchModal.benchHint}>Mỗi đội tối đa 3 người dự bị • Để trống nếu không cần</Text>
+            <View style={pitchModal.benchRow}>
+              {/* Team 1 Bench */}
+              <View style={pitchModal.benchCol}>
+                <Text style={pitchModal.benchSubLabel}>Đội 1</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: "#fff" }]}>
+                  <TextInput
+                    style={styles.input}
+                    value={benchMembersTeam1}
+                    onChangeText={handleBenchTeam1Change}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor="#bbb"
+                    maxLength={1}
+                  />
+                  <Text style={styles.currencySuffix}>dự bị</Text>
+                </View>
+              </View>
+
+              {/* Team 2 Bench */}
+              <View style={pitchModal.benchCol}>
+                <Text style={pitchModal.benchSubLabel}>Đội 2</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: "#fff" }]}>
+                  <TextInput
+                    style={styles.input}
+                    value={benchMembersTeam2}
+                    onChangeText={handleBenchTeam2Change}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor="#bbb"
+                    maxLength={1}
+                  />
+                  <Text style={styles.currencySuffix}>dự bị</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <Screen style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -615,60 +1124,87 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Modal>
         )}
 
-        {/* SỐ NGƯỜI TỐI ĐA / SỐ NGƯỜI THAM GIA */}
-        <Text style={styles.sectionLabel}>
-          {sport === "football" ? "SỐ NGƯỜI TỐI ĐA" : "SỐ NGƯỜI THAM GIA"}
-        </Text>
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.input}
-            value={maxPlayers}
-            onChangeText={handleMaxPlayersChange}
-            keyboardType="numeric"
-            placeholder={sport === "football" ? "10" : "2"}
-            placeholderTextColor="#bbb"
-          />
-        </View>
-        <Text style={styles.helperText}>{sportLimits.maxPlayersHint}</Text>
-
-        {/* VỊ TRÍ CẦN TÌM (Football only) */}
-        {sport === "football" && (
+        {/* ── SỐ NGƯỜI CẦN TÌM (football: auto, other: manual) ── */}
+        {sport === "football" ? (
           <>
+            {/* VỊ TRÍ CẦN TÌM – tap to open pitch modal */}
             <View style={styles.positionSectionHeader}>
               <Text style={styles.sectionLabel}>VỊ TRÍ CẦN TÌM (TÙY CHỌN)</Text>
               <Text style={styles.infoIcon}>ⓘ</Text>
             </View>
-            <View style={styles.positionBox}>
-              <View style={styles.positionGrid}>
-                {positionsNeeded.map((item, index) => (
-                  <View key={item.key} style={styles.positionItem}>
-                    <Text style={styles.positionIcon}>{item.icon}</Text>
-                    <Text style={styles.positionLabel}>{item.label}</Text>
 
-                    <View style={styles.counterRow}>
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => decreasePosition(item.key)}
-                      >
-                        <Text style={styles.counterButtonText}>−</Text>
-                      </TouchableOpacity>
+            {/* Tap area to open map */}
+            <TouchableOpacity
+              style={styles.pitchTrigger}
+              onPress={() => setShowPitchModal(true)}
+              activeOpacity={0.8}
+            >
+              {/* Mini pitch preview */}
+              <View style={styles.pitchTriggerLeft}>
+                <Text style={styles.pitchTriggerIcon}>🗺️</Text>
+                <View>
+                  <Text style={styles.pitchTriggerTitle}>Sơ đồ vị trí (11 vs 11)</Text>
+                  <Text style={styles.pitchTriggerSub}>
+                    {selectedPositionIds.length > 0 || Number(benchMembersTeam1 || 0) > 0 || Number(benchMembersTeam2 || 0) > 0
+                      ? `Đã chọn ${selectedPositionIds.length} vị trí${(Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)) > 0 ? ` + ${Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)} dự bị` : ""}`
+                      : "Nhấn để mở sơ đồ sân"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.pitchTriggerArrow}>›</Text>
+            </TouchableOpacity>
 
-                      <Text style={styles.counterValue}>{item.quantity}</Text>
-
-                      <TouchableOpacity
-                        style={styles.counterButton}
-                        onPress={() => increasePosition(item.key)}
-                      >
-                        <Text style={styles.counterButtonText}>+</Text>
-                      </TouchableOpacity>
-                    </View>
+            {/* Role chips summary */}
+            {Object.keys(selectedRoleSummary).length > 0 && (
+              <View style={styles.roleChipsRow}>
+                {Object.entries(selectedRoleSummary).map(([role, qty]) => (
+                  <View
+                    key={role}
+                    style={[
+                      styles.roleChip,
+                      { backgroundColor: ROLE_COLORS[role] + "18", borderColor: ROLE_COLORS[role] + "66" },
+                    ]}
+                  >
+                    <View style={[styles.roleChipDot, { backgroundColor: ROLE_COLORS[role] }]} />
+                    <Text style={[styles.roleChipText, { color: ROLE_COLORS[role] }]}>
+                      {roleLabels[role]} ×{qty}
+                    </Text>
                   </View>
                 ))}
               </View>
-              <Text style={styles.positionHelperText}>
-                Để trống nếu không có yêu cầu vị trí cụ thể
-              </Text>
+            )}
+
+            {/* SỐ NGƯỜI CẦN TÌM – auto */}
+            <Text style={styles.sectionLabel}>SỐ NGƯỜI CẦN TÌM</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={totalNeeded > 0 ? `${totalNeeded} người` : ""}
+                placeholder="Chưa chọn vị trí"
+                placeholderTextColor="#bbb"
+                editable={false}
+              />
             </View>
+            <Text style={styles.helperText}>
+              Tự động tính theo số vị trí đã chọn trên sơ đồ
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.sectionLabel}>SỐ NGƯỜI THAM GIA</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={maxPlayersOther}
+                onChangeText={handleMaxPlayersOtherChange}
+                keyboardType="numeric"
+                placeholder="2"
+                placeholderTextColor="#bbb"
+              />
+            </View>
+            <Text style={styles.helperText}>
+              {SPORT_LIMITS[sport]?.maxPlayersHint}
+            </Text>
           </>
         )}
 
@@ -734,7 +1270,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             onChangeText={(text) => {
               if (text.length <= 200) setNote(text);
             }}
-            placeholder="Mặc quần áo thể thao, mang giày đinh ngắn.&#10;Tiền sân thanh toán tại chỗ."
+            placeholder={`Mặc quần áo thể thao, mang giày đinh ngắn.\nTiền sân thanh toán tại chỗ.`}
             placeholderTextColor="#bbb"
             multiline
             textAlignVertical="top"
@@ -759,6 +1295,9 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Pitch selection modal */}
+      {renderPitchModal()}
     </Screen>
   );
 }
@@ -882,11 +1421,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#333",
   },
-  inputIcon: {
-    fontSize: 16,
-    paddingRight: 12,
-    color: "#999",
-  },
 
   // Date Time
   dateTimeRow: {
@@ -917,7 +1451,7 @@ const styles = StyleSheet.create({
     color: "#999",
   },
 
-  // Modal
+  // Modal (date/time pickers)
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
@@ -955,40 +1489,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#ff5722",
   },
-  timeGrid: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  timeChip: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 12,
-    margin: 4,
-    borderRadius: 10,
-    backgroundColor: "#f5f5f5",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  timeChipActive: {
-    backgroundColor: "#fff5f2",
-    borderColor: "#ff5722",
-  },
-  timeChipText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#333",
-  },
-  timeChipTextActive: {
-    color: "#ff5722",
-  },
-  timeChipPeriod: {
-    fontSize: 10,
-    color: "#aaa",
-    marginTop: 2,
-  },
-  timeChipPeriodActive: {
-    color: "#ff8a65",
-  },
 
   // Helper text
   helperText: {
@@ -998,7 +1498,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Position Section
+  // Position section trigger
   positionSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1009,72 +1509,66 @@ const styles = StyleSheet.create({
     color: "#999",
     marginTop: 18,
   },
-  positionBox: {
-    borderWidth: 1.5,
-    borderColor: "#ff8a65",
-    borderStyle: "dashed",
-    borderRadius: 14,
-    padding: 14,
-    backgroundColor: "#fffbf8",
-  },
-  positionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  positionItem: {
-    width: "48%",
+  pitchTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: "#f0e0d8",
+    backgroundColor: "#f0f9f0",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#4ade80",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  positionIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  positionLabel: {
+  pitchTriggerLeft: {
     flex: 1,
-    fontSize: 13,
-    color: "#555",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  pitchTriggerIcon: {
+    fontSize: 28,
+  },
+  pitchTriggerTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  pitchTriggerSub: {
+    fontSize: 12,
+    color: "#4ade80",
+    marginTop: 2,
     fontWeight: "500",
   },
-  counterRow: {
+  pitchTriggerArrow: {
+    fontSize: 24,
+    color: "#4ade80",
+    fontWeight: "300",
+  },
+
+  // Role chips summary (below trigger)
+  roleChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  roleChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 5,
   },
-  counterButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
-    backgroundColor: "#f0f0f0",
-    alignItems: "center",
-    justifyContent: "center",
+  roleChipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  counterButtonText: {
-    fontSize: 16,
+  roleChipText: {
+    fontSize: 12,
     fontWeight: "600",
-    color: "#666",
-    lineHeight: 18,
-  },
-  counterValue: {
-    width: 24,
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
-  },
-  positionHelperText: {
-    fontSize: 11,
-    color: "#bbb",
-    marginTop: 10,
-    textAlign: "center",
-    fontStyle: "italic",
   },
 
   // Cost
@@ -1191,7 +1685,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 15,
   },
-  // Find team posts section in CreateMatchScreen
+
+  // Find team posts section
   loadingPostsContainer: {
     paddingVertical: 16,
     alignItems: "center",
@@ -1290,5 +1785,151 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#ff5722",
     fontWeight: "600",
+  },
+});
+
+// ─── Pitch Modal Styles ───────────────────────────────────────────────────────
+const pitchModal = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: "#fff",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#e8e8e8",
+    paddingTop: Platform.OS === "ios" ? 50 : 14,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeBtnText: {
+    fontSize: 18,
+    color: "#666",
+    fontWeight: "600",
+  },
+  title: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    textAlign: "center",
+  },
+  doneBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  doneBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#ff5722",
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  instruction: {
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  countBadge: {
+    alignSelf: "center",
+    backgroundColor: "#fff5f2",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#ff8a65",
+    marginBottom: 12,
+  },
+  countBadgeText: {
+    fontSize: 13,
+    color: "#ff5722",
+    fontWeight: "600",
+  },
+  countBadgeNum: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#ff4d2d",
+  },
+  breakdownBox: {
+    marginTop: 14,
+    padding: 12,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ebebeb",
+  },
+  breakdownTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#888",
+    marginBottom: 8,
+    letterSpacing: 0.4,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  breakdownChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 5,
+  },
+  breakdownDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  breakdownText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  benchSection: {
+    marginTop: 20,
+    padding: 14,
+    backgroundColor: "#f7f7f7",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#ebebeb",
+  },
+  benchLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 4,
+  },
+  benchHint: {
+    fontSize: 11,
+    color: "#aaa",
+    marginBottom: 10,
+  },
+  benchRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  benchCol: {
+    flex: 1,
+  },
+  benchSubLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#555",
+    marginBottom: 6,
   },
 });

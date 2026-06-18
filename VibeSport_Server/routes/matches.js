@@ -25,6 +25,9 @@ router.post("/", async (req, res) => {
       location,
       note,
       createdBy,
+      selectedPositionIds,
+      benchMembersTeam1,
+      benchMembersTeam2,
     } = req.body;
 
     if (!sport || !title || !date || !startTime || !maxPlayers || !locationName) {
@@ -55,6 +58,9 @@ router.post("/", async (req, res) => {
       startTime,
       maxPlayers: Number(maxPlayers),
       positionsNeeded: sport === "football" ? positionsNeeded || [] : [],
+      selectedPositionIds: sport === "football" ? selectedPositionIds || [] : [],
+      benchMembersTeam1: sport === "football" ? Number(benchMembersTeam1 || 0) : 0,
+      benchMembersTeam2: sport === "football" ? Number(benchMembersTeam2 || 0) : 0,
       costPerPerson: Number(costPerPerson || 0),
       locationName,
       location: location || {},
@@ -248,6 +254,9 @@ router.put("/:id", async (req, res) => {
       locationName,
       location,
       note,
+      selectedPositionIds,
+      benchMembersTeam1,
+      benchMembersTeam2,
     } = req.body;
 
     const match = await Match.findById(req.params.id);
@@ -284,6 +293,15 @@ router.put("/:id", async (req, res) => {
     if (startTime) match.startTime = startTime;
     if (positionsNeeded !== undefined) {
       match.positionsNeeded = sport === "football" || match.sport === "football" ? positionsNeeded || [] : [];
+    }
+    if (selectedPositionIds !== undefined) {
+      match.selectedPositionIds = sport === "football" || match.sport === "football" ? selectedPositionIds || [] : [];
+    }
+    if (benchMembersTeam1 !== undefined) {
+      match.benchMembersTeam1 = sport === "football" || match.sport === "football" ? Number(benchMembersTeam1 || 0) : 0;
+    }
+    if (benchMembersTeam2 !== undefined) {
+      match.benchMembersTeam2 = sport === "football" || match.sport === "football" ? Number(benchMembersTeam2 || 0) : 0;
     }
     if (costPerPerson !== undefined) match.costPerPerson = Number(costPerPerson || 0);
     if (locationName) match.locationName = locationName.trim();

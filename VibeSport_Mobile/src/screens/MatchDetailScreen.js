@@ -288,9 +288,9 @@ export default function MatchDetailScreen({ navigation, route }) {
               </View>
             )}
             <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>⚽</Text>
+              <Text style={styles.infoIcon}>{icon}</Text>
               <Text style={styles.infoText}>
-                {Math.floor(maxCount / 2)} vs {Math.floor(maxCount / 2)}
+                {match.sport === "football" ? "11 vs 11" : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}
               </Text>
             </View>
             <View style={styles.infoRow}>
