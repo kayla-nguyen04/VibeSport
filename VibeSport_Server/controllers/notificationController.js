@@ -7,7 +7,10 @@ exports.getNotifications = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const notifications = await Notification.find({ userId: req.userId })
+    const notifications = await Notification.find({
+      userId: req.userId,
+      type: { $ne: 'message' },
+    })
       .populate('fromUserId', 'name picture')
       .populate('postId', 'content mediaUrls')
       .populate('conversationId', 'lastMessage lastMessageAt')
@@ -33,6 +36,7 @@ exports.getUnreadCount = async (req, res) => {
     const count = await Notification.countDocuments({
       userId: req.userId,
       read: false,
+      type: { $ne: 'message' },
     });
 
     res.status(200).json({
