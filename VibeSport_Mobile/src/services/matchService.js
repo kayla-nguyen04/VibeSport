@@ -54,6 +54,16 @@ export async function requestJoinMatch(matchId, userId) {
   });
 }
 
+export async function cancelJoinRequest(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/cancel-request`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}
+
 export async function acceptJoinMatch(matchId, ownerId, userId) {
   return matchRequest(`${MATCHES_URL}/${matchId}/accept-join`, {
     method: "POST",

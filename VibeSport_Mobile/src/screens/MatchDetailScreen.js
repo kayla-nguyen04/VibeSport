@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,16 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Linking,
+  Platform,
+  Modal,
 } from "react-native";
 import { useSelector } from "react-redux";
 import {
   getMatchById,
   deleteMatch,
   requestJoinMatch,
+  cancelJoinRequest,
   acceptJoinMatch,
   rejectJoinMatch,
   leaveMatch,
@@ -22,6 +26,51 @@ import { ScreenHeader } from "../components/ScreenHeader";
 
 const SPORT_ICONS = { football: "⚽", badminton: "🏸", pickleball: "🏓" };
 const AVATAR_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FB8C00", "#8E24AA", "#00ACC1"];
+
+// ─── Football position definitions (mirrored from CreateMatchScreen) ────────
+const TEAM1_POSITIONS = [
+  { id: "t1_gk",  label: "Thủ môn", role: "goalkeeper" },
+  { id: "t1_lb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t1_cb1", label: "Hậu vệ",  role: "defender" },
+  { id: "t1_cb2", label: "Hậu vệ",  role: "defender" },
+  { id: "t1_rb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t1_dm1", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_dm2", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_lm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_am",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_rm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_st",  label: "Tiền đạo", role: "striker" },
+];
+
+const TEAM2_POSITIONS = [
+  { id: "t2_st",  label: "Tiền đạo", role: "striker" },
+  { id: "t2_lm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_am",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_rm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_dm1", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_dm2", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_lb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t2_cb1", label: "Hậu vệ",  role: "defender" },
+  { id: "t2_cb2", label: "Hậu vệ",  role: "defender" },
+  { id: "t2_rb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t2_gk",  label: "Thủ môn", role: "goalkeeper" },
+];
+
+const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
+
+const ROLE_LABELS = {
+  goalkeeper: "Thủ môn",
+  defender: "Hậu vệ",
+  midfielder: "Tiền vệ",
+  striker: "Tiền đạo",
+};
+
+const ROLE_TAG_COLORS = {
+  goalkeeper: { bg: "#dcfce7", text: "#166534" },
+  defender:   { bg: "#dbeafe", text: "#1e40af" },
+  midfielder: { bg: "#fef9c3", text: "#854d0e" },
+  striker:    { bg: "#fee2e2", text: "#991b1b" },
+};
 
 const getInitials = (name) => {
   if (!name) return "?";
@@ -93,8 +142,38 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [match, setMatch] = useState(initialMatch || null);
   const [loading, setLoading] = useState(!initialMatch);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showPositionModal, setShowPositionModal] = useState(false);
+  const [selectedPositions, setSelectedPositions] = useState([]);
+  const [joinSelectedPositions, setJoinSelectedPositions] = useState([]);
 
   const userId = normalizeId(user?.id || user?._id);
+
+  // Extract position data safely (before early return so useMemo is always called)
+  const selectedPositionIds = match?.selectedPositionIds || [];
+  const benchTeam1 = match?.benchMembersTeam1 || 0;
+  const benchTeam2 = match?.benchMembersTeam2 || 0;
+
+  // Calculate team-based position breakdown (must be before early return)
+  const teamBreakdown = useMemo(() => {
+    const team1Ids = selectedPositionIds.filter((id) => id.startsWith("t1_"));
+    const team2Ids = selectedPositionIds.filter((id) => id.startsWith("t2_"));
+
+    const buildRoleCounts = (ids, positions) => {
+      const counts = {};
+      ids.forEach((id) => {
+        const pos = positions.find((p) => p.id === id);
+        if (pos) counts[pos.role] = (counts[pos.role] || 0) + 1;
+      });
+      return counts;
+    };
+
+    return {
+      teamA: { roles: buildRoleCounts(team1Ids, TEAM1_POSITIONS), count: team1Ids.length, bench: benchTeam1 },
+      teamB: { roles: buildRoleCounts(team2Ids, TEAM2_POSITIONS), count: team2Ids.length, bench: benchTeam2 },
+    };
+  }, [selectedPositionIds, benchTeam1, benchTeam2]);
+
+  const totalNeeded = selectedPositionIds.length + benchTeam1 + benchTeam2;
 
   const reloadMatch = async () => {
     if (!matchId) return;
@@ -151,9 +230,48 @@ export default function MatchDetailScreen({ navigation, route }) {
     navigation.navigate("UserProfile", { userId: profileUserId });
   };
 
-  const handleRequestJoin = async () => {
+  const handleOpenMap = () => {
+    if (!coords?.lat || !coords?.lng) {
+      Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí trên bản đồ.");
+      return;
+    }
+    const label = encodeURIComponent(match.locationName || "Vị trí trận đấu");
+    const url = Platform.select({
+      ios: `maps:0,0?q=${coords.lat},${coords.lng}(${label})`,
+      android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${label})`,
+      default: `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`,
+    });
+    Linking.openURL(url).catch(() => {
+      // Fallback to Google Maps in browser
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`);
+    });
+  };
+
+  const handleRequestJoin = () => {
+    if (match.sport === "football" && selectedPositionIds.length > 0) {
+      setShowPositionModal(true);
+      return;
+    }
+    handleConfirmJoin();
+  };
+
+  const handleCancelRequest = async () => {
     try {
       setActionLoading(true);
+      const data = await cancelJoinRequest(match._id, userId);
+      setMatch(data);
+      Alert.alert("Thành công", "Đã hủy yêu cầu tham gia");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmJoin = async () => {
+    try {
+      setActionLoading(true);
+      // Currently the API does not accept positions; we just send join request
       const data = await requestJoinMatch(match._id, userId);
       setMatch(data);
       Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
@@ -161,7 +279,36 @@ export default function MatchDetailScreen({ navigation, route }) {
       Alert.alert("Lỗi", err.message);
     } finally {
       setActionLoading(false);
+      setShowPositionModal(false);
+      setJoinSelectedPositions([]);
     }
+  };
+
+  const handleConfirmJoinWithPositions = async () => {
+    if (selectedPositions.length === 0) {
+      Alert.alert("Thông báo", "Vui lòng chọn ít nhất một vị trí");
+      return;
+    }
+    try {
+      setActionLoading(true);
+      setShowPositionModal(false);
+      const data = await requestJoinMatch(match._id, userId, selectedPositions);
+      setMatch(data);
+      setSelectedPositions([]);
+      Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const togglePositionSelection = (positionId) => {
+    setSelectedPositions(prev =>
+      prev.includes(positionId)
+        ? prev.filter(id => id !== positionId)
+        : [...prev, positionId]
+    );
   };
 
   const handleAcceptRequest = async (requestUserId) => {
@@ -280,12 +427,11 @@ export default function MatchDetailScreen({ navigation, route }) {
               <Text style={styles.infoText}>{match.locationName}</Text>
             </View>
             {coords?.lat != null && coords?.lng != null && (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoIcon}>🗺️</Text>
-                <Text style={styles.infoTextMuted}>
-                  {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
-                </Text>
-              </View>
+              <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
+                <Text style={styles.viewLocationIcon}>🗺️</Text>
+                <Text style={styles.viewLocationText}>Xem vị trí trên bản đồ</Text>
+                <Text style={styles.viewLocationArrow}>→</Text>
+              </TouchableOpacity>
             )}
             <View style={styles.infoRow}>
               <Text style={styles.infoIcon}>{icon}</Text>
@@ -306,6 +452,82 @@ export default function MatchDetailScreen({ navigation, route }) {
             </View>
           ) : null}
         </View>
+
+        {/* Số người cần tìm */}
+        {match.sport === "football" && totalNeeded > 0 && (
+          <View style={styles.sectionCard}>
+            <View style={styles.neededHeaderRow}>
+              <Text style={styles.sectionTitle}>🔍 Số người cần tìm</Text>
+              <View style={styles.totalNeededBadge}>
+                <Text style={styles.totalNeededText}>{totalNeeded} người</Text>
+              </View>
+            </View>
+
+            {/* Team 1 */}
+            {(teamBreakdown.teamA.count > 0 || teamBreakdown.teamA.bench > 0) && (
+              <View style={styles.teamBlock}>
+                <View style={styles.teamLabelRow}>
+                  <View style={[styles.teamDot, { backgroundColor: "#3b82f6" }]} />
+                  <Text style={styles.teamLabel}>Đội 1</Text>
+                  <Text style={styles.teamCount}>
+                    {teamBreakdown.teamA.count + teamBreakdown.teamA.bench} người
+                  </Text>
+                </View>
+                <View style={styles.roleTags}>
+                  {Object.entries(teamBreakdown.teamA.roles).map(([role, qty]) => (
+                    <View
+                      key={`a_${role}`}
+                      style={[styles.roleTag, { backgroundColor: ROLE_TAG_COLORS[role]?.bg || "#f3f4f6" }]}
+                    >
+                      <Text style={[styles.roleTagText, { color: ROLE_TAG_COLORS[role]?.text || "#374151" }]}>
+                        {ROLE_LABELS[role] || role} ×{qty}
+                      </Text>
+                    </View>
+                  ))}
+                  {teamBreakdown.teamA.bench > 0 && (
+                    <View style={[styles.roleTag, { backgroundColor: "#f3f4f6" }]}>
+                      <Text style={[styles.roleTagText, { color: "#6b7280" }]}>
+                        Dự bị ×{teamBreakdown.teamA.bench}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* Team 2 */}
+            {(teamBreakdown.teamB.count > 0 || teamBreakdown.teamB.bench > 0) && (
+              <View style={styles.teamBlock}>
+                <View style={styles.teamLabelRow}>
+                  <View style={[styles.teamDot, { backgroundColor: "#ef4444" }]} />
+                  <Text style={styles.teamLabel}>Đội 2</Text>
+                  <Text style={styles.teamCount}>
+                    {teamBreakdown.teamB.count + teamBreakdown.teamB.bench} người
+                  </Text>
+                </View>
+                <View style={styles.roleTags}>
+                  {Object.entries(teamBreakdown.teamB.roles).map(([role, qty]) => (
+                    <View
+                      key={`b_${role}`}
+                      style={[styles.roleTag, { backgroundColor: ROLE_TAG_COLORS[role]?.bg || "#f3f4f6" }]}
+                    >
+                      <Text style={[styles.roleTagText, { color: ROLE_TAG_COLORS[role]?.text || "#374151" }]}>
+                        {ROLE_LABELS[role] || role} ×{qty}
+                      </Text>
+                    </View>
+                  ))}
+                  {teamBreakdown.teamB.bench > 0 && (
+                    <View style={[styles.roleTag, { backgroundColor: "#f3f4f6" }]}>
+                      <Text style={[styles.roleTagText, { color: "#6b7280" }]}>
+                        Dự bị ×{teamBreakdown.teamB.bench}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {creator && (
           <View style={styles.sectionCard}>
@@ -380,8 +602,11 @@ export default function MatchDetailScreen({ navigation, route }) {
         {!isOwner && !isEnded && !isParticipant && (
           <View style={styles.joinSection}>
             {hasPendingRequest ? (
-              <View style={styles.pendingBadge}>
+              <View style={styles.pendingContainer}>
                 <Text style={styles.pendingBadgeText}>⏳ Đã gửi yêu cầu tham gia</Text>
+                <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelRequest} activeOpacity={0.7}>
+                  <Text style={styles.cancelBtnText}>Hủy yêu cầu</Text>
+                </TouchableOpacity>
               </View>
             ) : isFull ? (
               <View style={styles.fullBadge}>
@@ -403,6 +628,72 @@ export default function MatchDetailScreen({ navigation, route }) {
             )}
           </View>
         )}
+
+        {/* Position Selection Modal */}
+        <Modal
+          visible={showPositionModal}
+          transparent={false}
+          animationType="slide"
+          onRequestClose={() => setShowPositionModal(false)}
+        >
+          <View style={styles.positionModalContent}>
+            <View style={styles.positionModalHeader}>
+              <Text style={styles.positionModalTitle}>Chọn vị trí muốn tham gia</Text>
+              <TouchableOpacity onPress={() => setShowPositionModal(false)}>
+                <Text style={styles.positionModalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.positionModalList}>
+              {selectedPositionIds.map((posId) => {
+                const pos = ALL_POSITIONS.find((p) => p.id === posId);
+                if (!pos) return null;
+                const isSelected = selectedPositions.includes(posId);
+                return (
+                  <TouchableOpacity
+                    key={posId}
+                    style={[
+                      styles.positionOption,
+                      isSelected && styles.positionOptionSelected
+                    ]}
+                    onPress={() => {
+                      setSelectedPositions((prev) =>
+                        prev.includes(posId) ? prev.filter((id) => id !== posId) : [...prev, posId]
+                      );
+                    }}
+                  >
+                    <Text style={[
+                      styles.positionOptionText,
+                      isSelected && styles.positionOptionTextSelected
+                    ]}>
+                      {pos.label} (Đội {posId.startsWith('t1_') ? '1' : '2'})
+                    </Text>
+                    {isSelected && (
+                      <Text style={styles.positionOptionCheck}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.positionModalConfirm,
+                selectedPositions.length === 0 && styles.positionModalConfirmDisabled
+              ]}
+              onPress={handleConfirmJoinWithPositions}
+              disabled={selectedPositions.length === 0 || actionLoading}
+            >
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.positionModalConfirmText}>
+                  Xác nhận tham gia ({selectedPositions.length} vị trí)
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </Modal>
 
         {!isOwner && isParticipant && !isEnded && (
           <TouchableOpacity style={styles.leaveActionBtn} onPress={handleLeave} activeOpacity={0.7}>
@@ -481,6 +772,63 @@ const styles = StyleSheet.create({
   infoIcon: { fontSize: 14, width: 28 },
   infoText: { flex: 1, fontSize: 14, color: "#333", fontWeight: "500", lineHeight: 20 },
   infoTextMuted: { flex: 1, fontSize: 13, color: "#888", lineHeight: 20 },
+  pendingContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  cancelBtn: {
+    marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#ffdddd',
+    borderRadius: 6,
+  },
+  cancelBtnText: {
+    color: '#b91c1c',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  teamBlock: {
+    marginBottom: 14,
+    paddingLeft: 4,
+  },
+  teamLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  teamDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  teamLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#222",
+    flex: 1,
+  },
+  teamCount: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#666",
+  },
+  roleTags: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingLeft: 18,
+  },
+  roleTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  roleTagText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
   noteBox: {
     marginTop: 14,
     padding: 12,
@@ -589,4 +937,83 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   deleteActionText: { fontSize: 15, fontWeight: "700", color: "#ef4444" },
+  // Position Selection Modal
+  modalOverlay: {
+  flex: 1,
+  backgroundColor: "#fff",
+},
+ positionModalContent: {
+  flex: 1,
+  backgroundColor: "#fff",
+  paddingTop: Platform.OS === "ios" ? 50 : 20,
+  paddingBottom: Platform.OS === "ios" ? 34 : 20,
+},
+  positionModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  positionModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111",
+  },
+  positionModalClose: {
+    fontSize: 24,
+    color: "#666",
+    padding: 4,
+  },
+  positionModalList: {
+    flex: 1,
+    padding: 16,
+  },
+  positionOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  positionOptionSelected: {
+    backgroundColor: "#eff6ff",
+    borderColor: "#3b82f6",
+  },
+  positionOptionText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  positionOptionTextSelected: {
+    color: "#1d4ed8",
+  },
+  positionOptionCheck: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#3b82f6",
+  },
+  positionModalConfirm: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: "#0066cc",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  positionModalConfirmDisabled: {
+    backgroundColor: "#ccc",
+  },
+  positionModalConfirmText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
 });

@@ -395,6 +395,38 @@ router.post("/:id/request-join", async (req, res) => {
   }
 });
 
+// Cancel a join request
+router.post("/:id/cancel-request", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "Thiếu userId" });
+    }
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    // Remove user from pendingJoinRequests
+    match.pendingJoinRequests = match.pendingJoinRequests.filter(
+      (p) => String(p) !== String(userId)
+    );
+    await match.save();
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+
+    return res.json({
+      success: true,
+      message: "Đã hủy yêu cầu tham gia thành công",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Cancel request join match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi hủy yêu cầu tham gia" });
+  }
+});
+
 // Accept a join request (owner only)
 router.post("/:id/accept-join", async (req, res) => {
   try {
