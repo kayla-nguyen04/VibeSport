@@ -32,7 +32,7 @@ import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
-const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời', 'Đã xác minh'];
+const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời'];
 
 const getAvatarColor = (name) => {
   if (!name) return AVATAR_COLORS[0];
@@ -213,7 +213,6 @@ export default function ChatListScreen({ navigation }) {
         if (activeFilter === 'Chưa đọc') return item.unreadCount > 0;
         if (activeFilter === 'Chưa trả lời')
           return item.isPending && item.myPendingCount > 0 && !item.isFriend;
-        if (activeFilter === 'Đã xác minh') return item.isFriend;
         return true;
       });
     },
