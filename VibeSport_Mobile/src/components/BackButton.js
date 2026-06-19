@@ -1,4 +1,5 @@
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export function BackButton({ onPress, style }) {
   return (
@@ -8,7 +9,7 @@ export function BackButton({ onPress, style }) {
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       style={[styles.button, style]}
     >
-      <Text style={styles.icon}>{'‹'}</Text>
+      <Ionicons name="chevron-back" size={24} color="#111111" />
     </TouchableOpacity>
   );
 }
@@ -20,10 +21,5 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  icon: {
-    fontSize: 28,
-    color: '#111111',
-    fontWeight: '300',
   },
 });

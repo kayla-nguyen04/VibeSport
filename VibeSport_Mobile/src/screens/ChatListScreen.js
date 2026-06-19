@@ -158,6 +158,7 @@ export default function ChatListScreen({ navigation }) {
       navigation.navigate('ChatDetail', {
         conversationId: result.data._id,
         peer: result.data.peer,
+        isGroup: true,
       });
     } catch (err) {
       Alert.alert('Lỗi', err || 'Không thể tạo nhóm trò chuyện');
@@ -393,6 +394,7 @@ export default function ChatListScreen({ navigation }) {
     navigation.navigate('ChatDetail', {
       conversationId: item._id,
       peer: item.peer,
+      isGroup: item.isGroup,
     });
   };
 
@@ -489,26 +491,7 @@ export default function ChatListScreen({ navigation }) {
               <Ionicons name="hand-right-outline" size={20} color="#F59E0B" />
             </TouchableOpacity>
           </View>
-        ) : (
-          <View style={styles.itemActions}>
-            <TouchableOpacity
-              style={styles.actionIconBtn}
-              onPress={() => handleToggleMute(item)}
-            >
-              <Ionicons
-                name={item.isMuted ? 'notifications' : 'notifications-off-outline'}
-                size={20}
-                color={item.isMuted ? '#10B981' : '#6B7280'}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionIconBtn}
-              onPress={() => handleDeleteConversation(item)}
-            >
-              <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-        )}
+        ) : null}
       </View>
     );
   };

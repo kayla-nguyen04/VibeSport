@@ -14,6 +14,8 @@ import {
   sendMessageRequest,
   unblockConversationRequest,
   unmuteConversationRequest,
+  updateGroupInfoRequest,
+  addParticipantsRequest,
 } from '../services/chatApi';
 
 export const fetchConversations = createAsyncThunk(
@@ -169,6 +171,30 @@ export const deletePendingMessages = createAsyncThunk(
       return await deletePendingMessagesRequest(conversationId, token);
     } catch (error) {
       return rejectWithValue(error.message || 'Không thể xóa tin nhắn chờ.');
+    }
+  }
+);
+
+export const updateGroupInfo = createAsyncThunk(
+  'chat/updateGroupInfo',
+  async ({ conversationId, formData }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await updateGroupInfoRequest(conversationId, formData, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể cập nhật thông tin nhóm.');
+    }
+  }
+);
+
+export const addParticipants = createAsyncThunk(
+  'chat/addParticipants',
+  async ({ conversationId, userIds }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await addParticipantsRequest(conversationId, userIds, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể thêm thành viên vào nhóm.');
     }
   }
 );
@@ -338,6 +364,16 @@ const chatSlice = createSlice({
       const conv = state.conversations.find((item) => item._id === conversationId);
       if (conv) {
         conv.isMuted = false;
+      }
+    },
+    groupUpdated(state, action) {
+      const { conversationId, conversation } = action.payload;
+      const index = state.conversations.findIndex((item) => item._id === conversationId);
+      if (index !== -1 && conversation) {
+        state.conversations[index] = {
+          ...state.conversations[index],
+          ...conversation,
+        };
       }
     },
     pendingMessagesDeletedByOther(state, action) {
@@ -512,6 +548,18 @@ const chatSlice = createSlice({
           }
         }
       })
+      .addCase(updateGroupInfo.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
+      .addCase(addParticipants.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
       .addCase(logoutUser.fulfilled, (state) => {
         state.activeConversationId = null;
         state.conversations = [];
@@ -539,6 +587,7 @@ export const {
   conversationMuted,
   conversationUnmuted,
   pendingMessagesDeletedByOther,
+  groupUpdated,
   resetChat,
 } = chatSlice.actions;
 export default chatSlice.reducer;
