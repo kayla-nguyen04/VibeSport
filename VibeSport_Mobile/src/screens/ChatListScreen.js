@@ -129,9 +129,7 @@ export default function ChatListScreen({ navigation }) {
   }, [mutualFriends, groupSearchText]);
 
   const handleNextStep = () => {
-    if (selectedUserIds.length === 1) {
-      handleStartSingleChat(selectedUserIds[0]);
-    } else if (selectedUserIds.length > 1) {
+    if (selectedUserIds.length >= 2) {
       setGroupCreationStep(2);
     }
   };
@@ -781,12 +779,12 @@ export default function ChatListScreen({ navigation }) {
                   <Text style={styles.groupModalTitle}>Nhóm mới</Text>
                   <TouchableOpacity
                     onPress={handleNextStep}
-                    disabled={selectedUserIds.length === 0}
+                    disabled={selectedUserIds.length < 2}
                   >
                     <Text
                       style={[
                         styles.nextBtnText,
-                        selectedUserIds.length === 0 && styles.nextBtnTextDisabled,
+                        selectedUserIds.length < 2 && styles.nextBtnTextDisabled,
                       ]}
                     >
                       Tiếp
