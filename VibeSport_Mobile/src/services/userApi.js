@@ -31,3 +31,6 @@ export const updatePresenceRequest = (token) =>
 
 export const searchUsersRequest = (keyword, token) =>
   request(`/api/users/search?keyword=${encodeURIComponent(keyword)}`, {}, token);
+
+export const getMutualFriendsRequest = (token) =>
+  request('/api/users/friends/mutual', {}, token);

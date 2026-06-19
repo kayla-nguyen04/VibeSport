@@ -89,6 +89,7 @@ export default function ChatDetailScreen({ route, navigation }) {
   const {
     status = 'pending',
     isFriend = false,
+    isGroup = false,
     isPending = false,
     isMyPendingRequest = false,
     hasOtherPendingRequest = false,
@@ -245,9 +246,14 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     return (
       <View style={[styles.messageRow, rowStyle]}>
-        <View style={[styles.messageBubble, bubbleStyle]}>
-          <Text style={textStyle}>{item.content}</Text>
-          <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
+        <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
+          {!isMine && isGroup && (
+            <Text style={styles.senderName}>{item.senderId?.name || 'Thành viên'}</Text>
+          )}
+          <View style={[styles.messageBubble, bubbleStyle]}>
+            <Text style={textStyle}>{item.content}</Text>
+            <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
+          </View>
         </View>
       </View>
     );
@@ -472,16 +478,18 @@ export default function ChatDetailScreen({ route, navigation }) {
               <View style={styles.menuContainer}>
                 <View style={styles.menuHandle} />
 
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.menuItemBorder]}
-                  onPress={() => {
-                    setShowMenu(false);
-                    handleViewProfile();
-                  }}
-                >
-                  <Ionicons name="person-outline" size={22} color="#374151" />
-                  <Text style={styles.menuItemText}>Xem trang cá nhân</Text>
-                </TouchableOpacity>
+                {!isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowMenu(false);
+                      handleViewProfile();
+                    }}
+                  >
+                    <Ionicons name="person-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Xem trang cá nhân</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={styles.menuItem}
@@ -500,16 +508,18 @@ export default function ChatDetailScreen({ route, navigation }) {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.menuItemBorder]}
-                  onPress={() => {
-                    setShowMenu(false);
-                    handleBlock();
-                  }}
-                >
-                  <Ionicons name="ban-outline" size={22} color="#EF4444" />
-                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Chặn cuộc trò chuyện</Text>
-                </TouchableOpacity>
+                {!isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowMenu(false);
+                      handleBlock();
+                    }}
+                  >
+                    <Ionicons name="ban-outline" size={22} color="#EF4444" />
+                    <Text style={[styles.menuItemText, styles.menuItemDanger]}>Chặn cuộc trò chuyện</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={styles.menuCancel}
@@ -869,5 +879,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  messageContainer: {
+    flexDirection: 'column',
+    maxWidth: '100%',
+  },
+  senderName: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 2,
+    marginLeft: 6,
+    fontWeight: '600',
   },
 });

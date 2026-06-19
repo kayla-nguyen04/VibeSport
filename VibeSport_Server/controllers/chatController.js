@@ -101,9 +101,14 @@ function isBlockedByOther(conversation, userId) {
 }
 
 function formatConversation(conversation, currentUserId, isFriend) {
-  const peer = conversation.participants.find(
+  const isGroup = conversation.isGroup || conversation.participants.length > 2;
+
+  // Filter other participants
+  const otherParticipants = conversation.participants.filter(
     (participant) => String(participant._id || participant) !== String(currentUserId)
   );
+
+  const peer = otherParticipants[0];
 
   const currentId = String(currentUserId);
   const acceptedBy = conversation.acceptedBy || [];
@@ -115,9 +120,7 @@ function formatConversation(conversation, currentUserId, isFriend) {
     (msg) => String(msg.senderId?._id || msg.senderId) !== currentId
   );
 
-  // Sender (has their own pending messages): stays in Inbox, shows "X/3 message requests sent"
   const isMyPendingRequest = myPendingCount > 0;
-  // Receiver (has pending messages from other): sees in Request
   const hasOtherPendingRequest = otherPendingMessages.length > 0;
 
   const blockedByMe = isBlockedByMe(conversation, currentUserId);
@@ -132,27 +135,33 @@ function formatConversation(conversation, currentUserId, isFriend) {
   );
   const isHidden = deletedByMe;
 
-  // Per-user view state:
-  // - Blocked: blockedByMe or blockedByOther (same for both users)
-  // - Request: not blocked AND not hasAccepted AND hasOtherPendingRequest
-  // - Inbox: not blocked AND (hasAccepted OR !hasOtherPendingRequest)
   let viewState = 'inbox';
-  if (isBlocked) {
-    viewState = 'blocked';
-  } else if (!hasAccepted && hasOtherPendingRequest) {
-    viewState = 'request';
+  if (!isGroup) {
+    if (isBlocked) {
+      viewState = 'blocked';
+    } else if (!hasAccepted && hasOtherPendingRequest) {
+      viewState = 'request';
+    }
   }
 
-  const canChat = (isFriend || hasAccepted) && !blockedByOther;
-  const canSendPending = remainingPending > 0 && !isHidden && !isBlocked;
+  const canChat = isGroup || ((isFriend || hasAccepted) && !blockedByOther);
+  const canSendPending = !isGroup && (remainingPending > 0 && !isHidden && !isBlocked);
+
+  // Group display name defaults to comma-separated list of names of other participants
+  let displayName = conversation.name;
+  if (!displayName && isGroup) {
+    displayName = otherParticipants.map(p => p.name).filter(Boolean).join(', ');
+  }
 
   return {
     _id: conversation._id,
+    isGroup,
+    name: conversation.name || '',
     peer: peer
       ? {
           _id: peer._id,
-          name: peer.name,
-          picture: peer.picture,
+          name: displayName || peer.name || 'Thành viên VibeSport',
+          picture: isGroup ? '' : peer.picture, // empty triggers initials fallback
           area: peer.area,
           favoriteSport: peer.favoriteSport,
           lastSeenAt: peer.lastSeenAt,
@@ -163,17 +172,17 @@ function formatConversation(conversation, currentUserId, isFriend) {
     unreadCount: getUnreadCount(conversation, currentUserId),
     updatedAt: conversation.updatedAt,
     status: conversation.status,
-    isFriend: Boolean(isFriend),
-    isPending: !hasAccepted && hasOtherPendingRequest,
-    isMyPendingRequest,
-    hasOtherPendingRequest,
-    myPendingCount,
-    remainingPendingMessages: remainingPending,
-    otherPendingMessages,
-    pendingMessages: conversation.pendingMessages || [],
-    blockedByMe,
-    blockedByOther,
-    isBlocked,
+    isFriend: Boolean(isGroup || isFriend),
+    isPending: !isGroup && (!hasAccepted && hasOtherPendingRequest),
+    isMyPendingRequest: !isGroup && isMyPendingRequest,
+    hasOtherPendingRequest: !isGroup && hasOtherPendingRequest,
+    myPendingCount: !isGroup ? myPendingCount : 0,
+    remainingPendingMessages: !isGroup ? remainingPending : 0,
+    otherPendingMessages: !isGroup ? otherPendingMessages : [],
+    pendingMessages: !isGroup ? (conversation.pendingMessages || []) : [],
+    blockedByMe: !isGroup && blockedByMe,
+    blockedByOther: !isGroup && blockedByOther,
+    isBlocked: !isGroup && isBlocked,
     viewState,
     deletedByMe,
     isHidden,
@@ -220,44 +229,74 @@ exports.getUnreadCount = async (req, res) => {
 
 exports.createOrGetConversation = async (req, res) => {
   try {
-    const { recipientId } = req.body;
+    const { recipientId, recipientIds, name } = req.body;
 
-    if (!recipientId) {
+    let targetIds = [];
+    if (recipientIds && Array.isArray(recipientIds) && recipientIds.length > 0) {
+      targetIds = recipientIds;
+    } else if (recipientId) {
+      targetIds = [recipientId];
+    } else {
       return res.status(400).json({ success: false, message: 'Thiếu người nhận' });
     }
 
-    if (String(recipientId) === String(req.userId)) {
-      return res.status(400).json({ success: false, message: 'Không thể nhắn tin cho chính mình' });
+    // Filter distinct recipient IDs and exclude current user ID
+    const uniqueIds = [...new Set(targetIds.map((id) => String(id)))].filter(
+      (id) => id !== String(req.userId)
+    );
+
+    if (uniqueIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Danh sách người nhận không hợp lệ' });
     }
 
-    const recipient = await User.findById(recipientId).select(USER_SELECT);
-    if (!recipient) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    const isGroup = uniqueIds.length > 1;
+
+    // Check that all recipients exist
+    const recipients = await User.find({ _id: { $in: uniqueIds } }).select(USER_SELECT);
+    if (recipients.length !== uniqueIds.length) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy một hoặc nhiều người dùng' });
     }
 
-    const isFriend = await areMutualFriends(req.userId, recipientId);
-    const participantKey = buildParticipantKey(req.userId, recipientId);
+    const allParticipants = [req.userId, ...uniqueIds];
+    const participantKey = allParticipants.map((id) => String(id)).sort().join('_');
+
     let conversation = await Conversation.findOne({ participantKey }).populate('participants', USER_SELECT);
 
     if (!conversation) {
+      let status = 'active';
+      if (!isGroup) {
+        const isFriend = await areMutualFriends(req.userId, uniqueIds[0]);
+        status = isFriend ? 'active' : 'pending';
+      }
+
+      const unreadByUser = {};
+      allParticipants.forEach((id) => {
+        unreadByUser[String(id)] = 0;
+      });
+
       conversation = await Conversation.create({
-        participants: [req.userId, recipientId],
+        participants: allParticipants,
         participantKey,
-        status: isFriend ? 'active' : 'pending',
-        unreadByUser: {
-          [String(req.userId)]: 0,
-          [String(recipientId)]: 0,
-        },
+        status,
+        name: isGroup ? (name || '') : '',
+        isGroup,
+        unreadByUser,
+        acceptedBy: isGroup ? allParticipants : [req.userId],
       });
       conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
     } else {
-      if (isFriend && conversation.status !== 'active') {
-        conversation.status = 'active';
-        conversation.pendingMessages = [];
-        await conversation.save();
-        conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
+      if (!isGroup) {
+        const isFriend = await areMutualFriends(req.userId, uniqueIds[0]);
+        if (isFriend && conversation.status !== 'active') {
+          conversation.status = 'active';
+          conversation.pendingMessages = [];
+          await conversation.save();
+          conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
+        }
       }
     }
+
+    const isFriend = !isGroup ? await areMutualFriends(req.userId, uniqueIds[0]) : true;
 
     res.status(200).json({
       success: true,
@@ -337,9 +376,12 @@ exports.sendMessage = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
     }
 
+    const isGroup = conversation.isGroup || conversation.participants.length > 2;
+
     const isHidden =
-      isBlockedByMe(conversation, req.userId) ||
-      (conversation.deletedByUserIds || []).some((id) => String(id) === String(req.userId));
+      !isGroup &&
+      (isBlockedByMe(conversation, req.userId) ||
+        (conversation.deletedByUserIds || []).some((id) => String(id) === String(req.userId)));
 
     if (isHidden) {
       return res.status(403).json({
@@ -348,17 +390,22 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    const recipientId = conversation.participants.find(
+    const otherParticipants = conversation.participants.filter(
       (participantId) => String(participantId) !== String(req.userId)
     );
 
-    const isFriend = await areMutualFriends(req.userId, recipientId);
+    if (otherParticipants.length === 0) {
+      return res.status(400).json({ success: false, message: 'Hội thoại không hợp lệ' });
+    }
 
-    if (conversation.status === 'active' || isFriend) {
+    const recipientId = otherParticipants[0];
+    const isFriend = !isGroup ? await areMutualFriends(req.userId, recipientId) : true;
+
+    if (!isGroup && (conversation.status === 'active' || isFriend)) {
       conversation.status = 'active';
     }
 
-    if (conversation.status === 'pending') {
+    if (!isGroup && conversation.status === 'pending') {
       if (isBlockedByMe(conversation, recipientId)) {
         return res.status(403).json({
           success: false,
@@ -461,6 +508,7 @@ exports.sendMessage = async (req, res) => {
       return;
     }
 
+    // Active flow (either Group or active 1-to-1)
     const message = await Message.create({
       conversationId: id,
       senderId: req.userId,
@@ -471,7 +519,12 @@ exports.sendMessage = async (req, res) => {
     conversation.lastMessage = trimmedContent;
     conversation.lastMessageAt = message.createdAt;
     setUnreadCount(conversation, req.userId, 0);
-    setUnreadCount(conversation, recipientId, getUnreadCount(conversation, recipientId) + 1);
+    
+    otherParticipants.forEach((pId) => {
+      const pIdStr = String(pId._id || pId);
+      setUnreadCount(conversation, pIdStr, getUnreadCount(conversation, pIdStr) + 1);
+    });
+    
     await conversation.save();
 
     const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
@@ -482,18 +535,23 @@ exports.sendMessage = async (req, res) => {
     );
 
     if (global.io) {
-      global.io.to(String(recipientId)).emit('new_message', {
-        conversationId: id,
-        message: populatedMessage,
-        lastMessage: trimmedContent,
-        lastMessageAt: conversation.lastMessageAt,
-        conversation: formatConversation(
-          await Conversation.findById(id).populate('participants', USER_SELECT),
-          recipientId,
-          isFriend
-        ),
-      });
-      await emitChatUnreadCount(recipientId);
+      await Promise.all(
+        otherParticipants.map(async (pId) => {
+          const pIdStr = String(pId._id || pId);
+          global.io.to(pIdStr).emit('new_message', {
+            conversationId: id,
+            message: populatedMessage,
+            lastMessage: trimmedContent,
+            lastMessageAt: conversation.lastMessageAt,
+            conversation: formatConversation(
+              await Conversation.findById(id).populate('participants', USER_SELECT),
+              pIdStr,
+              isFriend
+            ),
+          });
+          await emitChatUnreadCount(pIdStr);
+        })
+      );
     }
 
     res.status(201).json({
