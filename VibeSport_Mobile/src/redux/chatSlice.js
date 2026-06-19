@@ -404,7 +404,6 @@ const chatSlice = createSlice({
         state.sending = false;
         const { data, conversation } = action.payload;
         const conversationId = action.meta.arg.conversationId;
-        const pendingContent = action.meta.arg.content;
 
         // Initialize messages array if needed
         if (!state.messagesByConversation[conversationId]) {
@@ -417,22 +416,8 @@ const chatSlice = createSlice({
           if (!exists) {
             state.messagesByConversation[conversationId].push(data);
           }
-        } else if (conversation?.status === 'pending') {
+        } 
           // Pending message: add optimistic message (will be replaced by socket update)
-          const tempId = `pending-${Date.now()}`;
-          const exists = state.messagesByConversation[conversationId].some(
-            (m) => m._id === tempId || (m.content === pendingContent && m.isPending)
-          );
-          if (!exists) {
-            state.messagesByConversation[conversationId].push({
-              _id: tempId,
-              senderId: null,
-              content: pendingContent,
-              createdAt: new Date().toISOString(),
-              isPending: true,
-            });
-          }
-        }
 
         if (conversation) {
           state.conversations = upsertConversation(state.conversations, conversation);
