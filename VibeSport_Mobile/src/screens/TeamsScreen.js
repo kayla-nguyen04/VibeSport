@@ -198,8 +198,6 @@ export default function TeamsScreen({ navigation }) {
     setShowCreateModal(false);
     if (option === "match") {
       navigation?.navigate?.("CreateMatch");
-    } else {
-      navigation?.navigate?.("CreateFindTeam");
     }
   };
 
@@ -593,7 +591,6 @@ export default function TeamsScreen({ navigation }) {
           { key: "near", label: "Gần tôi" },
           { key: "joined", label: "Đã tham gia" },
           { key: "created", label: "Đã tạo" },
-          { key: "findteam", label: "Tìm đội" },
         ].map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -757,16 +754,6 @@ export default function TeamsScreen({ navigation }) {
               <View style={styles.modalOptionText}>
                 <Text style={styles.modalOptionTitle}>Tạo trận</Text>
                 <Text style={styles.modalOptionSub}>Tạo trận đấu mới, tìm người chơi</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => handleCreateOption("findteam")}
-            >
-              <Text style={styles.modalOptionIcon}>👥</Text>
-              <View style={styles.modalOptionText}>
-                <Text style={styles.modalOptionTitle}>Tìm đội</Text>
-                <Text style={styles.modalOptionSub}>Đăng bài tìm đội bóng</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalCancel} onPress={() => setShowCreateModal(false)}>
