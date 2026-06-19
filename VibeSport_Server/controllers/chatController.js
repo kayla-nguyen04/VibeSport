@@ -2,6 +2,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const Follow = require('../models/Follow');
 const User = require('../models/User');
+const { API_BASE_URL } = require('../utils/config');
 
 const USER_SELECT = 'name picture area favoriteSport lastSeenAt';
 const MAX_PENDING_PER_USER = 3;
@@ -157,11 +158,12 @@ function formatConversation(conversation, currentUserId, isFriend) {
     _id: conversation._id,
     isGroup,
     name: conversation.name || '',
+    participants: conversation.participants,
     peer: peer
       ? {
           _id: peer._id,
           name: displayName || peer.name || 'Thành viên VibeSport',
-          picture: isGroup ? '' : peer.picture, // empty triggers initials fallback
+          picture: isGroup ? (conversation.avatar || '') : peer.picture, // group avatar or fallback
           area: peer.area,
           favoriteSport: peer.favoriteSport,
           lastSeenAt: peer.lastSeenAt,
@@ -920,5 +922,131 @@ exports.markConversationRead = async (req, res) => {
   } catch (error) {
     console.error('Mark conversation read error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi đánh dấu đã đọc' });
+  }
+};
+
+exports.updateGroupInfo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    if (!conversation.isGroup) {
+      return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
+    }
+
+    // Verify participant
+    const isParticipant = conversation.participants.some(
+      (p) => String(p._id || p) === String(req.userId)
+    );
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền chỉnh sửa nhóm này' });
+    }
+
+    if (name !== undefined && name !== '') {
+      conversation.name = name.trim();
+    }
+
+    if (req.file) {
+      conversation.avatar = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+    }
+
+    await conversation.save();
+
+    // Format for current user
+    const formatted = formatConversation(conversation, req.userId, true);
+
+    // Notify other participants via socket
+    if (global.io) {
+      conversation.participants.forEach((p) => {
+        const pIdStr = String(p._id || p);
+        if (pIdStr !== String(req.userId)) {
+          global.io.to(pIdStr).emit('group_updated', {
+            conversationId: id,
+            conversation: formatConversation(conversation, pIdStr, true),
+          });
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật thông tin nhóm thành công',
+      data: formatted,
+    });
+  } catch (error) {
+    console.error('Update group info error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi cập nhật thông tin nhóm' });
+  }
+};
+
+exports.addParticipants = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Danh sách thành viên cần thêm không hợp lệ' });
+    }
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    if (!conversation.isGroup) {
+      return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
+    }
+
+    // Verify requesting user is a participant
+    const isParticipant = conversation.participants.some(
+      (p) => String(p) === String(req.userId)
+    );
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền thêm thành viên vào nhóm này' });
+    }
+
+    // Add new userIds without duplicates
+    let addedCount = 0;
+    userIds.forEach((userId) => {
+      const exists = conversation.participants.some((p) => String(p) === String(userId));
+      if (!exists) {
+        conversation.participants.push(userId);
+        if (!conversation.acceptedBy.includes(userId)) {
+          conversation.acceptedBy.push(userId);
+        }
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      await conversation.save();
+    }
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+    
+    // Notify all participants via socket
+    if (global.io) {
+      updated.participants.forEach((p) => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: id,
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Đã thêm ${addedCount} thành viên thành công`,
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Add participants error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi thêm thành viên vào nhóm' });
   }
 };

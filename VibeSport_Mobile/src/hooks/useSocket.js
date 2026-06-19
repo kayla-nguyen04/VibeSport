@@ -13,6 +13,7 @@ import {
   conversationUnblocked,
   conversationDeleted,
   pendingMessagesDeletedByOther,
+  groupUpdated,
 } from '../redux/chatSlice';
 
 export function useSocket() {
@@ -83,6 +84,10 @@ export function useSocket() {
 
     socket.on('pending_messages_deleted', (payload) => {
       dispatch(pendingMessagesDeletedByOther(payload));
+    });
+
+    socket.on('group_updated', (payload) => {
+      dispatch(groupUpdated(payload));
     });
 
     socket.on('disconnect', () => {

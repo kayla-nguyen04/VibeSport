@@ -14,7 +14,10 @@ const {
   muteConversation,
   unmuteConversation,
   deletePendingMessages,
+  updateGroupInfo,
+  addParticipants,
 } = require('../controllers/chatController');
+const uploadConversation = require('../middleware/uploadConversation');
 
 const router = express.Router();
 
@@ -33,5 +36,7 @@ router.delete('/conversations/:id', deleteConversation);
 router.put('/conversations/:id/mute', muteConversation);
 router.put('/conversations/:id/unmute', unmuteConversation);
 router.put('/conversations/:id/delete-pending', deletePendingMessages);
+router.put('/conversations/:id/group-info', uploadConversation.single('avatar'), updateGroupInfo);
+router.put('/conversations/:id/participants', addParticipants);
 
 module.exports = router;

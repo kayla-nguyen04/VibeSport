@@ -66,9 +66,11 @@ export default function ChatDetailScreen({ route, navigation }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const { loadingMessages, sending, accepting, processing, conversations } = useSelector((state) => state.chat);
+  const token = useSelector((state) => state.auth.token);
   const [input, setInput] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
   const peerName = peer?.name || 'Thành viên VibeSport';
@@ -89,7 +91,7 @@ export default function ChatDetailScreen({ route, navigation }) {
   const {
     status = 'pending',
     isFriend = false,
-    isGroup = false,
+    isGroup: isGroupFromMeta = false,
     isPending = false,
     isMyPendingRequest = false,
     hasOtherPendingRequest = false,
@@ -101,6 +103,8 @@ export default function ChatDetailScreen({ route, navigation }) {
     canSendPending = false,
     isMuted: conversationMuted = false,
   } = conversationMeta || {};
+
+  const isGroup = route.params.isGroup || isGroupFromMeta;
 
   React.useEffect(() => {
     setIsMuted(conversationMuted);
@@ -229,6 +233,8 @@ export default function ChatDetailScreen({ route, navigation }) {
   const handleViewProfile = () => {
     navigation.navigate('UserProfile', { userId: peer?._id });
   };
+
+
 
   const renderMessage = ({ item }) => {
     const senderId = item.senderId?._id || item.senderId;
@@ -442,11 +448,11 @@ export default function ChatDetailScreen({ route, navigation }) {
           <Text style={styles.headerName} numberOfLines={1}>
             {peerName}
           </Text>
-          {isFriend ? (
+          {!isGroup && (isFriend ? (
             <Text style={styles.headerMeta}>Bạn bè</Text>
           ) : peer?.area ? (
             <Text style={styles.headerMeta}>{peer.area}</Text>
-          ) : null}
+          ) : null)}
         </View>
 
         <TouchableOpacity
@@ -465,6 +471,29 @@ export default function ChatDetailScreen({ route, navigation }) {
       </ScreenHeader>
 
       {renderStatusBanner()}
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+        {loadingMessages && allMessages.length === 0 ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#0b74ff" />
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={allMessages}
+            keyExtractor={(item) => item._id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messagesContent}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          />
+        )}
+
+        {renderInputBar()}
+      </KeyboardAvoidingView>
 
       <Modal
         visible={showMenu}
@@ -508,6 +537,19 @@ export default function ChatDetailScreen({ route, navigation }) {
                   </Text>
                 </TouchableOpacity>
 
+                {isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowMenu(false);
+                      navigation.navigate('GroupManagement', { conversationId });
+                    }}
+                  >
+                    <Ionicons name="settings-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Quản lý nhóm</Text>
+                  </TouchableOpacity>
+                )}
+
                 {!isGroup && (
                   <TouchableOpacity
                     style={[styles.menuItem, styles.menuItemBorder]}
@@ -532,29 +574,6 @@ export default function ChatDetailScreen({ route, navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-      >
-        {loadingMessages && allMessages.length === 0 ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color="#0b74ff" />
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={allMessages}
-            keyExtractor={(item) => item._id}
-            renderItem={renderMessage}
-            contentContainerStyle={styles.messagesContent}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-          />
-        )}
-
-        {renderInputBar()}
-      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -571,7 +590,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
@@ -890,5 +909,173 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     marginLeft: 6,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    paddingTop: 16,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  groupAvatarPicker: {
+    position: 'relative',
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  groupAvatarPreview: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#E5E7EB',
+  },
+  groupAvatarPreviewFallback: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  groupAvatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#0b74ff',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputLabel: {
+    alignSelf: 'flex-start',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  modalInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    marginTop: 16,
+  },
+  cancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  saveButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#0b74ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  friendsList: {
+    paddingVertical: 10,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  friendAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E5E7EB',
+  },
+  friendAvatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  friendName: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  checkboxIcon: {
+    marginLeft: 10,
+  },
+  emptyFriendsWrap: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyFriendsText: {
+    color: '#9CA3AF',
+    fontSize: 15,
+    textAlign: 'center',
   },
 });

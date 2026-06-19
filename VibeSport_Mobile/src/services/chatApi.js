@@ -2,9 +2,11 @@ import { API_BASE_URL } from '../components/constants/api';
 
 async function request(path, options = {}, token) {
   const headers = {
-    'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
@@ -78,4 +80,16 @@ export const unmuteConversationRequest = (conversationId, token) =>
 export const deletePendingMessagesRequest = (conversationId, token) =>
   request(`/api/chat/conversations/${conversationId}/delete-pending`, {
     method: 'PUT',
+  }, token);
+
+export const updateGroupInfoRequest = (conversationId, formData, token) =>
+  request(`/api/chat/conversations/${conversationId}/group-info`, {
+    method: 'PUT',
+    body: formData,
+  }, token);
+
+export const addParticipantsRequest = (conversationId, userIds, token) =>
+  request(`/api/chat/conversations/${conversationId}/participants`, {
+    method: 'PUT',
+    body: JSON.stringify({ userIds }),
   }, token);
