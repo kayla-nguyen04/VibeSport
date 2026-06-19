@@ -52,10 +52,21 @@ export function NotificationScreen({ navigation }) {
   };
 
   const handleNotificationPress = (item) => {
+    // Đánh dấu đã đọc trước khi navigate
     if (!item.read) {
       dispatch(markNotificationRead(item._id));
     }
 
+    // ── Follow notification → navigate đến trang cá nhân của người follow ──
+    if (item.type === 'follow') {
+      const senderId = item.fromUserId?._id || item.fromUserId;
+      if (senderId) {
+        navigation.navigate('UserProfile', { userId: senderId });
+      }
+      return;
+    }
+
+    // ── Post-related notifications (like, comment, reply) → PostDetail ──
     const postId = item.postId?._id || item.postId;
     if (postId) {
       navigation.navigate('PostDetail', { postId });
@@ -106,11 +117,14 @@ export function NotificationScreen({ navigation }) {
           <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
         </View>
 
-        {/* Post Thumbnail (if exists) */}
-        {item.postThumbnail ? (
+        {/* Right side: follow badge OR post thumbnail */}
+        {item.type === 'follow' ? (
+          <View style={styles.followBadge}>
+            <Ionicons name="person-add" size={18} color="#FF6B35" />
+          </View>
+        ) : item.postThumbnail ? (
           <Image source={{ uri: fixMediaUrl(item.postThumbnail) }} style={styles.postThumbnail} />
         ) : item.postId ? (
-          // Fallback if no thumbnail but has post reference
           <View style={styles.postIconPlaceholder}>
             <Ionicons name="document-text-outline" size={18} color="#9CA3AF" />
           </View>
@@ -260,6 +274,16 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 6,
     backgroundColor: '#F3F4F6',
+  },
+  followBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFF0EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFD4C2',
   },
   postIconPlaceholder: {
     width: 42,
