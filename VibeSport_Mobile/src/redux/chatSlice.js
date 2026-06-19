@@ -42,10 +42,10 @@ export const fetchChatUnreadCount = createAsyncThunk(
 
 export const openConversation = createAsyncThunk(
   'chat/openConversation',
-  async (recipientId, { rejectWithValue, getState }) => {
+  async (arg, { rejectWithValue, getState }) => {
     try {
       const token = getState().auth.token;
-      return await createOrGetConversationRequest(recipientId, token);
+      return await createOrGetConversationRequest(arg, token);
     } catch (error) {
       return rejectWithValue(error.message || 'Không thể mở hội thoại.');
     }

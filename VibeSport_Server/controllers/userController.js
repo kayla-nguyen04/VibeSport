@@ -242,3 +242,28 @@ exports.searchUsers = async (req, res) => {
     res.status(500).json({ success: false, message: 'Lỗi khi tìm kiếm người dùng' });
   }
 };
+
+exports.getMutualFriends = async (req, res) => {
+  try {
+    // Find all users the current user is following
+    const following = await Follow.find({ followerId: req.userId }).distinct('followingId');
+    // Find all mutual follows (where following is also following the current user)
+    const mutualFollowers = await Follow.find({
+      followerId: { $in: following },
+      followingId: req.userId,
+    }).populate('followerId', '_id name picture favoriteSport position area lastSeenAt');
+
+    const friends = mutualFollowers
+      .map((f) => f.followerId)
+      .filter(Boolean);
+
+    res.status(200).json({
+      success: true,
+      data: friends,
+    });
+  } catch (error) {
+    console.error('getMutualFriends error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách bạn bè' });
+  }
+};
+

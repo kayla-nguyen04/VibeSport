@@ -15,6 +15,18 @@ const conversationSchema = new Schema(
       unique: true,
       index: true,
     },
+    name: {
+      type: String,
+      default: '',
+    },
+    isGroup: {
+      type: Boolean,
+      default: false,
+    },
+    avatar: {
+      type: String,
+      default: '',
+    },
     lastMessage: {
       type: String,
       default: '',

@@ -17,8 +17,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
-import { fetchChatUnreadCount, fetchConversations, acceptConversation, blockConversation, unblockConversation, deleteConversation, muteConversation, unmuteConversation } from '../redux/chatSlice';
+import {
+  fetchChatUnreadCount,
+  fetchConversations,
+  acceptConversation,
+  blockConversation,
+  unblockConversation,
+  deleteConversation,
+  muteConversation,
+  unmuteConversation,
+  openConversation,
+} from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
+import { getMutualFriendsRequest } from '../services/userApi';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời'];
@@ -62,11 +73,128 @@ export default function ChatListScreen({ navigation }) {
   const dispatch = useDispatch();
   const { conversations, loadingConversations } = useSelector((state) => state.chat);
   const user = useSelector((state) => state.auth.user);
+  const token = useSelector((state) => state.auth.token);
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState('inbox');
   const [activeFilter, setActiveFilter] = useState('Tất cả');
   const [showFilter, setShowFilter] = useState(false);
   const [unblockingId, setUnblockingId] = useState(null);
+
+  // Group creation modal states
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [mutualFriends, setMutualFriends] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [groupSearchText, setGroupSearchText] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [groupCreationStep, setGroupCreationStep] = useState(1);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+
+  const loadMutualFriends = async () => {
+    setLoadingFriends(true);
+    try {
+      const res = await getMutualFriendsRequest(token);
+      setMutualFriends(res.data || []);
+    } catch (err) {
+      console.error('Fetch mutual friends error:', err);
+      Alert.alert('Lỗi', 'Không thể tải danh sách gợi ý.');
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const handleOpenCreateGroup = () => {
+    setShowCreateGroupModal(true);
+    loadMutualFriends();
+    setGroupCreationStep(1);
+    setSelectedUserIds([]);
+    setGroupSearchText('');
+    setGroupName('');
+  };
+
+  const handleToggleSelectUser = (userId) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const filteredFriends = React.useMemo(() => {
+    const keyword = groupSearchText.trim().toLowerCase();
+    return mutualFriends.filter((friend) => {
+      if (!keyword) return true;
+      return friend.name?.toLowerCase().includes(keyword);
+    });
+  }, [mutualFriends, groupSearchText]);
+
+  const handleNextStep = () => {
+    if (selectedUserIds.length === 1) {
+      handleStartSingleChat(selectedUserIds[0]);
+    } else if (selectedUserIds.length > 1) {
+      setGroupCreationStep(2);
+    }
+  };
+
+  const handleStartSingleChat = async (userId) => {
+    setShowCreateGroupModal(false);
+    try {
+      const result = await dispatch(openConversation(userId)).unwrap();
+      navigation.navigate('ChatDetail', {
+        conversationId: result.data._id,
+        peer: result.data.peer,
+      });
+    } catch (err) {
+      Alert.alert('Lỗi', err || 'Không thể tạo cuộc trò chuyện');
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || selectedUserIds.length < 2) return;
+    setCreatingGroup(true);
+    try {
+      const result = await dispatch(
+        openConversation({ recipientIds: selectedUserIds, name: groupName.trim() })
+      ).unwrap();
+      setShowCreateGroupModal(false);
+      navigation.navigate('ChatDetail', {
+        conversationId: result.data._id,
+        peer: result.data.peer,
+      });
+    } catch (err) {
+      Alert.alert('Lỗi', err || 'Không thể tạo nhóm trò chuyện');
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const renderFriendItem = ({ item }) => {
+    const isSelected = selectedUserIds.includes(item._id);
+    const displayName = item.name || 'Thành viên VibeSport';
+    const avatarColor = getAvatarColor(displayName);
+
+    return (
+      <TouchableOpacity
+        style={styles.friendItem}
+        activeOpacity={0.8}
+        onPress={() => handleToggleSelectUser(item._id)}
+      >
+        {item.picture ? (
+          <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.friendAvatar} />
+        ) : (
+          <View style={[styles.friendAvatarFallback, { backgroundColor: avatarColor }]}>
+            <Text style={styles.friendAvatarText}>{getInitials(displayName)}</Text>
+          </View>
+        )}
+        <Text style={styles.friendName} numberOfLines={1}>
+          {displayName}
+        </Text>
+        <View style={[styles.checkCircle, isSelected && styles.checkCircleSelected]}>
+          {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const loadData = useCallback(() => {
     dispatch(fetchConversations());
@@ -548,7 +676,7 @@ export default function ChatListScreen({ navigation }) {
         <TouchableOpacity
           style={styles.headerRightBtn}
           activeOpacity={0.7}
-          onPress={() => {}}
+          onPress={handleOpenCreateGroup}
         >
           <Ionicons name="create-outline" size={26} color="#262626" />
         </TouchableOpacity>
@@ -634,6 +762,111 @@ export default function ChatListScreen({ navigation }) {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={showCreateGroupModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCreateGroupModal(false)}
+      >
+        <View style={styles.groupModalOverlay}>
+          <View style={styles.groupModalContainer}>
+            {groupCreationStep === 1 ? (
+              <>
+                <View style={styles.groupModalHeader}>
+                  <TouchableOpacity onPress={() => setShowCreateGroupModal(false)}>
+                    <Text style={styles.cancelBtnText}>Hủy</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.groupModalTitle}>Nhóm mới</Text>
+                  <TouchableOpacity
+                    onPress={handleNextStep}
+                    disabled={selectedUserIds.length === 0}
+                  >
+                    <Text
+                      style={[
+                        styles.nextBtnText,
+                        selectedUserIds.length === 0 && styles.nextBtnTextDisabled,
+                      ]}
+                    >
+                      Tiếp
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalSearchWrap}>
+                  <View style={styles.modalSearchBar}>
+                    <Ionicons name="search" size={16} color="#8E8E93" />
+                    <TextInput
+                      value={groupSearchText}
+                      onChangeText={setGroupSearchText}
+                      placeholder="Tìm kiếm"
+                      placeholderTextColor="#8E8E93"
+                      style={styles.modalSearchInput}
+                    />
+                  </View>
+                </View>
+
+                <Text style={styles.suggestionTitle}>Gợi ý</Text>
+                {loadingFriends ? (
+                  <View style={styles.modalLoadingWrap}>
+                    <ActivityIndicator size="small" color="#0A84FF" />
+                  </View>
+                ) : (
+                  <FlatList
+                    data={filteredFriends}
+                    keyExtractor={(item) => item._id || item.id}
+                    renderItem={renderFriendItem}
+                    contentContainerStyle={styles.friendsList}
+                    ListEmptyComponent={
+                      <Text style={styles.emptyFriendsText}>
+                        Không tìm thấy người dùng phù hợp
+                      </Text>
+                    }
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.groupModalHeader}>
+                  <TouchableOpacity onPress={() => setGroupCreationStep(1)}>
+                    <Text style={styles.cancelBtnText}>Quay lại</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.groupModalTitle}>Tên nhóm</Text>
+                  <TouchableOpacity
+                    onPress={handleCreateGroup}
+                    disabled={creatingGroup || !groupName.trim()}
+                  >
+                    {creatingGroup ? (
+                      <ActivityIndicator size="small" color="#0A84FF" />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.nextBtnText,
+                          !groupName.trim() && styles.nextBtnTextDisabled,
+                        ]}
+                      >
+                        Tạo
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.groupNameContainer}>
+                  <TextInput
+                    value={groupName}
+                    onChangeText={setGroupName}
+                    placeholder="Nhập tên nhóm..."
+                    placeholderTextColor="#8E8E93"
+                    style={styles.groupNameInput}
+                    autoFocus
+                    maxLength={100}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        </View>
       </Modal>
     </Screen>
   );
@@ -933,5 +1166,144 @@ const styles = StyleSheet.create({
   filterOptionTextActive: {
     fontWeight: '700',
     color: '#0b74ff',
+  },
+  groupModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  groupModalContainer: {
+    backgroundColor: '#1C1C1E',
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    height: '90%',
+    paddingBottom: 20,
+  },
+  groupModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2C2C2E',
+  },
+  cancelBtnText: {
+    color: '#0A84FF',
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  groupModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  nextBtnText: {
+    color: '#0A84FF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  nextBtnTextDisabled: {
+    color: '#48484A',
+  },
+  modalSearchWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  modalSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 15,
+    padding: 0,
+  },
+  suggestionTitle: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: '#121212',
+  },
+  modalLoadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 40,
+  },
+  friendsList: {
+    paddingBottom: 20,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2C2C2E',
+  },
+  friendAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2C2C2E',
+  },
+  friendAvatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  friendName: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#48484A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkCircleSelected: {
+    backgroundColor: '#0A84FF',
+    borderColor: '#0A84FF',
+  },
+  emptyFriendsText: {
+    color: '#8E8E93',
+    textAlign: 'center',
+    fontSize: 14,
+    paddingTop: 40,
+  },
+  groupNameContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  groupNameInput: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+    paddingVertical: 8,
   },
 });

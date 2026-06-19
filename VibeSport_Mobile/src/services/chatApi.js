@@ -23,11 +23,13 @@ export const getConversationsRequest = (token) =>
 export const getChatUnreadCountRequest = (token) =>
   request('/api/chat/unread-count', {}, token);
 
-export const createOrGetConversationRequest = (recipientId, token) =>
-  request('/api/chat/conversations', {
+export const createOrGetConversationRequest = (params, token) => {
+  const body = typeof params === 'string' ? { recipientId: params } : params;
+  return request('/api/chat/conversations', {
     method: 'POST',
-    body: JSON.stringify({ recipientId }),
+    body: JSON.stringify(body),
   }, token);
+};
 
 export const getMessagesRequest = (conversationId, token, page = 1, limit = 30) =>
   request(`/api/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`, {}, token);
