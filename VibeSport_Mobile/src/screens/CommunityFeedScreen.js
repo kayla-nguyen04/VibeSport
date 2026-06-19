@@ -39,6 +39,7 @@ import {
   VIBE_REACTION,
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
+import { PostImages } from '../components/PostImages';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -350,16 +351,9 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           {item.content ? <Text style={styles.postContent}>{item.content}</Text> : null}
 
           {item.mediaUrls && item.mediaUrls.length > 0 && (
-            <View style={styles.mediaContainer}>
-              {item.mediaUrls.map((url, index) => (
-                <Image
-                  key={index}
-                  source={{ uri: fixMediaUrl(url) }}
-                  style={styles.postMedia}
-                  resizeMode="cover"
-                />
-              ))}
-            </View>
+            <PostImages
+              images={item.mediaUrls.map(fixMediaUrl)}
+            />
           )}
         </TouchableOpacity>
 

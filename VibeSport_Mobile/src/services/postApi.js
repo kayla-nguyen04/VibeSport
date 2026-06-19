@@ -3,7 +3,11 @@ import { API_BASE_URL } from '../components/constants/api';
 /**
  * Common request helper with Authorization token
  */
-async function request(path, options = {}, token = null) {
+// Timeout mặc định: 30s cho request thường, 60s cho upload file
+const DEFAULT_TIMEOUT_MS = 30000;
+const UPLOAD_TIMEOUT_MS = 60000;
+
+async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const headers = {
     ...(options.headers ?? {}),
   };
@@ -12,14 +16,24 @@ async function request(path, options = {}, token = null) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Dùng AbortController để tự động hủy request nếu quá timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers,
+      signal: controller.signal,
     });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Yêu cầu bị hết thời gian. Vui lòng thử lại.');
+    }
     throw new Error('Không thể kết nối đến máy chủ. Kiểm tra lại kết nối mạng.');
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   // Đọc body dưới dạng text trước, sau đó mới parse JSON
@@ -66,12 +80,13 @@ export const searchPostsRequest = async (keyword = '', tag = null, page = 1, lim
 };
 
 export const createPostRequest = async (formData, token = null) => {
+  // Dùng timeout dài hơn cho upload file
   return request('/api/posts', {
     method: 'POST',
     body: formData,
     // Note: Do not set Content-Type header manually when sending FormData,
     // the browser/react-native fetch will automatically set it with boundary.
-  }, token);
+  }, token, UPLOAD_TIMEOUT_MS);
 };
 
 export const likePostRequest = async (id, token = null, reactionType = 'vibe') => {
@@ -131,10 +146,11 @@ export const deletePostRequest = async (id, token = null) => {
 };
 
 export const updatePostRequest = async (id, formData, token = null) => {
+  // Dùng timeout dài hơn cho upload file
   return request(`/api/posts/${id}`, {
     method: 'PUT',
     body: formData,
-  }, token);
+  }, token, UPLOAD_TIMEOUT_MS);
 };
 
 export const getPostByIdRequest = async (id, token = null) => {

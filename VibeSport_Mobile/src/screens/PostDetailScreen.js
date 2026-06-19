@@ -43,6 +43,7 @@ import {
   VIBE_REACTION,
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
+import { PostImages } from '../components/PostImages';
 
 function fixMediaUrl(url) {
   if (!url) return url;
@@ -85,6 +86,19 @@ export default function PostDetailScreen({ route, navigation }) {
   const { postId } = route.params;
   const currentUser = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
+
+  // ── Navigate to a user's profile ─────────────────────────────────────────
+  // Nếu là chính mình → tab Profile của app; nếu người khác → UserProfileScreen
+  const navigateToProfile = (userId) => {
+    if (!userId) return;
+    const myId = currentUser?._id || currentUser?.id;
+    if (userId === myId) {
+      // Chuyển về tab Profile của bản thân
+      navigation.navigate('MainTabs', { screen: 'Profile' });
+    } else {
+      navigation.navigate('UserProfile', { userId });
+    }
+  };
 
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
@@ -481,29 +495,44 @@ export default function PostDetailScreen({ route, navigation }) {
       displayContent = comment.content.slice(0, 150) + '...';
     }
 
+    // ID người bình luận (hỗ trợ cả populated object lẫn raw ObjectId string)
+    const commentAuthorId = comment.userId?._id || comment.userId?.id || comment.userId;
+
     return (
       <View key={comment._id} style={[styles.commentItem, isReply && styles.replyItem]}>
-        {comment.userId?.picture ? (
-          <Image
-            source={{ uri: comment.userId.picture }}
-            style={[styles.commentAvatar, isReply && styles.replyAvatar]}
-          />
-        ) : (
-          <View
-            style={[
-              styles.commentAvatarPlaceholder,
-              isReply && styles.replyAvatar,
-              { backgroundColor: avatarColor },
-            ]}
-          >
-            <Text style={[styles.avatarInitials, isReply && { fontSize: 10 }]}>
-              {getInitials(comment.userId?.name)}
-            </Text>
-          </View>
-        )}
+        {/* Avatar – bấm vào → trang cá nhân */}
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => navigateToProfile(commentAuthorId)}
+        >
+          {comment.userId?.picture ? (
+            <Image
+              source={{ uri: comment.userId.picture }}
+              style={[styles.commentAvatar, isReply && styles.replyAvatar]}
+            />
+          ) : (
+            <View
+              style={[
+                styles.commentAvatarPlaceholder,
+                isReply && styles.replyAvatar,
+                { backgroundColor: avatarColor },
+              ]}
+            >
+              <Text style={[styles.avatarInitials, isReply && { fontSize: 10 }]}>
+                {getInitials(comment.userId?.name)}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
         <View style={styles.commentRight}>
           <View style={styles.commentTextContainer}>
-            <Text style={styles.commentAuthor}>{comment.userId?.name || 'Thành viên'}</Text>
+            {/* Tên – bấm vào → trang cá nhân */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => navigateToProfile(commentAuthorId)}
+            >
+              <Text style={styles.commentAuthor}>{comment.userId?.name || 'Thành viên'}</Text>
+            </TouchableOpacity>
             {comment.content ? (
               <Text style={styles.commentText}>
                 {comment.replyToName ? (
@@ -705,18 +734,9 @@ export default function PostDetailScreen({ route, navigation }) {
 
               {post.content ? <Text style={styles.postContent}>{post.content}</Text> : null}
 
-              {/* Media content */}
+              {/* Media content – dùng PostImages grid giống feed */}
               {post.mediaUrls && post.mediaUrls.length > 0 && (
-                <View style={styles.mediaContainer}>
-                  {post.mediaUrls.map((url, index) => (
-                    <Image
-                      key={index}
-                      source={{ uri: fixMediaUrl(url) }}
-                      style={styles.postMedia}
-                      resizeMode="cover"
-                    />
-                  ))}
-                </View>
+                <PostImages images={post.mediaUrls.map(fixMediaUrl)} />
               )}
 
               {(post.likesCount > 0 || post.commentsCount > 0) ? (

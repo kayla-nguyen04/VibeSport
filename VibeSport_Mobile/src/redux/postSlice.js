@@ -444,12 +444,19 @@ const postSlice = createSlice({
         state.savedPosts = state.savedPosts.filter((post) => post._id !== postId);
       })
 
+      .addCase(updatePost.pending, (state) => {
+        state.creating = true;
+      })
       .addCase(updatePost.fulfilled, (state, action) => {
+        state.creating = false;
         const updated = action.payload;
         if (!updated) return;
         updatePostInCollections(state, updated._id, (post) => {
           Object.assign(post, normalizePost({ ...post, ...updated }));
         });
+      })
+      .addCase(updatePost.rejected, (state) => {
+        state.creating = false;
       });
   },
 });
