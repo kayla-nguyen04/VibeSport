@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const Follow = require('../models/Follow');
@@ -260,9 +261,14 @@ exports.createOrGetConversation = async (req, res) => {
     }
 
     const allParticipants = [req.userId, ...uniqueIds];
-    const participantKey = allParticipants.map((id) => String(id)).sort().join('_');
+    const participantKey = isGroup
+      ? `group_${new mongoose.Types.ObjectId()}`
+      : allParticipants.map((id) => String(id)).sort().join('_');
 
-    let conversation = await Conversation.findOne({ participantKey }).populate('participants', USER_SELECT);
+    let conversation = null;
+    if (!isGroup) {
+      conversation = await Conversation.findOne({ participantKey }).populate('participants', USER_SELECT);
+    }
 
     if (!conversation) {
       let status = 'active';
@@ -1048,5 +1054,138 @@ exports.addParticipants = async (req, res) => {
   } catch (error) {
     console.error('Add participants error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi thêm thành viên vào nhóm' });
+  }
+};
+
+exports.leaveGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const conversation = await Conversation.findById(id);
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    if (!conversation.isGroup) {
+      return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
+    }
+
+    // Verify requesting user is a participant
+    const isParticipant = conversation.participants.some(
+      (p) => String(p) === String(req.userId)
+    );
+    if (!isParticipant) {
+      return res.status(400).json({ success: false, message: 'Bạn không phải là thành viên nhóm này' });
+    }
+
+    // Remove participant
+    conversation.participants = conversation.participants.filter(
+      (p) => String(p) !== String(req.userId)
+    );
+
+    // Remove from acceptedBy too
+    conversation.acceptedBy = (conversation.acceptedBy || []).filter(
+      (p) => String(p) !== String(req.userId)
+    );
+
+    if (conversation.participants.length === 0) {
+      // If no participants left, disband group (delete conversation from DB)
+      await Conversation.findByIdAndDelete(id);
+    } else {
+      await conversation.save();
+
+      const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+
+      // Notify remaining participants via socket
+      if (global.io) {
+        updated.participants.forEach((p) => {
+          const pIdStr = String(p._id || p);
+          global.io.to(pIdStr).emit('group_updated', {
+            conversationId: id,
+            conversation: formatConversation(updated, pIdStr, true),
+          });
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã rời khỏi nhóm thành công',
+    });
+  } catch (error) {
+    console.error('Leave group error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi rời khỏi nhóm' });
+  }
+};
+
+exports.removeParticipant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'ID thành viên cần xóa không hợp lệ' });
+    }
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    if (!conversation.isGroup) {
+      return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
+    }
+
+    // Verify requesting user is the Admin (first participant in the array)
+    const isAdmin = String(conversation.participants[0]) === String(req.userId);
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa thành viên khỏi nhóm này' });
+    }
+
+    // Cannot remove oneself or the admin
+    if (String(userId) === String(req.userId)) {
+      return res.status(400).json({ success: false, message: 'Bạn không thể tự xóa chính mình khỏi nhóm theo cách này' });
+    }
+
+    // Remove participant
+    conversation.participants = conversation.participants.filter(
+      (p) => String(p) !== String(userId)
+    );
+
+    // Remove from acceptedBy
+    conversation.acceptedBy = (conversation.acceptedBy || []).filter(
+      (p) => String(p) !== String(userId)
+    );
+
+    await conversation.save();
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+
+    // Notify all participants via socket (including the removed user, so they know they are kicked)
+    if (global.io) {
+      // Notify the removed user
+      global.io.to(String(userId)).emit('group_updated', {
+        conversationId: id,
+        conversation: null,
+      });
+
+      // Notify remaining participants
+      updated.participants.forEach((p) => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: id,
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã xóa thành viên khỏi nhóm thành công',
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Remove participant error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi xóa thành viên khỏi nhóm' });
   }
 };

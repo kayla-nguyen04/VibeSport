@@ -93,3 +93,14 @@ export const addParticipantsRequest = (conversationId, userIds, token) =>
     method: 'PUT',
     body: JSON.stringify({ userIds }),
   }, token);
+
+export const leaveGroupRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/leave`, {
+    method: 'PUT',
+  }, token);
+
+export const removeParticipantRequest = (conversationId, userId, token) =>
+  request(`/api/chat/conversations/${conversationId}/remove-participant`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId }),
+  }, token);
