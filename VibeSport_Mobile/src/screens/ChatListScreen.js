@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -27,9 +28,11 @@ import {
   muteConversation,
   unmuteConversation,
   openConversation,
+  updateGroupInfo,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
+import * as ImagePicker from 'expo-image-picker';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời'];
@@ -89,6 +92,83 @@ export default function ChatListScreen({ navigation }) {
   const [groupName, setGroupName] = useState('');
   const [groupCreationStep, setGroupCreationStep] = useState(1);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [selectedAvatarImage, setSelectedAvatarImage] = useState(null);
+  const [pendingImageAction, setPendingImageAction] = useState(null);
+
+  const handlePickGroupAvatar = () => {
+    Alert.alert(
+      'Chọn ảnh đại diện nhóm',
+      'Chọn phương thức để lấy ảnh',
+      [
+        {
+          text: 'Chụp ảnh mới',
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              setPendingImageAction('camera');
+              setShowCreateGroupModal(false);
+            } else {
+              processGroupImagePick('camera');
+            }
+          }
+        },
+        {
+          text: 'Chọn từ thư viện',
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              setPendingImageAction('library');
+              setShowCreateGroupModal(false);
+            } else {
+              processGroupImagePick('library');
+            }
+          }
+        },
+        { text: 'Hủy', style: 'cancel' }
+      ]
+    );
+  };
+
+  const processGroupImagePick = async (mode) => {
+    try {
+      let result;
+      if (mode === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập máy ảnh để chụp ảnh.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.5,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện để chọn ảnh.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.5,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedAvatarImage(result.assets[0]);
+      }
+    } catch (err) {
+      console.error('Lỗi chọn ảnh nhóm:', err);
+      Alert.alert('Lỗi', 'Không thể chọn ảnh.');
+    } finally {
+      setPendingImageAction(null);
+      if (Platform.OS === 'ios') {
+        setShowCreateGroupModal(true);
+      }
+    }
+  };
 
   const loadMutualFriends = async () => {
     setLoadingFriends(true);
@@ -110,6 +190,7 @@ export default function ChatListScreen({ navigation }) {
     setSelectedUserIds([]);
     setGroupSearchText('');
     setGroupName('');
+    setSelectedAvatarImage(null);
   };
 
   const handleToggleSelectUser = (userId) => {
@@ -154,10 +235,36 @@ export default function ChatListScreen({ navigation }) {
       const result = await dispatch(
         openConversation({ recipientIds: selectedUserIds, name: groupName.trim() })
       ).unwrap();
+      
+      const newConv = result.data;
+      
+      if (selectedAvatarImage && newConv?._id) {
+        try {
+          const formData = new FormData();
+          formData.append('name', groupName.trim());
+          
+          const uri = selectedAvatarImage.uri;
+          const uriParts = uri.split('.');
+          const fileType = uriParts[uriParts.length - 1];
+          const fileName = uri.split('/').pop();
+
+          formData.append('avatar', {
+            uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+            name: fileName || `avatar.${fileType}`,
+            type: `image/${fileType}`,
+          });
+
+          await dispatch(updateGroupInfo({ conversationId: newConv._id, formData })).unwrap();
+        } catch (uploadErr) {
+          console.error('Lỗi upload avatar lúc tạo nhóm:', uploadErr);
+          Alert.alert('Thông báo', 'Đã tạo nhóm trò chuyện nhưng không thể tải lên ảnh đại diện.');
+        }
+      }
+
       setShowCreateGroupModal(false);
       navigation.navigate('ChatDetail', {
-        conversationId: result.data._id,
-        peer: result.data.peer,
+        conversationId: newConv._id,
+        peer: newConv.peer,
         isGroup: true,
       });
     } catch (err) {
@@ -750,6 +857,11 @@ export default function ChatListScreen({ navigation }) {
         transparent
         animationType="slide"
         onRequestClose={() => setShowCreateGroupModal(false)}
+        onDismiss={() => {
+          if (Platform.OS === 'ios' && pendingImageAction) {
+            processGroupImagePick(pendingImageAction);
+          }
+        }}
       >
         <View style={styles.groupModalOverlay}>
           <View style={styles.groupModalContainer}>
@@ -833,16 +945,38 @@ export default function ChatListScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.groupNameContainer}>
-                  <TextInput
-                    value={groupName}
-                    onChangeText={setGroupName}
-                    placeholder="Nhập tên nhóm..."
-                    placeholderTextColor="#8E8E93"
-                    style={styles.groupNameInput}
-                    autoFocus
-                    maxLength={100}
-                  />
+                <View style={styles.groupCreationBody}>
+                  <TouchableOpacity
+                    onPress={handlePickGroupAvatar}
+                    style={styles.groupAvatarPicker}
+                    activeOpacity={0.8}
+                  >
+                    {selectedAvatarImage ? (
+                      <Image source={{ uri: selectedAvatarImage.uri }} style={styles.groupAvatarPreview} />
+                    ) : (
+                      <View style={styles.groupAvatarPreviewFallback}>
+                        <Ionicons name="camera" size={32} color="#8E8E93" />
+                        <Text style={styles.groupAvatarFallbackText}>Thêm ảnh</Text>
+                      </View>
+                    )}
+                    {selectedAvatarImage && (
+                      <View style={styles.groupAvatarBadge}>
+                        <Ionicons name="camera" size={14} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  <View style={styles.groupNameContainer}>
+                    <TextInput
+                      value={groupName}
+                      onChangeText={setGroupName}
+                      placeholder="Nhập tên nhóm..."
+                      placeholderTextColor="#8E8E93"
+                      style={styles.groupNameInput}
+                      autoFocus
+                      maxLength={50}
+                    />
+                  </View>
                 </View>
               </>
             )}
@@ -1278,7 +1412,8 @@ const styles = StyleSheet.create({
   },
   groupNameContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingVertical: 10,
+    width: '100%',
   },
   groupNameInput: {
     color: '#262626',
@@ -1286,5 +1421,52 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#DBDBDB',
     paddingVertical: 8,
+    textAlign: 'center',
+  },
+  groupCreationBody: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+  },
+  groupAvatarPicker: {
+    position: 'relative',
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  groupAvatarPreview: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#E5E7EB',
+  },
+  groupAvatarPreviewFallback: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarFallbackText: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  groupAvatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#0b74ff',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

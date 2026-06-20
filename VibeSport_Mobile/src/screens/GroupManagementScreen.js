@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -26,6 +27,9 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import {
   updateGroupInfo,
   addParticipants,
+  leaveGroup,
+  removeParticipant,
+  openConversation,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
@@ -71,6 +75,7 @@ export default function GroupManagementScreen({ route, navigation }) {
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedAvatarImage, setSelectedAvatarImage] = useState(null);
+  const [pendingImageAction, setPendingImageAction] = useState(null);
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -82,14 +87,188 @@ export default function GroupManagementScreen({ route, navigation }) {
 
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // 'all' or 'admin'
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
 
-  // Sync edit group name state
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(300)).current;
+
+  const addMemberBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const addMemberSlideAnim = useRef(new Animated.Value(500)).current;
+
   useEffect(() => {
-    if (showEditGroupModal) {
-      setNewGroupName(peerName);
-      setSelectedAvatarImage(null);
+    if (showOptionsModal) {
+      backdropOpacity.setValue(0);
+      slideAnim.setValue(300);
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        })
+      ]).start();
     }
-  }, [showEditGroupModal, peerName]);
+  }, [showOptionsModal]);
+
+  useEffect(() => {
+    if (showAddMemberModal) {
+      addMemberBackdropOpacity.setValue(0);
+      addMemberSlideAnim.setValue(500);
+      Animated.parallel([
+        Animated.timing(addMemberBackdropOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(addMemberSlideAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }
+  }, [showAddMemberModal]);
+
+  const handleCloseOptions = (callback) => {
+    Animated.parallel([
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 300,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setShowOptionsModal(false);
+      if (typeof callback === 'function') {
+        callback();
+      }
+    });
+  };
+
+  const handleCloseAddMember = (callback) => {
+    Animated.parallel([
+      Animated.timing(addMemberBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(addMemberSlideAnim, {
+        toValue: 500,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setShowAddMemberModal(false);
+      if (typeof callback === 'function') {
+        callback();
+      }
+    });
+  };
+
+  const handleOpenEditGroup = () => {
+    setNewGroupName(peerName);
+    setSelectedAvatarImage(null);
+    setShowEditGroupModal(true);
+  };
+
+  const isCurrentUserAdmin = useMemo(() => {
+    const adminId = conversationMeta?.participants?.[0]?._id || conversationMeta?.participants?.[0];
+    return String(adminId) === String(currentUserId);
+  }, [conversationMeta, currentUserId]);
+
+  const isFriendSelectedMember = useMemo(() => {
+    if (!selectedMember) return false;
+    return mutualFriends.some((f) => String(f._id) === String(selectedMember._id));
+  }, [selectedMember, mutualFriends]);
+
+  const handleOpenOptions = (member) => {
+    setSelectedMember(member);
+    setShowOptionsModal(true);
+  };
+
+  const handleMessageUser = async (memberId) => {
+    setShowMembersModal(false);
+    setShowOptionsModal(false);
+    try {
+      const result = await dispatch(openConversation(memberId)).unwrap();
+      navigation.navigate('ChatDetail', {
+        conversationId: result.data._id,
+        peer: result.data.peer,
+      });
+    } catch (err) {
+      Alert.alert('Lỗi', err || 'Không thể mở cuộc trò chuyện');
+    }
+  };
+
+  const handleBlockMember = (member) => {
+    handleCloseOptions(() => {
+      Alert.alert(
+        'Chặn người dùng',
+        `Bạn có muốn chặn ${member.name} không? Họ sẽ không thể gửi tin nhắn trực tiếp cho bạn.`,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Chặn',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert('Thành công', `Đã chặn ${member.name}.`);
+            }
+          }
+        ]
+      );
+    });
+  };
+
+  const handleRemoveMember = (member) => {
+    handleCloseOptions(() => {
+      Alert.alert(
+        'Xóa khỏi nhóm',
+        `Bạn có chắc chắn muốn xóa ${member.name} khỏi cuộc trò chuyện nhóm này không?`,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xóa',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await dispatch(removeParticipant({ conversationId, userId: member._id })).unwrap();
+                Alert.alert('Thành công', `Đã xóa ${member.name} khỏi nhóm.`);
+              } catch (err) {
+                Alert.alert('Lỗi', err || 'Không thể xóa thành viên');
+              }
+            }
+          }
+        ]
+      );
+    });
+  };
+
+  const handleAddFriend = (member) => {
+    handleCloseOptions(() => {
+      Alert.alert(
+        'Kết bạn',
+        `Gửi lời mời kết bạn đến ${member.name}?`,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          { 
+            text: 'Gửi', 
+            onPress: () => {
+              Alert.alert('Thành công', `Đã gửi lời mời kết bạn đến ${member.name}`);
+            } 
+          }
+        ]
+      );
+    });
+  };
 
   // Load mutual friends & clear search
   useEffect(() => {
@@ -130,8 +309,28 @@ export default function GroupManagementScreen({ route, navigation }) {
       'Cập nhật ảnh đại diện nhóm',
       'Chọn phương thức để lấy ảnh',
       [
-        { text: 'Chụp ảnh mới', onPress: () => processGroupImagePick('camera') },
-        { text: 'Chọn từ thư viện', onPress: () => processGroupImagePick('library') },
+        {
+          text: 'Chụp ảnh mới',
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              setPendingImageAction('camera');
+              setShowEditGroupModal(false);
+            } else {
+              processGroupImagePick('camera');
+            }
+          }
+        },
+        {
+          text: 'Chọn từ thư viện',
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              setPendingImageAction('library');
+              setShowEditGroupModal(false);
+            } else {
+              processGroupImagePick('library');
+            }
+          }
+        },
         { text: 'Hủy', style: 'cancel' }
       ]
     );
@@ -172,6 +371,11 @@ export default function GroupManagementScreen({ route, navigation }) {
     } catch (err) {
       console.error('Lỗi chọn ảnh nhóm:', err);
       Alert.alert('Lỗi', 'Không thể chọn ảnh.');
+    } finally {
+      setPendingImageAction(null);
+      if (Platform.OS === 'ios') {
+        setShowEditGroupModal(true);
+      }
     }
   };
 
@@ -216,12 +420,35 @@ export default function GroupManagementScreen({ route, navigation }) {
     try {
       await dispatch(addParticipants({ conversationId, userIds: selectedUserIds })).unwrap();
       Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
-      setShowAddMemberModal(false);
+      handleCloseAddMember();
     } catch (err) {
       Alert.alert('Lỗi', err || 'Không thể thêm thành viên');
     } finally {
       setIsAddingMembers(false);
     }
+  };
+
+  const handleLeaveGroup = () => {
+    Alert.alert(
+      'Rời khỏi cuộc trò chuyện',
+      'Bạn có chắc chắn muốn rời khỏi cuộc trò chuyện nhóm này không? Bạn sẽ không thể nhận được tin nhắn mới từ nhóm này nữa.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Rời nhóm',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dispatch(leaveGroup(conversationId)).unwrap();
+              Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm.');
+              navigation.navigate('Home', { activeTab: 'social' });
+            } catch (err) {
+              Alert.alert('Lỗi', err || 'Không thể rời khỏi nhóm');
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Helpers for member mock usernames and adder info
@@ -353,7 +580,7 @@ export default function GroupManagementScreen({ route, navigation }) {
             Hoạt động hôm nay
           </Text>
 
-          <TouchableOpacity onPress={() => setShowEditGroupModal(true)} activeOpacity={0.7}>
+          <TouchableOpacity onPress={handleOpenEditGroup} activeOpacity={0.7}>
             <Text style={styles.changeInfoText}>Đổi tên hoặc ảnh</Text>
           </TouchableOpacity>
         </View>
@@ -383,6 +610,22 @@ export default function GroupManagementScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Leave Group Option */}
+        <View style={[styles.sectionContainer, { marginTop: 8 }]}>
+          <View style={styles.cardContainer}>
+            <TouchableOpacity 
+              style={[styles.listItem, styles.lastListItem]} 
+              activeOpacity={0.7}
+              onPress={handleLeaveGroup}
+            >
+              <View style={[styles.listIconWrap, { backgroundColor: '#FEF2F2' }]}>
+                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+              </View>
+              <Text style={[styles.listItemText, { color: '#EF4444' }]}>Rời khỏi cuộc trò chuyện</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
 
       {/* Edit Group Modal */}
@@ -391,6 +634,11 @@ export default function GroupManagementScreen({ route, navigation }) {
         transparent
         animationType="slide"
         onRequestClose={() => setShowEditGroupModal(false)}
+        onDismiss={() => {
+          if (Platform.OS === 'ios' && pendingImageAction) {
+            processGroupImagePick(pendingImageAction);
+          }
+        }}
       >
         <TouchableWithoutFeedback onPress={() => setShowEditGroupModal(false)}>
           <KeyboardAvoidingView
@@ -463,106 +711,6 @@ export default function GroupManagementScreen({ route, navigation }) {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Add Member Modal */}
-      <Modal
-        visible={showAddMemberModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAddMemberModal(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowAddMemberModal(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.modalContent, styles.tallModalContent]}>
-                <View style={styles.modalHeader}>
-                  <TouchableOpacity onPress={() => setShowAddMemberModal(false)} hitSlop={10}>
-                    <Text style={styles.cancelText}>Hủy</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.modalTitle}>Chọn người</Text>
-                  <TouchableOpacity
-                    onPress={handleConfirmAddMembers}
-                    disabled={isAddingMembers || selectedUserIds.length === 0}
-                    hitSlop={10}
-                  >
-                    <Text style={[
-                      styles.confirmText,
-                      (isAddingMembers || selectedUserIds.length === 0) && styles.disabledConfirmText
-                    ]}>
-                      Thêm{selectedUserIds.length > 0 ? ` (${selectedUserIds.length})` : ''}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.searchBarContainer}>
-                  <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-                  <TextInput
-                    style={styles.searchInput}
-                    value={searchText}
-                    onChangeText={setSearchText}
-                    placeholder="Tìm kiếm"
-                    placeholderTextColor="#9CA3AF"
-                    clearButtonMode="while-editing"
-                  />
-                </View>
-
-                <Text style={styles.suggestionsHeader}>Gợi ý</Text>
-
-                {loadingFriends ? (
-                  <View style={styles.loadingWrap}>
-                    <ActivityIndicator size="large" color="#0b74ff" />
-                  </View>
-                ) : (
-                  <FlatList
-                    data={filteredFriends}
-                    keyExtractor={(item) => item._id}
-                    contentContainerStyle={styles.friendsList}
-                    ListEmptyComponent={
-                      <View style={styles.emptyFriendsWrap}>
-                        <Text style={styles.emptyFriendsText}>Không tìm thấy bạn bè nào</Text>
-                      </View>
-                    }
-                    renderItem={({ item }) => {
-                      const isSelected = selectedUserIds.includes(item._id);
-                      const isOnline = item.lastSeenAt && (Date.now() - new Date(item.lastSeenAt).getTime() < 5 * 60 * 1000);
-                      return (
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={() => {
-                            setSelectedUserIds((prev) =>
-                              prev.includes(item._id)
-                                ? prev.filter((id) => id !== item._id)
-                                : [...prev, item._id]
-                            );
-                          }}
-                          style={styles.friendItem}
-                        >
-                          <View style={styles.friendAvatarContainer}>
-                            {item.picture ? (
-                              <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.friendAvatar} />
-                            ) : (
-                              <View style={[styles.friendAvatarFallback, { backgroundColor: getAvatarColor(item.name) }]}>
-                                <Text style={styles.friendAvatarText}>{getInitials(item.name)}</Text>
-                              </View>
-                            )}
-                            {isOnline && <View style={styles.onlineBadge} />}
-                          </View>
-                          <Text style={styles.friendName}>{item.name}</Text>
-                          <Ionicons
-                            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={24}
-                            color={isSelected ? '#0b74ff' : '#D1D5DB'}
-                            style={styles.checkboxIcon}
-                          />
-                        </TouchableOpacity>
-                      );
-                    }}
-                  />
-                )}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
 
       <Modal
         visible={showMembersModal}
@@ -683,65 +831,14 @@ export default function GroupManagementScreen({ route, navigation }) {
                     style={styles.darkFriendInfoWrap}
                   >
                     <Text style={styles.darkFriendName}>{name}</Text>
-                    {subtitleText ? (
-                      <Text style={styles.darkFriendSubtitle} numberOfLines={1}>
-                        {subtitleText}
-                      </Text>
-                    ) : null}
                   </TouchableOpacity>
 
                   {/* Actions on the right side */}
-                  {activeTab === 'all' && !item.isFriend && !isMe ? (
-                    name === 'Người dùng Facebook' ? (
-                      <TouchableOpacity 
-                        style={styles.darkMoreBtn} 
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          Alert.alert('Thông tin', 'Tài khoản không hoạt động hoặc không khả dụng.');
-                        }}
-                      >
-                        <Ionicons name="information-circle-outline" size={22} color="#8E8E93" />
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity 
-                        style={styles.darkAddFriendBtn} 
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          Alert.alert(
-                            'Kết bạn',
-                            `Gửi lời mời kết bạn đến ${name}?`,
-                            [
-                              { text: 'Hủy', style: 'cancel' },
-                              { text: 'Gửi', onPress: () => Alert.alert('Thành công', `Đã gửi lời mời kết bạn đến ${name}`) }
-                            ]
-                          );
-                        }}
-                      >
-                        <Text style={styles.darkAddFriendBtnText}>Thêm bạn bè</Text>
-                      </TouchableOpacity>
-                    )
-                  ) : (
+                  {!isMe && (
                     <TouchableOpacity 
                       style={styles.darkMoreBtn} 
                       activeOpacity={0.8}
-                      onPress={() => {
-                        Alert.alert(
-                          name,
-                          isMe ? 'Đây là tài khoản của bạn' : 'Chọn thao tác',
-                          isMe 
-                            ? [{ text: 'Đóng', style: 'cancel' }]
-                            : [
-                                { 
-                                  text: 'Xem trang cá nhân', 
-                                  onPress: () => {
-                                    setShowMembersModal(false);
-                                    navigation.navigate('UserProfile', { userId: member._id });
-                                  } 
-                                },
-                                { text: 'Hủy', style: 'cancel' }
-                              ]
-                        );
-                      }}
+                      onPress={() => handleOpenOptions(member)}
                     >
                       <Ionicons name="ellipsis-horizontal" size={20} color="#8E8E93" />
                     </TouchableOpacity>
@@ -750,9 +847,193 @@ export default function GroupManagementScreen({ route, navigation }) {
               );
             }}
           />
-        </View>
-      </Modal>
-    </Screen>
+        {/* Member Options Bottom Sheet Modal nested inside Members Modal */}
+        {showOptionsModal && (
+          <Animated.View style={[styles.customOptionsModalOverlay, { opacity: backdropOpacity }]}>
+            <TouchableWithoutFeedback onPress={handleCloseOptions}>
+              <View style={styles.customOptionsClickableBg} />
+            </TouchableWithoutFeedback>
+            <Animated.View style={[styles.optionsModalContent, { transform: [{ translateY: slideAnim }] }]}>
+              {/* Main Options Card */}
+              <View style={styles.optionsCard}>
+                <View style={styles.optionsHeader}>
+                  <Text style={styles.optionsHeaderTitle}>{selectedMember?.name}</Text>
+                </View>
+                
+                <TouchableOpacity 
+                  style={styles.optionsItem}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    setShowMembersModal(false);
+                    navigation.navigate('UserProfile', { userId: selectedMember?._id });
+                  }}
+                >
+                  <Text style={styles.optionsItemTextBlue}>Xem trang cá nhân</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.optionsItem}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (selectedMember?._id) {
+                      handleMessageUser(selectedMember._id);
+                    }
+                  }}
+                >
+                  <Text style={styles.optionsItemTextBlue}>Nhắn tin</Text>
+                </TouchableOpacity>
+
+                {!isFriendSelectedMember && selectedMember?.name !== 'Người dùng Facebook' && (
+                  <TouchableOpacity 
+                    style={styles.optionsItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (selectedMember) {
+                        handleAddFriend(selectedMember);
+                      }
+                    }}
+                  >
+                    <Text style={styles.optionsItemTextBlue}>Thêm bạn bè</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity 
+                  style={styles.optionsItem}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (selectedMember) {
+                      handleBlockMember(selectedMember);
+                    }
+                  }}
+                >
+                  <Text style={styles.optionsItemTextRed}>Chặn</Text>
+                </TouchableOpacity>
+
+                {isCurrentUserAdmin && (
+                  <TouchableOpacity 
+                    style={[styles.optionsItem, styles.lastOptionsItem]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (selectedMember) {
+                        handleRemoveMember(selectedMember);
+                      }
+                    }}
+                  >
+                    <Text style={styles.optionsItemTextRed}>Xóa khỏi nhóm</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Cancel Button */}
+              <TouchableOpacity 
+                style={styles.optionsCancelBtn}
+                activeOpacity={0.8}
+                onPress={handleCloseOptions}
+              >
+                <Text style={styles.optionsCancelBtnText}>Hủy</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Animated.View>
+        )}
+
+        {/* Add Member View Overlay nested inside Members Modal */}
+        {showAddMemberModal && (
+          <Animated.View style={[styles.customAddMemberOverlay, { opacity: addMemberBackdropOpacity }]}>
+            <TouchableWithoutFeedback onPress={() => handleCloseAddMember()}>
+              <View style={styles.customAddMemberClickableBg} />
+            </TouchableWithoutFeedback>
+            <Animated.View style={[styles.tallModalContent, { transform: [{ translateY: addMemberSlideAnim }] }]}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => handleCloseAddMember()} hitSlop={10}>
+                  <Text style={styles.cancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Chọn người</Text>
+                <TouchableOpacity
+                  onPress={handleConfirmAddMembers}
+                  disabled={isAddingMembers || selectedUserIds.length === 0}
+                  hitSlop={10}
+                >
+                  <Text style={[
+                    styles.confirmText,
+                    (isAddingMembers || selectedUserIds.length === 0) && styles.disabledConfirmText
+                  ]}>
+                    Thêm{selectedUserIds.length > 0 ? ` (${selectedUserIds.length})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.searchBarContainer}>
+                <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  placeholder="Tìm kiếm"
+                  placeholderTextColor="#9CA3AF"
+                  clearButtonMode="while-editing"
+                />
+              </View>
+
+              <Text style={styles.suggestionsHeader}>Gợi ý</Text>
+
+              {loadingFriends ? (
+                <View style={styles.loadingWrap}>
+                  <ActivityIndicator size="large" color="#0b74ff" />
+                </View>
+              ) : (
+                <FlatList
+                  data={filteredFriends}
+                  keyExtractor={(item) => item._id}
+                  contentContainerStyle={styles.friendsList}
+                  ListEmptyComponent={
+                    <View style={styles.emptyFriendsWrap}>
+                      <Text style={styles.emptyFriendsText}>Không tìm thấy bạn bè nào</Text>
+                    </View>
+                  }
+                  renderItem={({ item }) => {
+                    const isSelected = selectedUserIds.includes(item._id);
+                    const isOnline = item.lastSeenAt && (Date.now() - new Date(item.lastSeenAt).getTime() < 5 * 60 * 1000);
+                    return (
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setSelectedUserIds((prev) =>
+                            prev.includes(item._id)
+                              ? prev.filter((id) => id !== item._id)
+                              : [...prev, item._id]
+                          );
+                        }}
+                        style={styles.friendItem}
+                      >
+                        <View style={styles.friendAvatarContainer}>
+                          {item.picture ? (
+                            <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.friendAvatar} />
+                          ) : (
+                            <View style={[styles.friendAvatarFallback, { backgroundColor: getAvatarColor(item.name) }]}>
+                              <Text style={styles.friendAvatarText}>{getInitials(item.name)}</Text>
+                            </View>
+                          )}
+                          {isOnline && <View style={styles.onlineBadge} />}
+                        </View>
+                        <Text style={styles.friendName}>{item.name}</Text>
+                        <Ionicons
+                          name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={24}
+                          color={isSelected ? '#0b74ff' : '#D1D5DB'}
+                          style={styles.checkboxIcon}
+                        />
+                      </TouchableOpacity>
+                    );
+                  }}
+                />
+              )}
+            </Animated.View>
+          </Animated.View>
+        )}
+      </View>
+    </Modal>
+  </Screen>
   );
 }
 
@@ -1305,5 +1586,94 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
     borderWidth: 2,
     borderColor: '#FFFFFF',
+  },
+  customAddMemberOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    zIndex: 9998,
+  },
+  customAddMemberClickableBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  customOptionsModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    zIndex: 9999,
+  },
+  customOptionsClickableBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  optionsModalContent: {
+    width: '100%',
+  },
+  optionsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  optionsHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
+  },
+  optionsHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8E8E93',
+  },
+  optionsItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
+  },
+  lastOptionsItem: {
+    borderBottomWidth: 0,
+  },
+  optionsItemTextBlue: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#0b74ff',
+  },
+  optionsItemTextRed: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#FF3B30',
+  },
+  optionsCancelBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionsCancelBtnText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0b74ff',
   },
 });

@@ -125,6 +125,7 @@ export function AuthCard({
             placeholderTextColor="#9c9c9c"
             style={[styles.input, fieldErrors.fullName ? styles.inputError : null]}
             value={form.fullName}
+            maxLength={30}
           />
           {fieldErrors.fullName ? <Text style={styles.fieldErrorText}>{fieldErrors.fullName}</Text> : null}
 

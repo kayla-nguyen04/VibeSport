@@ -16,6 +16,8 @@ import {
   unmuteConversationRequest,
   updateGroupInfoRequest,
   addParticipantsRequest,
+  leaveGroupRequest,
+  removeParticipantRequest,
 } from '../services/chatApi';
 
 export const fetchConversations = createAsyncThunk(
@@ -199,6 +201,30 @@ export const addParticipants = createAsyncThunk(
   }
 );
 
+export const leaveGroup = createAsyncThunk(
+  'chat/leaveGroup',
+  async (conversationId, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await leaveGroupRequest(conversationId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể rời khỏi nhóm.');
+    }
+  }
+);
+
+export const removeParticipant = createAsyncThunk(
+  'chat/removeParticipant',
+  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await removeParticipantRequest(conversationId, userId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể xóa thành viên khỏi nhóm.');
+    }
+  }
+);
+
 const upsertConversation = (conversations, conversation) => {
   const index = conversations.findIndex((item) => item._id === conversation._id);
   if (index === -1) {
@@ -369,11 +395,19 @@ const chatSlice = createSlice({
     groupUpdated(state, action) {
       const { conversationId, conversation } = action.payload;
       const index = state.conversations.findIndex((item) => item._id === conversationId);
-      if (index !== -1 && conversation) {
-        state.conversations[index] = {
-          ...state.conversations[index],
-          ...conversation,
-        };
+      if (index !== -1) {
+        if (!conversation) {
+          state.conversations = state.conversations.filter((c) => c._id !== conversationId);
+          delete state.messagesByConversation[conversationId];
+          if (state.activeConversationId === conversationId) {
+            state.activeConversationId = null;
+          }
+        } else {
+          state.conversations[index] = {
+            ...state.conversations[index],
+            ...conversation,
+          };
+        }
       }
     },
     pendingMessagesDeletedByOther(state, action) {
@@ -555,6 +589,20 @@ const chatSlice = createSlice({
         }
       })
       .addCase(addParticipants.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
+      .addCase(leaveGroup.fulfilled, (state, action) => {
+        const conversationId = action.meta.arg;
+        state.conversations = state.conversations.filter((c) => c._id !== conversationId);
+        delete state.messagesByConversation[conversationId];
+        if (state.activeConversationId === conversationId) {
+          state.activeConversationId = null;
+        }
+      })
+      .addCase(removeParticipant.fulfilled, (state, action) => {
         const data = action.payload?.data;
         if (data) {
           state.conversations = upsertConversation(state.conversations, data);
