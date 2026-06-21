@@ -73,7 +73,6 @@ export default function ChatDetailScreen({ route, navigation }) {
 
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
-  const peerName = peer?.name || 'Thành viên VibeSport';
 
   // Get conversation metadata from state (for UI decisions, not message source)
   const conversationMeta = conversations.find((item) => item._id === conversationId);
@@ -105,6 +104,21 @@ export default function ChatDetailScreen({ route, navigation }) {
   } = conversationMeta || {};
 
   const isGroup = route.params.isGroup || isGroupFromMeta;
+
+  const peerName = useMemo(() => {
+    if (isGroup) {
+      return conversationMeta?.name || peer?.name || 'Nhóm VibeSport';
+    }
+    const peerId = String(peer?._id || peer);
+    const nickname = conversationMeta?.nicknames?.[peerId];
+    if (nickname) return nickname;
+    return peer?.name || 'Thành viên VibeSport';
+  }, [isGroup, conversationMeta, peer]);
+
+  const isMutedInGroup = useMemo(() => {
+    if (!isGroup) return false;
+    return (conversationMeta?.mutedMembers || []).some(id => String(id._id || id) === String(currentUserId));
+  }, [isGroup, conversationMeta?.mutedMembers, currentUserId]);
 
   React.useEffect(() => {
     setIsMuted(conversationMuted);
@@ -236,6 +250,57 @@ export default function ChatDetailScreen({ route, navigation }) {
 
 
 
+  const renderMessageContent = (content, isMine) => {
+    if (!content) return '';
+    const regex = /vibesport:\/\/chat\/invite\/([a-fA-F0-9]+)/gi;
+    
+    // Quick check to avoid regex if not containing invite scheme
+    if (!content.toLowerCase().includes('vibesport://chat/invite/')) {
+      return content;
+    }
+
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    let hasMatch = false;
+
+    // Use light sky blue for own message bubble (blue background) and brand blue for peer message bubble (white background)
+    const linkColor = isMine ? '#BFDBFE' : '#0b74ff';
+
+    while ((match = regex.exec(content)) !== null) {
+      hasMatch = true;
+      const matchIndex = match.index;
+      const fullLink = match[0];
+      const inviteCode = match[1];
+
+      // Add text before link
+      if (matchIndex > lastIndex) {
+        parts.push(content.substring(lastIndex, matchIndex));
+      }
+
+      // Add clickable link text
+      parts.push(
+        <Text
+          key={`link-${matchIndex}`}
+          style={{ color: linkColor, textDecorationLine: 'underline', fontWeight: 'bold' }}
+          onPress={() => {
+            navigation.navigate('JoinGroup', { code: inviteCode });
+          }}
+        >
+          {fullLink}
+        </Text>
+      );
+
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+
+    return hasMatch ? parts : content;
+  };
+
   const renderMessage = ({ item }) => {
     const senderId = item.senderId?._id || item.senderId;
     const isMine = String(senderId) === String(currentUserId);
@@ -250,14 +315,21 @@ export default function ChatDetailScreen({ route, navigation }) {
     const textStyle = isMine ? styles.messageTextMine : styles.messageText;
     const timeStyle = isMine ? styles.messageTimeMine : styles.messageTime;
 
+    const getSenderName = () => {
+      const sId = String(senderId);
+      const nickname = conversationMeta?.nicknames?.[sId];
+      if (nickname) return nickname;
+      return item.senderId?.name || 'Thành viên';
+    };
+
     return (
       <View style={[styles.messageRow, rowStyle]}>
         <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
           {!isMine && isGroup && (
-            <Text style={styles.senderName}>{item.senderId?.name || 'Thành viên'}</Text>
+            <Text style={styles.senderName}>{getSenderName()}</Text>
           )}
           <View style={[styles.messageBubble, bubbleStyle]}>
-            <Text style={textStyle}>{item.content}</Text>
+            <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
             <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
           </View>
         </View>
@@ -364,6 +436,14 @@ export default function ChatDetailScreen({ route, navigation }) {
       return (
         <View style={styles.inputBarDisabled}>
           <Text style={styles.inputDisabledText}>Bạn không thể nhắn tin cho người này</Text>
+        </View>
+      );
+    }
+
+    if (isMutedInGroup) {
+      return (
+        <View style={styles.inputBarDisabled}>
+          <Text style={styles.inputDisabledText}>Bạn đã bị chặn gửi tin nhắn trong nhóm này</Text>
         </View>
       );
     }

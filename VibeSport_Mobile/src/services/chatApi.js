@@ -104,3 +104,48 @@ export const removeParticipantRequest = (conversationId, userId, token) =>
     method: 'PUT',
     body: JSON.stringify({ userId }),
   }, token);
+
+// === Group Permissions ===
+export const updateMemberRoleRequest = (conversationId, userId, role, token) =>
+  request(`/api/chat/conversations/${conversationId}/member-role`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId, role }),
+  }, token);
+
+export const muteMemberRequest = (conversationId, userId, token) =>
+  request(`/api/chat/conversations/${conversationId}/mute-member`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId }),
+  }, token);
+
+export const unmuteMemberRequest = (conversationId, userId, token) =>
+  request(`/api/chat/conversations/${conversationId}/unmute-member`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId }),
+  }, token);
+
+// === Nicknames ===
+export const updateNicknameRequest = (conversationId, userId, nickname, token) =>
+  request(`/api/chat/conversations/${conversationId}/nickname`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId, nickname }),
+  }, token);
+
+// === Invite Link ===
+export const generateInviteLinkRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/invite-link`, {
+    method: 'POST',
+  }, token);
+
+export const revokeInviteLinkRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/revoke-invite`, {
+    method: 'PUT',
+  }, token);
+
+export const getInviteLinkInfoRequest = (code, token) =>
+  request(`/api/chat/invite/${code}/info`, {}, token);
+
+export const joinViaInviteLinkRequest = (code, token) =>
+  request(`/api/chat/invite/${code}/join`, {
+    method: 'POST',
+  }, token);
