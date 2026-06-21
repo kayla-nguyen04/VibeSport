@@ -16,6 +16,8 @@ const {
   deletePendingMessages,
   updateGroupInfo,
   addParticipants,
+  leaveGroup,
+  removeParticipant,
 } = require('../controllers/chatController');
 const uploadConversation = require('../middleware/uploadConversation');
 
@@ -38,5 +40,7 @@ router.put('/conversations/:id/unmute', unmuteConversation);
 router.put('/conversations/:id/delete-pending', deletePendingMessages);
 router.put('/conversations/:id/group-info', uploadConversation.single('avatar'), updateGroupInfo);
 router.put('/conversations/:id/participants', addParticipants);
+router.put('/conversations/:id/leave', leaveGroup);
+router.put('/conversations/:id/remove-participant', removeParticipant);
 
 module.exports = router;

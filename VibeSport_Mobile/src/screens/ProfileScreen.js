@@ -60,8 +60,8 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       'Cập nhật ảnh đại diện',
       'Chọn phương thức để lấy ảnh',
       [
-        { text: 'Chụp ảnh mới', onPress: () => processImagePick('camera') },
-        { text: 'Chọn từ thư viện', onPress: () => processImagePick('library') },
+        { text: 'Chụp ảnh mới', onPress: () => setTimeout(() => processImagePick('camera'), 150) },
+        { text: 'Chọn từ thư viện', onPress: () => setTimeout(() => processImagePick('library'), 150) },
         { text: 'Hủy', style: 'cancel' }
       ]
     );
@@ -328,6 +328,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
                 onChangeText={setEditName}
                 placeholder="Nhập tên hiển thị"
                 placeholderTextColor="#9ca3af"
+                maxLength={30}
               />
 
               <Text style={styles.inputLabel}>Số điện thoại</Text>
