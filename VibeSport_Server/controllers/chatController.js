@@ -131,9 +131,21 @@ function formatConversation(conversation, currentUserId, isFriend) {
   const acceptedBy = conversation.acceptedBy || [];
   const hasAccepted = acceptedBy.some((id) => String(id._id || id) === currentId);
 
-  const myPendingCount = countPendingByUser(conversation, currentId);
+  const deletedAt = conversation.deletedAtByUser?.[currentId];
+  const lastMessageDeleted = deletedAt && conversation.lastMessageAt && new Date(conversation.lastMessageAt) <= new Date(deletedAt);
+
+  const lastMessage = lastMessageDeleted ? '' : (conversation.lastMessage || '');
+  const unreadCount = lastMessageDeleted ? 0 : getUnreadCount(conversation, currentUserId);
+
+  const allPending = (conversation.pendingMessages || []).filter(
+    (msg) => !deletedAt || new Date(msg.createdAt) > new Date(deletedAt)
+  );
+
+  const myPendingCount = allPending.filter(
+    (msg) => String(msg.senderId?._id || msg.senderId) === currentId
+  ).length;
   const remainingPending = Math.max(0, MAX_PENDING_PER_USER - myPendingCount);
-  const otherPendingMessages = (conversation.pendingMessages || []).filter(
+  const otherPendingMessages = allPending.filter(
     (msg) => String(msg.senderId?._id || msg.senderId) !== currentId
   );
 
@@ -185,9 +197,9 @@ function formatConversation(conversation, currentUserId, isFriend) {
           lastSeenAt: peer.lastSeenAt,
         }
       : null,
-    lastMessage: conversation.lastMessage,
+    lastMessage,
     lastMessageAt: conversation.lastMessageAt,
-    unreadCount: getUnreadCount(conversation, currentUserId),
+    unreadCount,
     updatedAt: conversation.updatedAt,
     status: conversation.status,
     isFriend: Boolean(isGroup || isFriend),
@@ -197,7 +209,7 @@ function formatConversation(conversation, currentUserId, isFriend) {
     myPendingCount: !isGroup ? myPendingCount : 0,
     remainingPendingMessages: !isGroup ? remainingPending : 0,
     otherPendingMessages: !isGroup ? otherPendingMessages : [],
-    pendingMessages: !isGroup ? (conversation.pendingMessages || []) : [],
+    pendingMessages: !isGroup ? allPending : [],
     blockedByMe: !isGroup && blockedByMe,
     blockedByOther: !isGroup && blockedByOther,
     isBlocked: !isGroup && isBlocked,
@@ -322,14 +334,30 @@ exports.createOrGetConversation = async (req, res) => {
       });
       conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
     } else {
+      let needsSave = false;
       if (!isGroup) {
         const isFriend = await areMutualFriends(req.userId, uniqueIds[0]);
         if (isFriend && conversation.status !== 'active') {
           conversation.status = 'active';
           conversation.pendingMessages = [];
-          await conversation.save();
-          conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
+          needsSave = true;
         }
+      }
+
+      // Khôi phục hội thoại nếu đã bị xoá trước đó
+      const userIdStr = String(req.userId);
+      const originalLength = (conversation.deletedByUserIds || []).length;
+      conversation.deletedByUserIds = (conversation.deletedByUserIds || []).filter(
+        (id) => String(id) !== userIdStr
+      );
+      if ((conversation.deletedByUserIds || []).length !== originalLength) {
+        conversation.markModified('deletedByUserIds');
+        needsSave = true;
+      }
+
+      if (needsSave) {
+        await conversation.save();
+        conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
       }
     }
 
@@ -362,7 +390,13 @@ exports.getMessages = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
     }
 
-    const messages = await Message.find({ conversationId: id })
+    const query = { conversationId: id };
+    const deletedAt = conversation.deletedAtByUser?.[req.userId];
+    if (deletedAt) {
+      query.createdAt = { $gt: new Date(deletedAt) };
+    }
+
+    const messages = await Message.find(query)
       .populate('senderId', USER_SELECT)
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -423,15 +457,12 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    const isHidden =
-      !isGroup &&
-      (isBlockedByMe(conversation, req.userId) ||
-        (conversation.deletedByUserIds || []).some((id) => String(id) === String(req.userId)));
+    const isBlocked = !isGroup && isBlockedByMe(conversation, req.userId);
 
-    if (isHidden) {
+    if (isBlocked) {
       return res.status(403).json({
         success: false,
-        message: 'Cuộc trò chuyện này đã bị ẩn',
+        message: 'Bạn đã chặn cuộc trò chuyện này',
       });
     }
 
@@ -475,6 +506,8 @@ exports.sendMessage = async (req, res) => {
         conversation.lastMessageAt = message.createdAt;
         setUnreadCount(conversation, req.userId, 0);
         setUnreadCount(conversation, recipientId, getUnreadCount(conversation, recipientId) + 1);
+        conversation.deletedByUserIds = [];
+        conversation.markModified('deletedByUserIds');
         await conversation.save();
 
         const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
@@ -526,6 +559,8 @@ exports.sendMessage = async (req, res) => {
       });
       conversation.lastMessage = trimmedContent;
       conversation.lastMessageAt = new Date();
+      conversation.deletedByUserIds = [];
+      conversation.markModified('deletedByUserIds');
       await conversation.save();
 
       const formattedConversation = formatConversation(conversation, req.userId, isFriend);
@@ -570,6 +605,8 @@ exports.sendMessage = async (req, res) => {
       setUnreadCount(conversation, pIdStr, getUnreadCount(conversation, pIdStr) + 1);
     });
     
+    conversation.deletedByUserIds = [];
+    conversation.markModified('deletedByUserIds');
     await conversation.save();
 
     const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
@@ -813,6 +850,12 @@ exports.deletePendingMessages = async (req, res) => {
     }
     conversation.markModified('deletedByUserIds');
 
+    if (!conversation.deletedAtByUser || typeof conversation.deletedAtByUser !== 'object') {
+      conversation.deletedAtByUser = {};
+    }
+    conversation.deletedAtByUser[userIdStr] = new Date();
+    conversation.markModified('deletedAtByUser');
+
     await conversation.save();
 
     const otherId = String(
@@ -856,6 +899,13 @@ exports.deleteConversation = async (req, res) => {
       conversation.deletedByUserIds.push(req.userId);
     }
     conversation.markModified('deletedByUserIds');
+
+    if (!conversation.deletedAtByUser || typeof conversation.deletedAtByUser !== 'object') {
+      conversation.deletedAtByUser = {};
+    }
+    conversation.deletedAtByUser[userIdStr] = new Date();
+    conversation.markModified('deletedAtByUser');
+
     await conversation.save();
 
     res.status(200).json({

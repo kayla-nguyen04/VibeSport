@@ -82,6 +82,8 @@ export default function ChatListScreen({ navigation }) {
   const [activeFilter, setActiveFilter] = useState('Tất cả');
   const [showFilter, setShowFilter] = useState(false);
   const [unblockingId, setUnblockingId] = useState(null);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
 
   // Group creation modal states
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -549,6 +551,12 @@ export default function ChatListScreen({ navigation }) {
           style={styles.conversationItemTouchable}
           activeOpacity={0.85}
           onPress={() => openChat(item)}
+          onLongPress={() => {
+            if (!isPending) {
+              setSelectedConversation(item);
+              setShowOptionsModal(true);
+            }
+          }}
         >
           {peer?.picture ? (
             <Image
@@ -881,6 +889,75 @@ export default function ChatListScreen({ navigation }) {
                     )}
                   </TouchableOpacity>
                 ))}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={showOptionsModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowOptionsModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowOptionsModal(false)}>
+          <View style={styles.menuOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.menuContainer}>
+                <View style={styles.menuHandle} />
+
+                <Text style={styles.menuTitle} numberOfLines={1}>
+                  {selectedConversation?.peer?.name || selectedConversation?.name || 'Tùy chọn cuộc trò chuyện'}
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    handleToggleMute(selectedConversation);
+                  }}
+                >
+                  <Ionicons
+                    name={selectedConversation?.isMuted ? 'notifications' : 'notifications-off-outline'}
+                    size={22}
+                    color="#374151"
+                  />
+                  <Text style={styles.menuItemText}>
+                    {selectedConversation?.isMuted ? 'Bật thông báo' : 'Tắt thông báo'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    handleDeleteConversation(selectedConversation);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa cuộc trò chuyện</Text>
+                </TouchableOpacity>
+
+                {selectedConversation && !selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      handleBlockConversation(selectedConversation);
+                    }}
+                  >
+                    <Ionicons name="ban-outline" size={22} color="#EF4444" />
+                    <Text style={[styles.menuItemText, styles.menuItemDanger]}>Chặn người dùng</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={styles.menuCancel}
+                  onPress={() => setShowOptionsModal(false)}
+                >
+                  <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600', textAlign: 'center' }}>Hủy</Text>
+                </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -1560,5 +1637,65 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+    paddingTop: 8,
+  },
+  menuHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  menuTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#374151',
+    textAlign: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 14,
+  },
+  menuItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  menuItemDanger: {
+    color: '#EF4444',
+  },
+  menuCancel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingVertical: 14,
+    marginTop: 8,
+    backgroundColor: '#F9FAFB',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
 });

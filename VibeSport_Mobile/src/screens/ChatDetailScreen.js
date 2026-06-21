@@ -644,6 +644,17 @@ export default function ChatDetailScreen({ route, navigation }) {
                 )}
 
                 <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleDeleteConversation();
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa cuộc trò chuyện</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   style={styles.menuCancel}
                   onPress={() => setShowMenu(false)}
                 >

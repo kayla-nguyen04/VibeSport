@@ -82,6 +82,10 @@ const conversationSchema = new Schema(
         ref: 'User',
       },
     ],
+    deletedAtByUser: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
     mutedByUserIds: [
       {
         type: Schema.Types.ObjectId,
