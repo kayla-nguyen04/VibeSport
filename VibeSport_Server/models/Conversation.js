@@ -88,6 +88,40 @@ const conversationSchema = new Schema(
         ref: 'User',
       },
     ],
+    // === Group Permissions ===
+    admin: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    coAdmins: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    mutedMembers: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    // === Nicknames ===
+    nicknames: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+    // === Invite Link ===
+    inviteCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    inviteLinkEnabled: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

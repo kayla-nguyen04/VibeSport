@@ -102,6 +102,21 @@ function isBlockedByOther(conversation, userId) {
   );
 }
 
+function isCreator(conversation, userId) {
+  const uid = String(userId);
+  const adminId = conversation.admin ? String(conversation.admin._id || conversation.admin) : String(conversation.participants[0]?._id || conversation.participants[0]);
+  return uid === adminId;
+}
+
+function isAdmin(conversation, userId) {
+  if (isCreator(conversation, userId)) return true;
+  return (conversation.coAdmins || []).some(id => String(id._id || id) === String(userId));
+}
+
+function isAdminOrCoAdmin(conversation, userId) {
+  return isAdmin(conversation, userId);
+}
+
 function formatConversation(conversation, currentUserId, isFriend) {
   const isGroup = conversation.isGroup || conversation.participants.length > 2;
 
@@ -146,7 +161,7 @@ function formatConversation(conversation, currentUserId, isFriend) {
     }
   }
 
-  const canChat = isGroup || ((isFriend || hasAccepted) && !blockedByOther);
+  const canChat = (isGroup && !(conversation.mutedMembers || []).some(id => String(id._id || id) === currentId)) || (!isGroup && (isFriend || hasAccepted) && !blockedByOther);
   const canSendPending = !isGroup && (remainingPending > 0 && !isHidden && !isBlocked);
 
   // Group display name defaults to comma-separated list of names of other participants
@@ -193,6 +208,19 @@ function formatConversation(conversation, currentUserId, isFriend) {
     canChat,
     canSendPending,
     hasAccepted,
+    // Group permission fields
+    admin: conversation.admin || (isGroup ? conversation.participants[0]?._id : null),
+    coAdmins: conversation.coAdmins || [],
+    mutedMembers: conversation.mutedMembers || [],
+    isAdmin: isGroup ? isCreator(conversation, currentUserId) : false,
+    isCoAdmin: isGroup ? (conversation.coAdmins || []).some(id => String(id._id || id) === currentId) : false,
+    isAdminOrCoAdmin: isGroup ? isAdmin(conversation, currentUserId) : false,
+    isMutedMember: isGroup ? (conversation.mutedMembers || []).some(id => String(id._id || id) === currentId) : false,
+    // Nickname fields
+    nicknames: conversation.nicknames || {},
+    // Invite link fields
+    inviteCode: isGroup && isAdminOrCoAdmin(conversation, currentUserId) ? (conversation.inviteCode || null) : null,
+    inviteLinkEnabled: isGroup ? (conversation.inviteLinkEnabled || false) : false,
   };
 }
 
@@ -290,6 +318,7 @@ exports.createOrGetConversation = async (req, res) => {
         isGroup,
         unreadByUser,
         acceptedBy: isGroup ? allParticipants : [req.userId],
+        admin: isGroup ? req.userId : null,
       });
       conversation = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
     } else {
@@ -385,6 +414,14 @@ exports.sendMessage = async (req, res) => {
     }
 
     const isGroup = conversation.isGroup || conversation.participants.length > 2;
+
+    // Check if user is muted in group
+    if (isGroup && (conversation.mutedMembers || []).some(id => String(id) === String(req.userId))) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn đã bị cấm chat trong nhóm này',
+      });
+    }
 
     const isHidden =
       !isGroup &&
@@ -945,12 +982,9 @@ exports.updateGroupInfo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
     }
 
-    // Verify participant
-    const isParticipant = conversation.participants.some(
-      (p) => String(p._id || p) === String(req.userId)
-    );
-    if (!isParticipant) {
-      return res.status(403).json({ success: false, message: 'Bạn không có quyền chỉnh sửa nhóm này' });
+    // Verify admin or co-admin
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền chỉnh sửa nhóm' });
     }
 
     if (name !== undefined && name !== '') {
@@ -1008,12 +1042,9 @@ exports.addParticipants = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
     }
 
-    // Verify requesting user is a participant
-    const isParticipant = conversation.participants.some(
-      (p) => String(p) === String(req.userId)
-    );
-    if (!isParticipant) {
-      return res.status(403).json({ success: false, message: 'Bạn không có quyền thêm thành viên vào nhóm này' });
+    // Verify admin or co-admin
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền thêm thành viên' });
     }
 
     // Add new userIds without duplicates
@@ -1088,6 +1119,23 @@ exports.leaveGroup = async (req, res) => {
       (p) => String(p) !== String(req.userId)
     );
 
+    // Transfer admin if the leaving user is the admin
+    if (conversation.admin && String(conversation.admin) === String(req.userId) && conversation.participants.length > 0) {
+      // Priority: first coAdmin, then first remaining participant
+      const nextAdmin = (conversation.coAdmins || []).find(id => 
+        conversation.participants.some(p => String(p) === String(id))
+      );
+      if (nextAdmin) {
+        conversation.admin = nextAdmin;
+        conversation.coAdmins = conversation.coAdmins.filter(id => String(id) !== String(nextAdmin));
+      } else {
+        conversation.admin = conversation.participants[0];
+      }
+    }
+    // Also remove from coAdmins and mutedMembers
+    conversation.coAdmins = (conversation.coAdmins || []).filter(id => String(id) !== String(req.userId));
+    conversation.mutedMembers = (conversation.mutedMembers || []).filter(id => String(id) !== String(req.userId));
+
     if (conversation.participants.length === 0) {
       // If no participants left, disband group (delete conversation from DB)
       await Conversation.findByIdAndDelete(id);
@@ -1136,13 +1184,18 @@ exports.removeParticipant = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
     }
 
-    // Verify requesting user is the Admin (first participant in the array)
-    const isAdmin = String(conversation.participants[0]) === String(req.userId);
-    if (!isAdmin) {
+    // Verify requesting user is Admin or Co-Admin
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa thành viên khỏi nhóm này' });
     }
 
-    // Cannot remove oneself or the admin
+    // Cannot remove creator admin
+    const creatorId = conversation.admin ? String(conversation.admin._id || conversation.admin) : String(conversation.participants[0]?._id || conversation.participants[0]);
+    if (String(userId) === creatorId) {
+      return res.status(403).json({ success: false, message: 'Không thể xóa Creator Admin khỏi nhóm' });
+    }
+
+    // Cannot remove oneself
     if (String(userId) === String(req.userId)) {
       return res.status(400).json({ success: false, message: 'Bạn không thể tự xóa chính mình khỏi nhóm theo cách này' });
     }
@@ -1156,6 +1209,10 @@ exports.removeParticipant = async (req, res) => {
     conversation.acceptedBy = (conversation.acceptedBy || []).filter(
       (p) => String(p) !== String(userId)
     );
+
+    // Also remove from coAdmins and mutedMembers
+    conversation.coAdmins = (conversation.coAdmins || []).filter(p => String(p) !== String(userId));
+    conversation.mutedMembers = (conversation.mutedMembers || []).filter(p => String(p) !== String(userId));
 
     await conversation.save();
 
@@ -1187,5 +1244,465 @@ exports.removeParticipant = async (req, res) => {
   } catch (error) {
     console.error('Remove participant error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi xóa thành viên khỏi nhóm' });
+  }
+};
+
+// === GROUP PERMISSIONS ===
+
+exports.updateMemberRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role } = req.body;
+
+    if (!userId || !['coAdmin', 'member'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Thông tin không hợp lệ' });
+    }
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    // Only Admins can change roles
+    if (!isAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền thay đổi vai trò' });
+    }
+
+    // Cannot change main creator's role
+    const creatorId = conversation.admin ? String(conversation.admin._id || conversation.admin) : String(conversation.participants[0]?._id || conversation.participants[0]);
+    if (String(userId) === creatorId) {
+      return res.status(400).json({ success: false, message: 'Không thể thay đổi vai trò của Creator Admin' });
+    }
+
+    // Cannot change own role
+    if (String(userId) === String(req.userId)) {
+      return res.status(400).json({ success: false, message: 'Không thể tự thay đổi vai trò của chính mình' });
+    }
+
+    // Target must be a participant
+    const isMember = conversation.participants.some(p => String(p._id || p) === String(userId));
+    if (!isMember) {
+      return res.status(400).json({ success: false, message: 'Người dùng không phải thành viên nhóm' });
+    }
+
+    const coAdminIds = (conversation.coAdmins || []).map(id => String(id._id || id));
+
+    if (role === 'coAdmin') {
+      if (!coAdminIds.includes(String(userId))) {
+        conversation.coAdmins.push(userId);
+      }
+    } else {
+      conversation.coAdmins = (conversation.coAdmins || []).filter(id => String(id._id || id) !== String(userId));
+    }
+
+    await conversation.save();
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+
+    if (global.io) {
+      updated.participants.forEach(p => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: id,
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: role === 'coAdmin' ? 'Đã đặt làm Admin' : 'Đã gỡ vai trò Admin',
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Update member role error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi cập nhật vai trò thành viên' });
+  }
+};
+
+exports.muteMemberInGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'ID thành viên không hợp lệ' });
+    }
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    if (!isAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền chặn thành viên' });
+    }
+
+    // Cannot mute admin
+    if (isAdmin(conversation, userId)) {
+      return res.status(400).json({ success: false, message: 'Không thể chặn quản trị viên' });
+    }
+
+    const mutedIds = (conversation.mutedMembers || []).map(id => String(id._id || id));
+    if (!mutedIds.includes(String(userId))) {
+      conversation.mutedMembers.push(userId);
+    }
+
+    await conversation.save();
+
+    // Link to personal block: Find or create direct 1-to-1 conversation
+    const allParticipants = [req.userId, userId].map(id => String(id)).sort();
+    const participantKey = allParticipants.join('_');
+    let directConv = await Conversation.findOne({
+      isGroup: false,
+      participantKey
+    });
+
+    if (directConv) {
+      directConv.blockedByUserId = req.userId;
+      await directConv.save();
+    } else {
+      directConv = await Conversation.create({
+        participants: [req.userId, userId],
+        participantKey,
+        isGroup: false,
+        acceptedBy: [req.userId],
+        blockedByUserId: req.userId
+      });
+    }
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+
+    if (global.io) {
+      // Notify all participants
+      updated.participants.forEach(p => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: id,
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+      // Special event for the muted user
+      global.io.to(String(userId)).emit('member_muted', {
+        conversationId: id,
+      });
+
+      // Socket event for direct conversation block
+      global.io.to(String(userId)).emit('conversation_blocked', {
+        conversationId: String(directConv._id),
+        blockedByUserId: req.userId,
+      });
+      global.io.to(String(req.userId)).emit('conversation_blocked', {
+        conversationId: String(directConv._id),
+        blockedByUserId: req.userId,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã chặn thành viên',
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Mute member error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi chặn thành viên' });
+  }
+};
+
+exports.unmuteMemberInGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'ID thành viên không hợp lệ' });
+    }
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    if (!isAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền bỏ chặn thành viên' });
+    }
+
+    conversation.mutedMembers = (conversation.mutedMembers || []).filter(
+      id => String(id._id || id) !== String(userId)
+    );
+
+    await conversation.save();
+
+    // Link to personal unblock: Find direct 1-to-1 conversation
+    const allParticipants = [req.userId, userId].map(id => String(id)).sort();
+    const participantKey = allParticipants.join('_');
+    const directConv = await Conversation.findOne({
+      isGroup: false,
+      participantKey
+    });
+
+    if (directConv && String(directConv.blockedByUserId) === String(req.userId)) {
+      directConv.blockedByUserId = null;
+      await directConv.save();
+    }
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+
+    if (global.io) {
+      updated.participants.forEach(p => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: id,
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+      global.io.to(String(userId)).emit('member_unmuted', {
+        conversationId: id,
+      });
+
+      if (directConv) {
+        global.io.to(String(userId)).emit('conversation_unblocked', {
+          conversationId: String(directConv._id),
+        });
+        global.io.to(String(req.userId)).emit('conversation_unblocked', {
+          conversationId: String(directConv._id),
+        });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã bỏ chặn thành viên',
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Unmute member error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi bỏ chặn thành viên' });
+  }
+};
+
+// === NICKNAMES ===
+
+exports.updateNickname = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, nickname } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'ID thành viên không hợp lệ' });
+    }
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    // Verify participant
+    const isParticipant = conversation.participants.some(
+      p => String(p._id || p) === String(req.userId)
+    );
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: 'Bạn không phải thành viên cuộc trò chuyện này' });
+    }
+
+    // Target must be a participant
+    const targetIsParticipant = conversation.participants.some(
+      p => String(p._id || p) === String(userId)
+    );
+    if (!targetIsParticipant) {
+      return res.status(400).json({ success: false, message: 'Người dùng không phải thành viên cuộc trò chuyện' });
+    }
+
+    if (!conversation.nicknames || typeof conversation.nicknames !== 'object') {
+      conversation.nicknames = {};
+    }
+
+    const trimmed = (nickname || '').trim();
+    if (trimmed) {
+      conversation.nicknames[String(userId)] = trimmed;
+    } else {
+      delete conversation.nicknames[String(userId)];
+    }
+    conversation.markModified('nicknames');
+
+    await conversation.save();
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT);
+
+    if (global.io) {
+      updated.participants.forEach(p => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: id,
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: trimmed ? 'Đã cập nhật biệt danh' : 'Đã xóa biệt danh',
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Update nickname error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi cập nhật biệt danh' });
+  }
+};
+
+// === INVITE LINK ===
+
+exports.generateInviteLink = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền tạo link mời' });
+    }
+
+    // Generate a new invite code if none exists
+    if (!conversation.inviteCode) {
+      const crypto = require('crypto');
+      conversation.inviteCode = crypto.randomBytes(6).toString('hex');
+    }
+    conversation.inviteLinkEnabled = true;
+
+    await conversation.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã tạo link mời nhóm',
+      data: {
+        inviteCode: conversation.inviteCode,
+        inviteLinkEnabled: conversation.inviteLinkEnabled,
+      },
+    });
+  } catch (error) {
+    console.error('Generate invite link error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tạo link mời' });
+  }
+};
+
+exports.revokeInviteLink = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const conversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền vô hiệu hóa link mời' });
+    }
+
+    conversation.inviteLinkEnabled = false;
+    // Generate a new code so old links are permanently invalidated
+    const crypto = require('crypto');
+    conversation.inviteCode = crypto.randomBytes(6).toString('hex');
+
+    await conversation.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã vô hiệu hóa link mời',
+    });
+  } catch (error) {
+    console.error('Revoke invite link error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi vô hiệu hóa link mời' });
+  }
+};
+
+exports.getInviteLinkInfo = async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    const conversation = await Conversation.findOne({ inviteCode: code, inviteLinkEnabled: true })
+      .populate('participants', USER_SELECT);
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Link mời không hợp lệ hoặc đã hết hạn' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        _id: conversation._id,
+        name: conversation.name || '',
+        avatar: conversation.avatar || '',
+        memberCount: conversation.participants.length,
+      },
+    });
+  } catch (error) {
+    console.error('Get invite link info error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy thông tin link mời' });
+  }
+};
+
+exports.joinViaInviteLink = async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    const conversation = await Conversation.findOne({ inviteCode: code, inviteLinkEnabled: true });
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Link mời không hợp lệ hoặc đã hết hạn' });
+    }
+
+    // Check if already a member
+    const alreadyMember = conversation.participants.some(
+      p => String(p) === String(req.userId)
+    );
+    if (alreadyMember) {
+      const populated = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
+      return res.status(200).json({
+        success: true,
+        message: 'Bạn đã là thành viên nhóm này',
+        alreadyMember: true,
+        data: formatConversation(populated, req.userId, true),
+      });
+    }
+
+    // Add user to group
+    conversation.participants.push(req.userId);
+    if (!conversation.acceptedBy.some(id => String(id) === String(req.userId))) {
+      conversation.acceptedBy.push(req.userId);
+    }
+
+    // Initialize unread count for new member
+    if (!conversation.unreadByUser || typeof conversation.unreadByUser !== 'object') {
+      conversation.unreadByUser = {};
+    }
+    conversation.unreadByUser[String(req.userId)] = 0;
+    conversation.markModified('unreadByUser');
+
+    await conversation.save();
+
+    const updated = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
+
+    // Notify all participants via socket
+    if (global.io) {
+      updated.participants.forEach(p => {
+        const pIdStr = String(p._id || p);
+        global.io.to(pIdStr).emit('group_updated', {
+          conversationId: String(conversation._id),
+          conversation: formatConversation(updated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã tham gia nhóm thành công',
+      data: formatConversation(updated, req.userId, true),
+    });
+  } catch (error) {
+    console.error('Join via invite link error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi tham gia nhóm' });
   }
 };

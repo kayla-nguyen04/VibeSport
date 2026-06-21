@@ -95,6 +95,10 @@ export default function ChatListScreen({ navigation }) {
   const [selectedAvatarImage, setSelectedAvatarImage] = useState(null);
   const [pendingImageAction, setPendingImageAction] = useState(null);
 
+  // Join group by code/link states
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
+  const [joinGroupInput, setJoinGroupInput] = useState('');
+
   const handlePickGroupAvatar = () => {
     Alert.alert(
       'Chọn ảnh đại diện nhóm',
@@ -272,6 +276,27 @@ export default function ChatListScreen({ navigation }) {
     } finally {
       setCreatingGroup(false);
     }
+  };
+
+  const handleJoinGroupByCode = () => {
+    const input = joinGroupInput.trim();
+    if (!input) {
+      Alert.alert('Thông báo', 'Vui lòng nhập mã hoặc liên kết mời.');
+      return;
+    }
+
+    // Extract code from link if they pasted a full link
+    // vibesport://chat/invite/<inviteCode>
+    const regex = /chat\/invite\/([a-fA-F0-9]+)/i;
+    const match = input.match(regex);
+    const code = match ? match[1] : input;
+
+    // Close modal and clear input
+    setShowJoinGroupModal(false);
+    setJoinGroupInput('');
+
+    // Navigate to JoinGroup screen
+    navigation.navigate('JoinGroup', { code });
   };
 
   const renderFriendItem = ({ item }) => {
@@ -761,13 +786,23 @@ export default function ChatListScreen({ navigation }) {
           })}
         </View>
 
-        <TouchableOpacity
-          style={styles.headerRightBtn}
-          activeOpacity={0.7}
-          onPress={handleOpenCreateGroup}
-        >
-          <Ionicons name="create-outline" size={26} color="#262626" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity
+            style={[styles.headerRightBtn, { marginRight: 8 }]}
+            activeOpacity={0.7}
+            onPress={() => setShowJoinGroupModal(true)}
+          >
+            <Ionicons name="link-outline" size={26} color="#262626" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerRightBtn}
+            activeOpacity={0.7}
+            onPress={handleOpenCreateGroup}
+          >
+            <Ionicons name="create-outline" size={26} color="#262626" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.searchWrap}>
@@ -982,6 +1017,63 @@ export default function ChatListScreen({ navigation }) {
             )}
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showJoinGroupModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowJoinGroupModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowJoinGroupModal(false)}>
+          <View style={styles.groupModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.groupModalContainer, { height: 'auto', paddingBottom: 24 }]}>
+                <View style={styles.groupModalHeader}>
+                  <TouchableOpacity onPress={() => setShowJoinGroupModal(false)}>
+                    <Text style={styles.cancelBtnText}>Hủy</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.groupModalTitle}>Tham gia bằng mã</Text>
+                  <TouchableOpacity onPress={handleJoinGroupByCode}>
+                    <Text style={styles.nextBtnText}>Xong</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={{ padding: 20 }}>
+                  <Text style={{ fontSize: 14, color: '#64748B', marginBottom: 12, lineHeight: 20 }}>
+                    Nhập mã mời nhóm (ví dụ: abc123xy) hoặc dán toàn bộ liên kết mời nhóm vào ô dưới đây.
+                  </Text>
+                  
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                    borderRadius: 12,
+                    paddingHorizontal: 12,
+                    backgroundColor: '#F8FAFC',
+                    height: 50,
+                  }}>
+                    <Ionicons name="link" size={20} color="#94A3B8" style={{ marginRight: 8 }} />
+                    <TextInput
+                      value={joinGroupInput}
+                      onChangeText={setJoinGroupInput}
+                      placeholder="Mã hoặc đường dẫn mời nhóm..."
+                      placeholderTextColor="#94A3B8"
+                      style={{
+                        flex: 1,
+                        fontSize: 15,
+                        color: '#1E293B',
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </Screen>
   );

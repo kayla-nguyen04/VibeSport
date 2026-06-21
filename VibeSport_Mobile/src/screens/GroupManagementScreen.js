@@ -15,6 +15,8 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Share,
+  Clipboard,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
@@ -30,6 +32,12 @@ import {
   leaveGroup,
   removeParticipant,
   openConversation,
+  generateInviteLink,
+  revokeInviteLink,
+  updateMemberRole,
+  muteMember,
+  unmuteMember,
+  updateNickname,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
@@ -181,9 +189,46 @@ export default function GroupManagementScreen({ route, navigation }) {
   };
 
   const isCurrentUserAdmin = useMemo(() => {
-    const adminId = conversationMeta?.participants?.[0]?._id || conversationMeta?.participants?.[0];
-    return String(adminId) === String(currentUserId);
+    if (conversationMeta && 'isAdmin' in conversationMeta) {
+      return conversationMeta.isAdmin;
+    }
+    const adminId = conversationMeta?.admin || conversationMeta?.participants?.[0]?._id || conversationMeta?.participants?.[0];
+    return String(adminId?._id || adminId) === String(currentUserId);
   }, [conversationMeta, currentUserId]);
+
+  const isCurrentUserCoAdmin = useMemo(() => {
+    if (conversationMeta && 'isCoAdmin' in conversationMeta) {
+      return conversationMeta.isCoAdmin;
+    }
+    return (conversationMeta?.coAdmins || []).some(id => String(id._id || id) === String(currentUserId));
+  }, [conversationMeta, currentUserId]);
+
+  const isCurrentUserAdminOrCoAdmin = useMemo(() => {
+    return isCurrentUserAdmin || isCurrentUserCoAdmin;
+  }, [isCurrentUserAdmin, isCurrentUserCoAdmin]);
+
+  const getMemberRole = (memberId) => {
+    const mId = String(memberId);
+    const adminId = conversationMeta?.admin ? String(conversationMeta.admin._id || conversationMeta.admin) : String(conversationMeta?.participants?.[0]?._id || conversationMeta?.participants?.[0]);
+    if (mId === adminId) return 'admin';
+    const isCo = (conversationMeta?.coAdmins || []).some(id => String(id._id || id) === mId);
+    if (isCo) return 'coAdmin';
+    return 'member';
+  };
+
+  const isMemberMuted = (memberId) => {
+    return (conversationMeta?.mutedMembers || []).some(id => String(id._id || id) === String(memberId));
+  };
+
+  const getMemberNickname = (memberId) => {
+    return conversationMeta?.nicknames?.[String(memberId)] || '';
+  };
+
+  // Nickname states
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [editingNickname, setEditingNickname] = useState('');
+  const [nicknameTargetMember, setNicknameTargetMember] = useState(null);
+  const [isUpdatingNickname, setIsUpdatingNickname] = useState(false);
 
   const isFriendSelectedMember = useMemo(() => {
     if (!selectedMember) return false;
@@ -269,6 +314,198 @@ export default function GroupManagementScreen({ route, navigation }) {
       );
     });
   };
+
+  const handleOpenNicknameModal = (member) => {
+    handleCloseOptions(() => {
+      setNicknameTargetMember(member);
+      setEditingNickname(getMemberNickname(member._id));
+      setShowNicknameModal(true);
+    });
+  };
+
+  const handleSaveNickname = async () => {
+    if (!nicknameTargetMember) return;
+    setIsUpdatingNickname(true);
+    try {
+      await dispatch(updateNickname({
+        conversationId,
+        userId: nicknameTargetMember._id,
+        nickname: editingNickname,
+      })).unwrap();
+      Alert.alert('Thành công', 'Cập nhật biệt danh thành công');
+      setShowNicknameModal(false);
+    } catch (err) {
+      Alert.alert('Lỗi', err || 'Không thể cập nhật biệt danh');
+    } finally {
+      setIsUpdatingNickname(false);
+    }
+  };
+
+  const handleToggleCoAdmin = (member, currentRole) => {
+    handleCloseOptions(() => {
+      const newRole = currentRole === 'coAdmin' ? 'member' : 'coAdmin';
+      const confirmMsg = currentRole === 'coAdmin' 
+        ? `Bạn có chắc chắn muốn gỡ vai trò Admin của ${member.name}?` 
+        : `Bạn có chắc chắn muốn chỉ định ${member.name} làm Admin?`;
+      
+      Alert.alert(
+        newRole === 'coAdmin' ? 'Chỉ định làm Admin' : 'Gỡ vai trò Admin',
+        confirmMsg,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xác nhận',
+            onPress: async () => {
+              try {
+                await dispatch(updateMemberRole({
+                  conversationId,
+                  userId: member._id,
+                  role: newRole,
+                })).unwrap();
+                Alert.alert('Thành công', newRole === 'coAdmin' ? 'Đã chỉ định làm Admin thành công' : 'Đã gỡ vai trò Admin thành công');
+              } catch (err) {
+                Alert.alert('Lỗi', err || 'Không thể thay đổi vai trò.');
+              }
+            }
+          }
+        ]
+      );
+    });
+  };
+
+  const handleToggleMuteMember = (member, isMuted) => {
+    handleCloseOptions(() => {
+      const confirmMsg = isMuted 
+        ? `Bạn có muốn bỏ chặn đối với ${member.name}?` 
+        : `Bạn có muốn chặn ${member.name}? Họ sẽ không thể gửi tin nhắn trong nhóm và sẽ bị chặn liên lạc với bạn.`;
+      
+      Alert.alert(
+        isMuted ? 'Bỏ chặn thành viên' : 'Chặn thành viên',
+        confirmMsg,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xác nhận',
+            style: isMuted ? 'default' : 'destructive',
+            onPress: async () => {
+              try {
+                if (isMuted) {
+                  await dispatch(unmuteMember({ conversationId, userId: member._id })).unwrap();
+                  Alert.alert('Thành công', 'Đã bỏ chặn thành viên.');
+                } else {
+                  await dispatch(muteMember({ conversationId, userId: member._id })).unwrap();
+                  Alert.alert('Thành công', 'Đã chặn thành viên.');
+                }
+              } catch (err) {
+                Alert.alert('Lỗi', err || 'Không thể thực hiện thao tác.');
+              }
+            }
+          }
+        ]
+      );
+    });
+  };
+
+  const handleToggleInviteLink = async () => {
+    try {
+      if (conversationMeta?.inviteLinkEnabled) {
+        await dispatch(revokeInviteLink(conversationId)).unwrap();
+        Alert.alert('Thành công', 'Đã vô hiệu hóa liên kết mời nhóm.');
+      } else {
+        await dispatch(generateInviteLink(conversationId)).unwrap();
+        Alert.alert('Thành công', 'Đã kích hoạt liên kết mời nhóm.');
+      }
+    } catch (err) {
+      Alert.alert('Lỗi', err || 'Không thể thực hiện thao tác.');
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    const link = `vibesport://chat/invite/${conversationMeta?.inviteCode}`;
+    Clipboard.setString(link);
+    Alert.alert('Đã sao chép', 'Liên kết mời đã được sao chép vào bộ nhớ tạm.');
+  };
+
+  const handleShareInviteLink = async () => {
+    try {
+      const link = `vibesport://chat/invite/${conversationMeta?.inviteCode}`;
+      await Share.share({
+        message: `Tham gia nhóm chat "${peerName}" trên VibeSport bằng liên kết này: ${link}`,
+      });
+    } catch (err) {
+      console.error('Lỗi chia sẻ:', err);
+    }
+  };
+
+  const handleRevokeInviteLink = () => {
+    Alert.alert(
+      'Đặt lại liên kết',
+      'Bạn có muốn hủy liên kết hiện tại và tạo liên kết mới không? Liên kết cũ sẽ không thể sử dụng được nữa.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Đặt lại',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dispatch(revokeInviteLink(conversationId)).unwrap();
+              await dispatch(generateInviteLink(conversationId)).unwrap();
+              Alert.alert('Thành công', 'Đã làm mới liên kết mời nhóm.');
+            } catch (err) {
+              Alert.alert('Lỗi', err || 'Không thể đặt lại liên kết.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const targetMemberRole = useMemo(() => {
+    if (!selectedMember) return 'member';
+    return getMemberRole(selectedMember._id);
+  }, [selectedMember, getMemberRole]);
+
+  const targetMemberIsMuted = useMemo(() => {
+    if (!selectedMember) return false;
+    return isMemberMuted(selectedMember._id);
+  }, [selectedMember, isMemberMuted]);
+
+  const canManageTarget = useMemo(() => {
+    if (!selectedMember) return false;
+    const targetId = String(selectedMember._id);
+    const myId = String(currentUserId);
+    if (targetId === myId) return false; // cannot manage myself in options
+
+    if (isCurrentUserAdmin) return true; // creator can manage everyone
+    
+    // Co-admin can manage anyone except the creator
+    if (isCurrentUserCoAdmin) {
+      return targetMemberRole !== 'admin';
+    }
+    
+    return false;
+  }, [selectedMember, currentUserId, isCurrentUserAdmin, isCurrentUserCoAdmin, targetMemberRole]);
+
+  const canChangeRole = useMemo(() => {
+    if (!isCurrentUserAdminOrCoAdmin) return false;
+    if (!selectedMember) return false;
+    
+    const targetId = String(selectedMember._id);
+    if (targetId === String(currentUserId)) return false;
+
+    const creatorId = conversationMeta?.admin ? String(conversationMeta.admin._id || conversationMeta.admin) : String(conversationMeta?.participants?.[0]?._id || conversationMeta?.participants?.[0]);
+    if (targetId === creatorId) return false; // cannot demote creator
+
+    return true;
+  }, [isCurrentUserAdminOrCoAdmin, selectedMember, currentUserId, conversationMeta]);
+
+  const canMuteUnmute = useMemo(() => {
+    return canManageTarget;
+  }, [canManageTarget]);
+
+  const canRemove = useMemo(() => {
+    return canManageTarget;
+  }, [canManageTarget]);
 
   // Load mutual friends & clear search
   useEffect(() => {
@@ -526,32 +763,54 @@ export default function GroupManagementScreen({ route, navigation }) {
   }, [conversationMeta?.participants, mutualFriends, currentUserId]);
 
   const admins = useMemo(() => {
-    if (!conversationMeta?.participants || conversationMeta.participants.length === 0) return [];
-    return [conversationMeta.participants[0]];
-  }, [conversationMeta?.participants]);
+    if (!conversationMeta) return [];
+    const adminId = conversationMeta.admin?._id || conversationMeta.admin || conversationMeta.participants?.[0]?._id || conversationMeta.participants?.[0];
+    const foundAdmin = conversationMeta.participants?.find(p => String(p._id || p) === String(adminId));
+    return foundAdmin ? [foundAdmin] : [];
+  }, [conversationMeta]);
+
+  const coAdmins = useMemo(() => {
+    if (!conversationMeta) return [];
+    const coAdminIds = (conversationMeta.coAdmins || []).map(c => String(c._id || c));
+    return conversationMeta.participants?.filter(p => coAdminIds.includes(String(p._id || p))) || [];
+  }, [conversationMeta]);
 
   const memberListData = useMemo(() => {
     if (activeTab === 'admin') {
-      return admins.map((item) => ({ type: 'member', data: item, isAdmin: true }));
+      const data = [];
+      admins.forEach((item) => {
+        data.push({ type: 'member', data: item, role: 'admin' });
+      });
+      coAdmins.forEach((item) => {
+        data.push({ type: 'member', data: item, role: 'coAdmin' });
+      });
+      return data;
     }
 
     const data = [];
+    const adminId = conversationMeta?.admin?._id || conversationMeta?.admin || conversationMeta?.participants?.[0]?._id || conversationMeta?.participants?.[0];
+    const coAdminIds = (conversationMeta?.coAdmins || []).map(c => String(c._id || c));
+
     if (friendsInGroup.length > 0) {
       data.push({ type: 'header', title: 'Bạn bè', hasSeeAll: true });
       friendsInGroup.forEach((item) => {
-        data.push({ type: 'member', data: item, isFriend: true });
+        const mId = String(item._id || item);
+        const role = mId === String(adminId) ? 'admin' : (coAdminIds.includes(mId) ? 'coAdmin' : 'member');
+        data.push({ type: 'member', data: item, isFriend: true, role });
       });
     }
 
     if (othersInGroup.length > 0) {
       data.push({ type: 'header', title: 'Thành viên khác', hasSeeAll: false });
       othersInGroup.forEach((item) => {
-        data.push({ type: 'member', data: item, isFriend: false });
+        const mId = String(item._id || item);
+        const role = mId === String(adminId) ? 'admin' : (coAdminIds.includes(mId) ? 'coAdmin' : 'member');
+        data.push({ type: 'member', data: item, isFriend: false, role });
       });
     }
 
     return data;
-  }, [activeTab, friendsInGroup, othersInGroup, admins]);
+  }, [activeTab, friendsInGroup, othersInGroup, admins, coAdmins, conversationMeta]);
 
   return (
     <Screen style={styles.screen}>
@@ -610,6 +869,72 @@ export default function GroupManagementScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Invite Link Section */}
+        {(isCurrentUserAdminOrCoAdmin || conversationMeta?.inviteLinkEnabled) && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionHeader}>Liên kết mời nhóm</Text>
+            <View style={styles.cardContainer}>
+              {isCurrentUserAdminOrCoAdmin && (
+                <View style={styles.listItem}>
+                  <View style={[styles.listIconWrap, { backgroundColor: '#E0F2FE' }]}>
+                    <Ionicons name="link-outline" size={20} color="#0284C7" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.listItemText}>Tham gia bằng liên kết</Text>
+                    <Text style={styles.disabledLabel}>Cho phép mọi người tham gia nhóm bằng link</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleToggleInviteLink}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={conversationMeta?.inviteLinkEnabled ? 'toggle' : 'toggle-outline'}
+                      size={40}
+                      color={conversationMeta?.inviteLinkEnabled ? '#0b74ff' : '#D1D5DB'}
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {conversationMeta?.inviteLinkEnabled && conversationMeta?.inviteCode && (
+                <View style={[styles.listItem, styles.lastListItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                  <Text style={styles.inviteLinkUrl} numberOfLines={1}>
+                    {`vibesport://chat/invite/${conversationMeta.inviteCode}`}
+                  </Text>
+                  <View style={styles.inviteActionsRow}>
+                    <TouchableOpacity
+                      onPress={handleCopyInviteLink}
+                      style={styles.inviteActionBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="copy-outline" size={16} color="#0b74ff" />
+                      <Text style={styles.inviteActionBtnText}>Sao chép</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleShareInviteLink}
+                      style={styles.inviteActionBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="share-social-outline" size={16} color="#0b74ff" />
+                      <Text style={styles.inviteActionBtnText}>Chia sẻ</Text>
+                    </TouchableOpacity>
+                    {isCurrentUserAdminOrCoAdmin && (
+                      <TouchableOpacity
+                        onPress={handleRevokeInviteLink}
+                        style={[styles.inviteActionBtn, styles.revokeBtn]}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="refresh-outline" size={16} color="#EF4444" />
+                        <Text style={[styles.inviteActionBtnText, { color: '#EF4444' }]}>Đặt lại link</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Leave Group Option */}
         <View style={[styles.sectionContainer, { marginTop: 8 }]}>
@@ -798,6 +1123,10 @@ export default function GroupManagementScreen({ route, navigation }) {
               
               const subtitleText = hasDetails ? getMockAddedBy(member, conversationMeta?.participants, currentUserId, mutualFriends) : '';
 
+              const nickname = hasDetails ? getMemberNickname(member._id) : '';
+              const displayName = nickname ? `${nickname} (${name})` : name;
+              const isMuted = hasDetails && isMemberMuted(member._id);
+
               return (
                 <View style={styles.darkFriendItem}>
                   <TouchableOpacity 
@@ -830,7 +1159,20 @@ export default function GroupManagementScreen({ route, navigation }) {
                     }}
                     style={styles.darkFriendInfoWrap}
                   >
-                    <Text style={styles.darkFriendName}>{name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                      <Text style={styles.darkFriendName}>{displayName}</Text>
+                      {(item.role === 'admin' || item.role === 'coAdmin') && (
+                        <View style={[styles.roleBadge, { backgroundColor: '#FEE2E2' }]}>
+                          <Text style={[styles.roleBadgeText, { color: '#EF4444' }]}>Admin</Text>
+                        </View>
+                      )}
+                      {isMuted && (
+                        <View style={[styles.roleBadge, { backgroundColor: '#F3F4F6' }]}>
+                          <Text style={[styles.roleBadgeText, { color: '#6B7280' }]}>Bị chặn</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.darkFriendSubtitle}>{subtitleText}</Text>
                   </TouchableOpacity>
 
                   {/* Actions on the right side */}
@@ -884,6 +1226,50 @@ export default function GroupManagementScreen({ route, navigation }) {
                   <Text style={styles.optionsItemTextBlue}>Nhắn tin</Text>
                 </TouchableOpacity>
 
+                <TouchableOpacity 
+                  style={styles.optionsItem}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (selectedMember) {
+                      handleOpenNicknameModal(selectedMember);
+                    }
+                  }}
+                >
+                  <Text style={styles.optionsItemTextBlue}>Đặt biệt danh</Text>
+                </TouchableOpacity>
+
+                {canChangeRole && (
+                  <TouchableOpacity 
+                    style={styles.optionsItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (selectedMember) {
+                        handleToggleCoAdmin(selectedMember, targetMemberRole);
+                      }
+                    }}
+                  >
+                    <Text style={styles.optionsItemTextBlue}>
+                      {targetMemberRole === 'coAdmin' ? 'Gỡ vai trò Admin' : 'Chỉ định làm Admin'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {canMuteUnmute && (
+                  <TouchableOpacity 
+                    style={styles.optionsItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (selectedMember) {
+                        handleToggleMuteMember(selectedMember, targetMemberIsMuted);
+                      }
+                    }}
+                  >
+                    <Text style={styles.optionsItemTextRed}>
+                      {targetMemberIsMuted ? 'Bỏ chặn thành viên' : 'Chặn thành viên'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 {!isFriendSelectedMember && selectedMember?.name !== 'Người dùng Facebook' && (
                   <TouchableOpacity 
                     style={styles.optionsItem}
@@ -898,19 +1284,21 @@ export default function GroupManagementScreen({ route, navigation }) {
                   </TouchableOpacity>
                 )}
 
-                <TouchableOpacity 
-                  style={styles.optionsItem}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    if (selectedMember) {
-                      handleBlockMember(selectedMember);
-                    }
-                  }}
-                >
-                  <Text style={styles.optionsItemTextRed}>Chặn</Text>
-                </TouchableOpacity>
+                {!canMuteUnmute && (
+                  <TouchableOpacity 
+                    style={styles.optionsItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (selectedMember) {
+                        handleBlockMember(selectedMember);
+                      }
+                    }}
+                  >
+                    <Text style={styles.optionsItemTextRed}>Chặn</Text>
+                  </TouchableOpacity>
+                )}
 
-                {isCurrentUserAdmin && (
+                {canRemove && (
                   <TouchableOpacity 
                     style={[styles.optionsItem, styles.lastOptionsItem]}
                     activeOpacity={0.7}
@@ -1032,8 +1420,57 @@ export default function GroupManagementScreen({ route, navigation }) {
           </Animated.View>
         )}
       </View>
-    </Modal>
-  </Screen>
+      </Modal>
+
+      {/* Nickname Modal */}
+      <Modal
+        visible={showNicknameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNicknameModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowNicknameModal(false)}>
+          <View style={styles.nicknameModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.nicknameModalContent}>
+                <Text style={styles.nicknameModalTitle}>
+                  Biệt danh của {nicknameTargetMember?.name}
+                </Text>
+                <TextInput
+                  style={styles.nicknameInput}
+                  value={editingNickname}
+                  onChangeText={setEditingNickname}
+                  placeholder="Nhập biệt danh"
+                  placeholderTextColor="#9CA3AF"
+                  autoFocus
+                  maxLength={30}
+                />
+                <View style={styles.nicknameModalButtons}>
+                  <TouchableOpacity
+                    style={styles.nicknameCancelBtn}
+                    onPress={() => setShowNicknameModal(false)}
+                    disabled={isUpdatingNickname}
+                  >
+                    <Text style={styles.nicknameCancelBtnText}>Hủy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.nicknameSaveBtn}
+                    onPress={handleSaveNickname}
+                    disabled={isUpdatingNickname}
+                  >
+                    {isUpdatingNickname ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.nicknameSaveBtnText}>Lưu</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </Screen>
   );
 }
 
@@ -1675,5 +2112,113 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#0b74ff',
+  },
+  inviteLinkUrl: {
+    fontSize: 14,
+    color: '#4B5563',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    marginBottom: 12,
+  },
+  inviteActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-start',
+  },
+  inviteActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  inviteActionBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0b74ff',
+  },
+  revokeBtn: {
+    backgroundColor: '#FEF2F2',
+    marginLeft: 'auto',
+  },
+  roleBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  nicknameModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  nicknameModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  nicknameModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  nicknameInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#F9FAFB',
+    marginBottom: 20,
+  },
+  nicknameModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  nicknameCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+  },
+  nicknameCancelBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  nicknameSaveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#0b74ff',
+    alignItems: 'center',
+  },
+  nicknameSaveBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

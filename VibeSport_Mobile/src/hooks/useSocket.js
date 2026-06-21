@@ -14,6 +14,8 @@ import {
   conversationDeleted,
   pendingMessagesDeletedByOther,
   groupUpdated,
+  memberMuted,
+  memberUnmuted,
 } from '../redux/chatSlice';
 
 export function useSocket() {
@@ -88,6 +90,14 @@ export function useSocket() {
 
     socket.on('group_updated', (payload) => {
       dispatch(groupUpdated(payload));
+    });
+
+    socket.on('member_muted', (payload) => {
+      dispatch(memberMuted(payload));
+    });
+
+    socket.on('member_unmuted', (payload) => {
+      dispatch(memberUnmuted(payload));
     });
 
     socket.on('disconnect', () => {

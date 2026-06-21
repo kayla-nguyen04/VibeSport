@@ -18,6 +18,14 @@ const {
   addParticipants,
   leaveGroup,
   removeParticipant,
+  updateMemberRole,
+  muteMemberInGroup,
+  unmuteMemberInGroup,
+  updateNickname,
+  generateInviteLink,
+  revokeInviteLink,
+  getInviteLinkInfo,
+  joinViaInviteLink,
 } = require('../controllers/chatController');
 const uploadConversation = require('../middleware/uploadConversation');
 
@@ -42,5 +50,16 @@ router.put('/conversations/:id/group-info', uploadConversation.single('avatar'),
 router.put('/conversations/:id/participants', addParticipants);
 router.put('/conversations/:id/leave', leaveGroup);
 router.put('/conversations/:id/remove-participant', removeParticipant);
+// Group permissions
+router.put('/conversations/:id/member-role', updateMemberRole);
+router.put('/conversations/:id/mute-member', muteMemberInGroup);
+router.put('/conversations/:id/unmute-member', unmuteMemberInGroup);
+// Nicknames
+router.put('/conversations/:id/nickname', updateNickname);
+// Invite link
+router.post('/conversations/:id/invite-link', generateInviteLink);
+router.put('/conversations/:id/revoke-invite', revokeInviteLink);
+router.get('/invite/:code/info', getInviteLinkInfo);
+router.post('/invite/:code/join', joinViaInviteLink);
 
 module.exports = router;

@@ -25,7 +25,17 @@ import SavedPostsScreen from '../screens/SavedPostsScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
 import GroupManagementScreen from '../screens/GroupManagementScreen';
+import JoinGroupScreen from '../screens/JoinGroupScreen';
 import MyTeamDetailScreen from '../screens/MyTeamDetailScreen';
+
+const linking = {
+  prefixes: ['vibesport://', 'https://vibesport.app'],
+  config: {
+    screens: {
+      JoinGroup: 'chat/invite/:code',
+    },
+  },
+};
 
 
 const Stack = createNativeStackNavigator();
@@ -92,7 +102,7 @@ export function AuthNavigator() {
     : 'guest';
 
   return (
-    <NavigationContainer key={navigatorKey}>
+    <NavigationContainer key={navigatorKey} linking={linking}>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -116,6 +126,7 @@ export function AuthNavigator() {
             <Stack.Screen name="Notification" component={NotificationScreen} />
             <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
             <Stack.Screen name="GroupManagement" component={GroupManagementScreen} />
+            <Stack.Screen name="JoinGroup" component={JoinGroupScreen} />
             <Stack.Screen name="MyTeamDetail" component={MyTeamDetailScreen} />
           </>
         ) : (

@@ -18,6 +18,14 @@ import {
   addParticipantsRequest,
   leaveGroupRequest,
   removeParticipantRequest,
+  updateMemberRoleRequest,
+  muteMemberRequest,
+  unmuteMemberRequest,
+  updateNicknameRequest,
+  generateInviteLinkRequest,
+  revokeInviteLinkRequest,
+  getInviteLinkInfoRequest,
+  joinViaInviteLinkRequest,
 } from '../services/chatApi';
 
 export const fetchConversations = createAsyncThunk(
@@ -225,6 +233,102 @@ export const removeParticipant = createAsyncThunk(
   }
 );
 
+export const updateMemberRole = createAsyncThunk(
+  'chat/updateMemberRole',
+  async ({ conversationId, userId, role }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await updateMemberRoleRequest(conversationId, userId, role, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể cập nhật vai trò thành viên.');
+    }
+  }
+);
+
+export const muteMember = createAsyncThunk(
+  'chat/muteMember',
+  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await muteMemberRequest(conversationId, userId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể cấm chat thành viên.');
+    }
+  }
+);
+
+export const unmuteMember = createAsyncThunk(
+  'chat/unmuteMember',
+  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await unmuteMemberRequest(conversationId, userId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể bỏ cấm chat thành viên.');
+    }
+  }
+);
+
+export const updateNickname = createAsyncThunk(
+  'chat/updateNickname',
+  async ({ conversationId, userId, nickname }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await updateNicknameRequest(conversationId, userId, nickname, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể cập nhật biệt danh.');
+    }
+  }
+);
+
+export const generateInviteLink = createAsyncThunk(
+  'chat/generateInviteLink',
+  async (conversationId, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await generateInviteLinkRequest(conversationId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể tạo link mời.');
+    }
+  }
+);
+
+export const revokeInviteLink = createAsyncThunk(
+  'chat/revokeInviteLink',
+  async (conversationId, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await revokeInviteLinkRequest(conversationId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể vô hiệu hóa link mời.');
+    }
+  }
+);
+
+export const getInviteLinkInfo = createAsyncThunk(
+  'chat/getInviteLinkInfo',
+  async (code, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await getInviteLinkInfoRequest(code, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể lấy thông tin link mời.');
+    }
+  }
+);
+
+export const joinViaInviteLink = createAsyncThunk(
+  'chat/joinViaInviteLink',
+  async (code, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await joinViaInviteLinkRequest(code, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể tham gia nhóm qua link mời.');
+    }
+  }
+);
+
 const upsertConversation = (conversations, conversation) => {
   const index = conversations.findIndex((item) => item._id === conversation._id);
   if (index === -1) {
@@ -408,6 +512,22 @@ const chatSlice = createSlice({
             ...conversation,
           };
         }
+      }
+    },
+    memberMuted(state, action) {
+      const { conversationId } = action.payload;
+      const conv = state.conversations.find(c => c._id === conversationId);
+      if (conv) {
+        conv.isMutedMember = true;
+        conv.canChat = false;
+      }
+    },
+    memberUnmuted(state, action) {
+      const { conversationId } = action.payload;
+      const conv = state.conversations.find(c => c._id === conversationId);
+      if (conv) {
+        conv.isMutedMember = false;
+        conv.canChat = true;
       }
     },
     pendingMessagesDeletedByOther(state, action) {
@@ -608,6 +728,57 @@ const chatSlice = createSlice({
           state.conversations = upsertConversation(state.conversations, data);
         }
       })
+      .addCase(updateMemberRole.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
+      .addCase(muteMember.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
+      .addCase(unmuteMember.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
+      .addCase(updateNickname.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
+      .addCase(generateInviteLink.fulfilled, (state, action) => {
+        const conversationId = action.meta.arg;
+        const inviteData = action.payload?.data;
+        if (conversationId && inviteData) {
+          const conv = state.conversations.find(c => c._id === conversationId);
+          if (conv) {
+            conv.inviteCode = inviteData.inviteCode;
+            conv.inviteLinkEnabled = inviteData.inviteLinkEnabled;
+          }
+        }
+      })
+      .addCase(revokeInviteLink.fulfilled, (state, action) => {
+        const conversationId = action.meta.arg;
+        if (conversationId) {
+          const conv = state.conversations.find(c => c._id === conversationId);
+          if (conv) {
+            conv.inviteCode = null;
+            conv.inviteLinkEnabled = false;
+          }
+        }
+      })
+      .addCase(joinViaInviteLink.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) {
+          state.conversations = upsertConversation(state.conversations, data);
+        }
+      })
       .addCase(logoutUser.fulfilled, (state) => {
         state.activeConversationId = null;
         state.conversations = [];
@@ -634,6 +805,8 @@ export const {
   conversationDeleted,
   conversationMuted,
   conversationUnmuted,
+  memberMuted,
+  memberUnmuted,
   pendingMessagesDeletedByOther,
   groupUpdated,
   resetChat,
