@@ -25,6 +25,7 @@ import SavedPostsScreen from '../screens/SavedPostsScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
 import GroupManagementScreen from '../screens/GroupManagementScreen';
+import MyTeamDetailScreen from '../screens/MyTeamDetailScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -115,6 +116,7 @@ export function AuthNavigator() {
             <Stack.Screen name="Notification" component={NotificationScreen} />
             <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
             <Stack.Screen name="GroupManagement" component={GroupManagementScreen} />
+            <Stack.Screen name="MyTeamDetail" component={MyTeamDetailScreen} />
           </>
         ) : (
           <>

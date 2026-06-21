@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ProfileScreen } from './ProfileScreen';
 import TeamsScreen from './TeamsScreen';
+import MyTeamsScreen from './MyTeamsScreen';
 import { CommunityFeedScreen } from './CommunityFeedScreen';
 import ChatListScreen from './ChatListScreen';
 
@@ -25,13 +26,9 @@ const TABS = [
     icon: ({ color, size }) => <MaterialCommunityIcons color={color} name="soccer" size={size} />,
   },
   {
-    key: 'fc',
-    label: 'FC',
-    icon: ({ color, size }) => (
-      <View style={[styles.fcIcon, color === ACTIVE_COLOR && styles.fcIconActive]}>
-        <Text style={[styles.fcIconText, color === ACTIVE_COLOR && styles.fcIconTextActive]}>FC</Text>
-      </View>
-    ),
+    key: 'team',
+    label: 'Đội',
+    icon: ({ color, size }) => <MaterialCommunityIcons color={color} name="account-group" size={size} />,
   },
   {
     key: 'social',
@@ -65,7 +62,7 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
         <Screen
           edges={['top', 'left', 'right']}
           style={
-            activeTab === 'teams'
+            activeTab === 'teams' || activeTab === 'team'
               ? styles.teamsContent
               : activeTab === 'profile'
                 ? styles.profileContent
@@ -81,6 +78,8 @@ export function MainTabsScreen({ activeTab, onChangeTab, onLogout, onUpdateProfi
             />
           ) : activeTab === 'teams' ? (
             <TeamsScreen navigation={navigation} />
+          ) : activeTab === 'team' ? (
+            <MyTeamsScreen navigation={navigation} />
           ) : (
             <View style={styles.placeholderCenter}>
               <Text style={styles.layoutText}>Đây là layout</Text>

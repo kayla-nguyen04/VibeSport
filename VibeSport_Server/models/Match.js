@@ -137,6 +137,39 @@ const matchSchema = new Schema(
       enum: ["open", "full", "cancelled", "completed"],
       default: "open",
     },
+
+    teamStatus: {
+      type: String,
+      enum: ["not_started", "ongoing", "paused", "ended"],
+      default: "not_started",
+    },
+
+    memberRoles: [
+      {
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        role: {
+          type: String,
+          enum: ["owner", "member"],
+          default: "member",
+        },
+      },
+    ],
+
+    memberPositions: [
+      {
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        positionId: {
+          type: String,
+          default: "",
+        },
+      },
+    ],
   },
   {
     timestamps: true,

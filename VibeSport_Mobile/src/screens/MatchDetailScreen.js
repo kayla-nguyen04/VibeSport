@@ -5,11 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   Alert,
   Linking,
   Platform,
   Modal,
+  TextInput,
 } from "react-native";
 import { useSelector } from "react-redux";
 import {
@@ -20,7 +22,10 @@ import {
   acceptJoinMatch,
   rejectJoinMatch,
   leaveMatch,
+  kickTeamMember,
+  inviteTeamMember,
 } from "../services/matchService";
+import { getFollowingListRequest } from "../services/userApi";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 
@@ -137,6 +142,7 @@ function UserRow({ user, label, badge, onPress, rightAction }) {
 
 export default function MatchDetailScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth?.user);
+  const token = useSelector((state) => state.auth?.token);
   const matchId = route?.params?.matchId;
   const initialMatch = route?.params?.match;
   const [match, setMatch] = useState(initialMatch || null);
@@ -145,6 +151,14 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [showPositionModal, setShowPositionModal] = useState(false);
   const [selectedPositions, setSelectedPositions] = useState([]);
   const [joinSelectedPositions, setJoinSelectedPositions] = useState([]);
+
+  // Invite & Kick modals
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [followingUsers, setFollowingUsers] = useState([]);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [showKickModal, setShowKickModal] = useState(false);
+  const [kickTarget, setKickTarget] = useState(null);
+  const [kickReason, setKickReason] = useState("");
 
   const userId = normalizeId(user?.id || user?._id);
 
@@ -384,6 +398,68 @@ export default function MatchDetailScreen({ navigation, route }) {
     );
   };
 
+  // ─── Owner: Invite from following list ───────────────────────
+  const handleOpenInvite = async () => {
+    try {
+      setInviteLoading(true);
+      setShowInviteModal(true);
+      const res = await getFollowingListRequest(token);
+      const list = res?.data || [];
+      // Filter out users already participating or with pending requests
+      const participantIds = participants.map(p => getUserId(p));
+      const pendingIds = pendingRequests.map(p => getUserId(p));
+      const filtered = list.filter(u => {
+        const uid = String(u._id || u.id);
+        return !participantIds.includes(uid) && !pendingIds.includes(uid) && uid !== userId;
+      });
+      setFollowingUsers(filtered);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể tải danh sách");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleInviteUser = async (targetUserId) => {
+    try {
+      setActionLoading(true);
+      const data = await inviteTeamMember(match._id, targetUserId);
+      setMatch(data);
+      Alert.alert("Đã gửi lời mời", "Người được mời sẽ thấy yêu cầu và cần chấp nhận để vào trận.");
+      // Remove invited user from the list
+      setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể mời");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ─── Owner: Kick participant ─────────────────────────────────
+  const handleOpenKick = (participant) => {
+    setKickTarget(participant);
+    setKickReason("");
+    setShowKickModal(true);
+  };
+
+  const handleKickUser = async () => {
+    if (!kickTarget) return;
+    try {
+      setActionLoading(true);
+      const targetId = getUserId(kickTarget);
+      const data = await kickTeamMember(match._id, targetId, kickReason);
+      setMatch(data);
+      Alert.alert("Thành công", "Đã kích thành viên ra khỏi trận");
+      setShowKickModal(false);
+      setKickTarget(null);
+      setKickReason("");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể kích");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
@@ -542,9 +618,16 @@ export default function MatchDetailScreen({ navigation, route }) {
         )}
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>
-            Người tham gia ({participants.length})
-          </Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>
+              Người tham gia ({participants.length})
+            </Text>
+            {isOwner && !isEnded && (
+              <TouchableOpacity style={styles.inviteSmallBtn} onPress={handleOpenInvite} activeOpacity={0.7}>
+                <Text style={styles.inviteSmallBtnText}>＋ Mời</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {participants.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
           ) : (
@@ -558,6 +641,17 @@ export default function MatchDetailScreen({ navigation, route }) {
                   label={isCreatorParticipant ? "Chủ trận" : "Thành viên"}
                   badge={isCreatorParticipant ? "Tạo trận" : null}
                   onPress={() => openProfile(p)}
+                  rightAction={
+                    isOwner && !isCreatorParticipant && !isEnded ? (
+                      <TouchableOpacity
+                        style={styles.kickSmallBtn}
+                        onPress={() => handleOpenKick(p)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.kickSmallBtnText}>Kích</Text>
+                      </TouchableOpacity>
+                    ) : null
+                  }
                 />
               );
             })
@@ -712,6 +806,91 @@ export default function MatchDetailScreen({ navigation, route }) {
           </View>
         )}
       </ScrollView>
+
+      {/* ─── Invite Modal (from following list) ─── */}
+      <Modal visible={showInviteModal} animationType="slide">
+        <Screen style={styles.safeArea}>
+          <ScreenHeader style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={() => setShowInviteModal(false)}>
+              <Text style={styles.backArrow}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Mời người đang follow</Text>
+            <View style={styles.headerSpacer} />
+          </ScreenHeader>
+          {inviteLoading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color="#0066cc" />
+            </View>
+          ) : followingUsers.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={styles.emptyInviteText}>Không có người dùng nào để mời</Text>
+              <Text style={styles.emptyInviteSub}>Bạn chưa follow ai hoặc tất cả đã tham gia</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={followingUsers}
+              keyExtractor={(item) => String(item._id || item.id)}
+              contentContainerStyle={{ padding: 16 }}
+              renderItem={({ item }) => {
+                const uName = item.name || "Người dùng";
+                return (
+                  <View style={styles.inviteUserCard}>
+                    <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[uName.length % AVATAR_COLORS.length] }]}>
+                      <Text style={styles.userInitials}>{getInitials(uName)}</Text>
+                    </View>
+                    <View style={styles.inviteUserInfo}>
+                      <Text style={styles.inviteUserName}>{uName}</Text>
+                      <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.inviteActionBtn}
+                      onPress={() => handleInviteUser(String(item._id || item.id))}
+                      disabled={actionLoading}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.inviteActionBtnText}>Mời</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            />
+          )}
+        </Screen>
+      </Modal>
+
+      {/* ─── Kick Confirm Modal ─── */}
+      <Modal visible={showKickModal} transparent animationType="fade">
+        <View style={styles.kickOverlay}>
+          <View style={styles.kickBox}>
+            <Text style={styles.kickTitle}>Kích thành viên</Text>
+            <Text style={styles.kickSubtitle}>
+              Bạn có chắc muốn kích <Text style={{ fontWeight: "700" }}>{kickTarget?.name || "người này"}</Text> ra khỏi trận?
+            </Text>
+            <TextInput
+              style={styles.kickReasonInput}
+              placeholder="Lý do kích (không bắt buộc)..."
+              value={kickReason}
+              onChangeText={setKickReason}
+              multiline
+            />
+            <View style={styles.kickActions}>
+              <TouchableOpacity
+                style={styles.kickCancelBtn}
+                onPress={() => { setShowKickModal(false); setKickTarget(null); setKickReason(""); }}
+              >
+                <Text style={styles.kickCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.kickConfirmBtn}
+                onPress={handleKickUser}
+                disabled={actionLoading}
+              >
+                <Text style={styles.kickConfirmText}>{actionLoading ? "Đang xử lý..." : "Kích ngay"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -1014,6 +1193,151 @@ const styles = StyleSheet.create({
   positionModalConfirmText: {
     color: "#fff",
     fontSize: 16,
+    fontWeight: "700",
+  },
+  // ─── Section title row with invite button ───
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  inviteSmallBtn: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  inviteSmallBtnText: {
+    color: "#0369a1",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  kickSmallBtn: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginTop: 6,
+    marginLeft: 52,
+  },
+  kickSmallBtnText: {
+    color: "#b91c1c",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  // ─── Invite Modal ───
+  inviteUserCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  inviteUserInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  inviteUserName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  inviteUserSub: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  inviteActionBtn: {
+    backgroundColor: "#0066cc",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  inviteActionBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  emptyInviteText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#64748b",
+    textAlign: "center",
+  },
+  emptyInviteSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  // ─── Kick Modal ───
+  kickOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  kickBox: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  kickTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0f172a",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  kickSubtitle: {
+    fontSize: 14,
+    color: "#475569",
+    marginBottom: 16,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  kickReasonInput: {
+    backgroundColor: "#f8f9fa",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    padding: 12,
+    height: 80,
+    textAlignVertical: "top",
+    marginBottom: 20,
+  },
+  kickActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  kickCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  kickCancelText: {
+    color: "#64748b",
+    fontWeight: "700",
+  },
+  kickConfirmBtn: {
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  kickConfirmText: {
+    color: "#fff",
     fontWeight: "700",
   },
 });

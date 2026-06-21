@@ -123,3 +123,53 @@ export async function deleteMatch(matchId) {
     method: "DELETE",
   });
 }
+
+export async function updateTeamStatus(matchId, status) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/team-status`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function kickTeamMember(matchId, userId, reason) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/kick-member`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId, reason }),
+  });
+}
+
+export async function inviteTeamMember(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/invite-member`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function updateMemberRole(matchId, userId, role) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/update-member-role`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId, role }),
+  });
+}
+
+export async function updateMemberPosition(matchId, userId, positionId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/update-member-position`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId, positionId }),
+  });
+}
