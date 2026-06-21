@@ -34,3 +34,6 @@ export const searchUsersRequest = (keyword, token) =>
 
 export const getMutualFriendsRequest = (token) =>
   request('/api/users/friends/mutual', {}, token);
+
+export const getFollowingListRequest = (token) =>
+  request('/api/users/following', {}, token);

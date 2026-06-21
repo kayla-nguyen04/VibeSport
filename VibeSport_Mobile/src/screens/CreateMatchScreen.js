@@ -745,14 +745,32 @@ export default function CreateMatchScreen({ navigation, route }) {
 
       if (isEditMode) {
         await updateMatch(editMatch._id, payload);
-        Alert.alert("Thành công", "Cập nhật trận đấu thành công");
+        Alert.alert("Thành công", "Cập nhật trận đấu thành công", [
+          {
+            text: "OK",
+            onPress: () => {
+              if (navigation) {
+                navigation.navigate("Home", { activeTab: "teams" });
+              }
+            }
+          }
+        ]);
       } else {
         await createMatch(payload);
-        Alert.alert("Thành công", "Tạo trận đấu thành công");
-      }
-
-      if (navigation) {
-        navigation.navigate("Home", { activeTab: "teams" });
+        Alert.alert(
+          "Thành công",
+          "Đã tạo đội của bạn thành công và đồng bộ với trận đấu!",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                if (navigation) {
+                  navigation.navigate("Home", { activeTab: "team" });
+                }
+              }
+            }
+          ]
+        );
       }
     } catch (error) {
       Alert.alert("Lỗi", error.message);

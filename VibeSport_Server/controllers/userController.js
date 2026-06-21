@@ -267,3 +267,22 @@ exports.getMutualFriends = async (req, res) => {
   }
 };
 
+exports.getFollowingList = async (req, res) => {
+  try {
+    const followDocs = await Follow.find({ followerId: req.userId })
+      .populate('followingId', '_id name picture favoriteSport position area lastSeenAt');
+
+    const users = followDocs
+      .map((f) => f.followingId)
+      .filter(Boolean);
+
+    res.status(200).json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    console.error('getFollowingList error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách đang follow' });
+  }
+};
+

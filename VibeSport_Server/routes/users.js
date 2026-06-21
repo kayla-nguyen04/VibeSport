@@ -9,6 +9,7 @@ const {
   updatePresence,
   searchUsers,
   getMutualFriends,
+  getFollowingList,
 } = require('../controllers/userController');
 
 const router = express.Router();
@@ -20,6 +21,7 @@ router.post('/notifications/read', markNotificationsRead);
 router.post('/presence', updatePresence);
 router.get('/search', searchUsers);
 router.get('/friends/mutual', getMutualFriends);
+router.get('/following', getFollowingList);
 router.get('/:id', getUserProfile);
 router.post('/:id/follow', toggleFollow);
 router.get('/:id/teams', getUserTeams);
