@@ -199,13 +199,21 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
 
   const handleShare = async (post) => {
     try {
-      await Share.share({
-        message: `${post.userId?.name || 'Ai đó'} chia sẻ trên VibeSport: "${post.content}"${
-          post.mediaUrls?.length > 0 ? `\n\nXem ảnh: ${post.mediaUrls[0]}` : ''
-        }`,
-      });
+      const authorName = post.userId?.name || 'Ai đó';
+      const content = post.content?.trim() || '';
+      const mediaLine = post.mediaUrls?.length > 0 ? `\n\nXem ảnh: ${fixMediaUrl(post.mediaUrls[0])}` : '';
+      const message = content
+        ? `${authorName} chia sẻ trên VibeSport: "${content}"${mediaLine}`
+        : `${authorName} đã chia sẻ một bài viết trên VibeSport.${mediaLine}`;
+
+      await Share.share(
+        { title: 'VibeSport', message },
+        { dialogTitle: 'Chia sẻ bài viết' },
+      );
     } catch (error) {
-      console.error('Share error:', error);
+      if (error?.message !== 'User did not share') {
+        console.warn('Share error:', error?.message);
+      }
     }
   };
 

@@ -12,6 +12,7 @@ import {
   markConversationReadRequest,
   muteConversationRequest,
   sendMessageRequest,
+  sendImageMessageRequest,
   unblockConversationRequest,
   unmuteConversationRequest,
   updateGroupInfoRequest,
@@ -26,7 +27,11 @@ import {
   revokeInviteLinkRequest,
   getInviteLinkInfoRequest,
   joinViaInviteLinkRequest,
+  approveJoinRequestRequest,
+  rejectJoinRequestRequest,
+  requestToJoinGroupRequest,
 } from '../services/chatApi';
+
 
 export const fetchConversations = createAsyncThunk(
   'chat/fetchConversations',
@@ -328,6 +333,55 @@ export const joinViaInviteLink = createAsyncThunk(
     }
   }
 );
+
+export const sendImageMessage = createAsyncThunk(
+  'chat/sendImageMessage',
+  async ({ conversationId, formData }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await sendImageMessageRequest(conversationId, formData, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể gửi ảnh.');
+    }
+  }
+);
+
+export const approveJoinRequest = createAsyncThunk(
+  'chat/approveJoinRequest',
+  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await approveJoinRequestRequest(conversationId, userId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể phê duyệt thành viên.');
+    }
+  }
+);
+
+export const rejectJoinRequest = createAsyncThunk(
+  'chat/rejectJoinRequest',
+  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await rejectJoinRequestRequest(conversationId, userId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể từ chối yêu cầu.');
+    }
+  }
+);
+
+export const requestToJoinGroup = createAsyncThunk(
+  'chat/requestToJoinGroup',
+  async (conversationId, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await requestToJoinGroupRequest(conversationId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể gửi yêu cầu tham gia.');
+    }
+  }
+);
+
 
 const upsertConversation = (conversations, conversation) => {
   const index = conversations.findIndex((item) => item._id === conversation._id);
@@ -778,6 +832,37 @@ const chatSlice = createSlice({
         if (data) {
           state.conversations = upsertConversation(state.conversations, data);
         }
+      })
+      // Gửi ảnh chat
+      .addCase(sendImageMessage.pending, (state) => {
+        state.sending = true;
+      })
+      .addCase(sendImageMessage.fulfilled, (state, action) => {
+        state.sending = false;
+        const { data, conversation } = action.payload;
+        const conversationId = action.meta.arg.conversationId;
+        if (!state.messagesByConversation[conversationId]) {
+          state.messagesByConversation[conversationId] = [];
+        }
+        if (data) {
+          const exists = state.messagesByConversation[conversationId].some((m) => m._id === data._id);
+          if (!exists) state.messagesByConversation[conversationId].push(data);
+        }
+        if (conversation) {
+          state.conversations = upsertConversation(state.conversations, conversation);
+        }
+      })
+      .addCase(sendImageMessage.rejected, (state) => {
+        state.sending = false;
+      })
+      // Duyệt/từ chối yêu cầu gia nhóm
+      .addCase(approveJoinRequest.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) state.conversations = upsertConversation(state.conversations, data);
+      })
+      .addCase(rejectJoinRequest.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) state.conversations = upsertConversation(state.conversations, data);
       })
       .addCase(logoutUser.fulfilled, (state) => {
         state.activeConversationId = null;

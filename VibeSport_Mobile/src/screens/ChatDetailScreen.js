@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
 import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
@@ -29,6 +30,7 @@ import {
   markConversationRead,
   muteConversation,
   sendMessage,
+  sendImageMessage,
   setActiveConversation,
   unmuteConversation,
 } from '../redux/chatSlice';
@@ -70,6 +72,8 @@ export default function ChatDetailScreen({ route, navigation }) {
   const [input, setInput] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  // Ảnh chờ gửi
+  const [pendingImage, setPendingImage] = useState(null); // { uri, type }
 
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
@@ -154,6 +158,43 @@ export default function ChatDetailScreen({ route, navigation }) {
     } catch (error) {
       setInput(trimmed);
       Alert.alert('Không gửi được', error || 'Không thể gửi tin nhắn');
+    }
+  };
+
+  const handlePickImage = async () => {
+    if (sending) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      setPendingImage(result.assets[0]);
+    }
+  };
+
+  const handleSendImage = async () => {
+    if (!pendingImage || sending) return;
+    const uri = pendingImage.uri;
+    const uriParts = uri.split('.');
+    const fileType = uriParts[uriParts.length - 1];
+    const formData = new FormData();
+    formData.append('image', {
+      uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+      name: uri.split('/').pop() || `chat-image.${fileType}`,
+      type: `image/${fileType}`,
+    });
+    setPendingImage(null);
+    try {
+      await dispatch(sendImageMessage({ conversationId, formData })).unwrap();
+      requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
+    } catch (error) {
+      Alert.alert('Lỗi', error || 'Không thể gửi ảnh');
     }
   };
 
@@ -329,7 +370,15 @@ export default function ChatDetailScreen({ route, navigation }) {
             <Text style={styles.senderName}>{getSenderName()}</Text>
           )}
           <View style={[styles.messageBubble, bubbleStyle]}>
-            <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
+            {item.type === 'image' && item.mediaUrl ? (
+              <Image
+                source={{ uri: fixMediaUrl(item.mediaUrl) }}
+                style={styles.messageImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
+            )}
             <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
           </View>
         </View>
@@ -450,27 +499,61 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     if (canChat) {
       return (
-        <View style={styles.inputBar}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Nhập tin nhắn..."
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            multiline
-            maxLength={2000}
-          />
-          <TouchableOpacity
-            onPress={handleSend}
-            disabled={!input.trim() || sending}
-            style={[styles.sendButton, (!input.trim() || sending) && styles.sendButtonDisabled]}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="send" size={18} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
+        <View>
+          {/* Preview ảnh chờ gửi */}
+          {pendingImage && (
+            <View style={styles.imagePreviewBar}>
+              <Image source={{ uri: pendingImage.uri }} style={styles.imagePreviewThumb} />
+              <Text style={styles.imagePreviewText} numberOfLines={1}>
+                {pendingImage.uri.split('/').pop()}
+              </Text>
+              <TouchableOpacity onPress={() => setPendingImage(null)} style={styles.imagePreviewRemove}>
+                <Ionicons name="close-circle" size={20} color="#EF4444" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSendImage}
+                disabled={sending}
+                style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="send" size={18} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={styles.inputBar}>
+            {/* Icon chọn ảnh */}
+            <TouchableOpacity
+              onPress={handlePickImage}
+              style={styles.imagePickBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              disabled={sending}
+            >
+              <Ionicons name="image-outline" size={24} color={sending ? '#C4C9D4' : '#0b74ff'} />
+            </TouchableOpacity>
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              placeholder="Nhập tin nhắn..."
+              placeholderTextColor="#94A3B8"
+              style={styles.input}
+              multiline
+              maxLength={2000}
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled={!input.trim() || sending}
+              style={[styles.sendButton, (!input.trim() || sending) && styles.sendButtonDisabled]}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="send" size={18} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       );
     }
@@ -933,6 +1016,44 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.5,
   },
+  // Icon chọn ảnh trong input bar
+  imagePickBtn: {
+    marginRight: 6,
+    padding: 4,
+  },
+  // Bubble hiển thị ảnh trong tin nhắn
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  // Preview bar khi ảnh đang chờ gửi
+  imagePreviewBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderTopWidth: 1,
+    borderTopColor: '#BFDBFE',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  imagePreviewThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  imagePreviewText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+  },
+  imagePreviewRemove: {
+    padding: 2,
+  },
+
   headerMenuBtn: {
     padding: 8,
     marginLeft: 4,

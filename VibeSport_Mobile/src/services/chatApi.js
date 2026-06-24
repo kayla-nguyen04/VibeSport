@@ -149,3 +149,29 @@ export const joinViaInviteLinkRequest = (code, token) =>
   request(`/api/chat/invite/${code}/join`, {
     method: 'POST',
   }, token);
+
+// === Gửi ảnh trong chat ===
+export const sendImageMessageRequest = (conversationId, formData, token) =>
+  request(`/api/chat/conversations/${conversationId}/messages/image`, {
+    method: 'POST',
+    body: formData,
+  }, token);
+
+// === Duyệt / Từ chối yêu cầu gia nhóm ===
+export const approveJoinRequestRequest = (conversationId, userId, token) =>
+  request(`/api/chat/conversations/${conversationId}/approve-member`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId }),
+  }, token);
+
+export const rejectJoinRequestRequest = (conversationId, userId, token) =>
+  request(`/api/chat/conversations/${conversationId}/reject-member`, {
+    method: 'PUT',
+    body: JSON.stringify({ userId }),
+  }, token);
+
+export const requestToJoinGroupRequest = (conversationId, token) =>
+  request(`/api/chat/conversations/${conversationId}/join-request`, {
+    method: 'POST',
+  }, token);
+

@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +20,9 @@ import { createPost, updatePost } from '../redux/postSlice';
 import { getTagsRequest } from '../services/tagApi';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { API_BASE_URL } from '../components/constants/api';
+
+const MAX_MEDIA = 10;
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -30,19 +32,23 @@ const getAvatarColor = (name) => {
   return AVATAR_COLORS[charCodeSum % AVATAR_COLORS.length];
 };
 
+function fixMediaUrl(url) {
+  if (!url) return url;
+  return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
+}
+
 export function CreatePostScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
   const { creating } = useSelector((state) => state.posts);
 
-  // Check if we are in edit mode
+  // ── Edit mode ──────────────────────────────────────────────────
   const editPost = route?.params?.editPost ?? null;
   const isEditMode = !!editPost;
-  const isFindTeam = editPost?.tags?.includes('Tìm đội') || false;
 
+  // ── State ──────────────────────────────────────────────────────
   const [content, setContent] = React.useState(editPost?.content ?? '');
-  const [selectedMedia, setSelectedMedia] = React.useState([]);
   const [catalogTags, setCatalogTags] = React.useState([]);
   const [selectedTag, setSelectedTag] = React.useState(() => {
     if (editPost) {
@@ -52,90 +58,21 @@ export function CreatePostScreen({ navigation, route }) {
     return 'Bóng đá';
   });
   const [showTagDropdown, setShowTagDropdown] = React.useState(false);
-
-  // Location states
   const [location, setLocation] = React.useState(editPost?.location ?? '');
   const [locationLoading, setLocationLoading] = React.useState(false);
 
-  const handlePickMedia = async () => {
-    if (selectedMedia.length >= 10) {
-      Alert.alert('Giới hạn', 'Bạn chỉ có thể chọn tối đa 10 ảnh/video.');
-      return;
-    }
+  // ── Media state ────────────────────────────────────────────────
+  // keptUrls  : ảnh gốc mà user chưa xóa (edit mode)
+  // newAssets : ảnh mới user vừa chọn từ thư viện
+  const [keptUrls, setKeptUrls] = React.useState(
+    isEditMode ? (editPost?.mediaUrls ?? []).map(fixMediaUrl) : []
+  );
+  const [newAssets, setNewAssets] = React.useState([]);
 
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh để tải phương tiện lên.');
-      return;
-    }
+  // Tổng số ảnh hiện tại
+  const totalCount = keptUrls.length + newAssets.length;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: true,
-      selectionLimit: 10 - selectedMedia.length,
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets) {
-      setSelectedMedia((prev) => [...prev, ...result.assets.slice(0, 10 - prev.length)]);
-    }
-  };
-
-  const handleRemoveMedia = (index) => {
-    setSelectedMedia((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  // Get current location using GPS and reverse-geocode to address
-  const handleGetLocation = async () => {
-    setLocationLoading(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập vị trí để gắn địa điểm.');
-        setLocationLoading(false);
-        return;
-      }
-
-      // Timeout 10 giây tránh kẹt mãi
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 10000)
-      );
-      const locResult = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        timeoutPromise,
-      ]);
-
-      const { latitude, longitude } = locResult.coords;
-
-      // Reverse geocode
-      const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (geocode && geocode.length > 0) {
-        const addr = geocode[0];
-        const street = addr.streetNumber ? `${addr.streetNumber} ${addr.street || ''}` : (addr.street || '');
-        const district = addr.district || addr.subregion || '';
-        const city = addr.city || addr.region || '';
-        const addressParts = [street, district, city].filter(p => p.trim() !== '');
-        const fullAddress = addressParts.join(', ');
-        setLocation(fullAddress || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
-      } else {
-        setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
-      }
-    } catch (error) {
-      if (error.message === 'timeout') {
-        Alert.alert('Hết thời gian', 'Không thể lấy vị trí. Bạn có thể đăng bài không có địa điểm.');
-      } else {
-        console.error('Location error:', error);
-        Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại của bạn.');
-      }
-    } finally {
-      setLocationLoading(false);
-    }
-  };
-
-  const handleRemoveLocation = () => {
-    setLocation('');
-  };
-
+  // ── Load tags ──────────────────────────────────────────────────
   React.useEffect(() => {
     getTagsRequest(token)
       .then((res) => setCatalogTags(res.data || []))
@@ -143,31 +80,97 @@ export function CreatePostScreen({ navigation, route }) {
   }, [token]);
 
   const sportTagNames = React.useMemo(
-    () => new Set(catalogTags.filter((tag) => tag.category === 'sport').map((tag) => tag.name)),
+    () => new Set(catalogTags.filter((t) => t.category === 'sport').map((t) => t.name)),
     [catalogTags]
   );
-
   const sportType = sportTagNames.has(selectedTag) ? selectedTag : editPost?.sportType || 'Bóng đá';
 
+  // ── Pick media ─────────────────────────────────────────────────
+  const handlePickMedia = async () => {
+    if (totalCount >= MAX_MEDIA) {
+      Alert.alert('Giới hạn', `Bạn chỉ có thể có tối đa ${MAX_MEDIA} ảnh/video.`);
+      return;
+    }
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_MEDIA - totalCount,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets) {
+      setNewAssets((prev) => [...prev, ...result.assets.slice(0, MAX_MEDIA - totalCount)]);
+    }
+  };
+
+  // ── Remove handlers ────────────────────────────────────────────
+  const handleRemoveKept = (index) => {
+    setKeptUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveNew = (index) => {
+    setNewAssets((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // ── Location ───────────────────────────────────────────────────
+  const handleGetLocation = async () => {
+    setLocationLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập vị trí.');
+        return;
+      }
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 10000)
+      );
+      const locResult = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        timeoutPromise,
+      ]);
+      const { latitude, longitude } = locResult.coords;
+      const geocode = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (geocode && geocode.length > 0) {
+        const addr = geocode[0];
+        const street = addr.streetNumber
+          ? `${addr.streetNumber} ${addr.street || ''}`
+          : addr.street || '';
+        const district = addr.district || addr.subregion || '';
+        const city = addr.city || addr.region || '';
+        const parts = [street, district, city].filter((p) => p.trim() !== '');
+        setLocation(parts.join(', ') || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+      } else {
+        setLocation(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+      }
+    } catch (error) {
+      if (error.message === 'timeout') {
+        Alert.alert('Hết thời gian', 'Không thể lấy vị trí. Bạn có thể đăng bài không có địa điểm.');
+      } else {
+        Alert.alert('Lỗi', 'Không thể lấy vị trí hiện tại.');
+      }
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  // ── Publish / Update ───────────────────────────────────────────
   const handlePublish = async () => {
     if (!selectedTag) {
       Alert.alert('Chưa chọn tag', 'Vui lòng chọn tag cho bài viết.');
       return;
     }
-
-    if (!content.trim() && selectedMedia.length === 0) {
+    if (!content.trim() && totalCount === 0) {
       Alert.alert('Nội dung trống', 'Vui lòng viết gì đó hoặc thêm hình ảnh/video.');
       return;
     }
-
-    // Nếu đang tải vị trí thì hủy và tiếp tục đăng không có địa điểm
-    if (locationLoading) {
-      setLocationLoading(false);
-    }
+    if (locationLoading) setLocationLoading(false);
 
     const originalTags = editPost?.tags || [];
-    const isFindTeam = originalTags.includes('Tìm đội');
-    const finalTags = isFindTeam
+    const finalTags = originalTags.includes('Tìm đội')
       ? ['Tìm đội', selectedTag]
       : [selectedTag];
 
@@ -177,12 +180,22 @@ export function CreatePostScreen({ navigation, route }) {
     formData.append('sportType', sportType);
     formData.append('tags', JSON.stringify(finalTags));
 
-    selectedMedia.forEach((asset, index) => {
+    // Gửi danh sách URL gốc muốn GIỮ LẠI (server sẽ xóa các URL không có trong này)
+    if (isEditMode) {
+      // Gửi URL gốc (trước khi fixMediaUrl) để server có thể so khớp
+      const originalKeptUrls = keptUrls.map((url) =>
+        // Đảo ngược fixMediaUrl: khôi phục URL gốc từ server
+        url.replace(API_BASE_URL, API_BASE_URL) // URL đã là tuyệt đối, giữ nguyên
+      );
+      formData.append('keepMediaUrls', JSON.stringify(originalKeptUrls));
+    }
+
+    // Append ảnh mới
+    newAssets.forEach((asset, index) => {
       const uri = asset.uri;
       const uriParts = uri.split('.');
       const fileType = uriParts[uriParts.length - 1];
       const fileName = uri.split('/').pop();
-
       formData.append('media', {
         uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
         name: fileName || `media-${index}.${fileType}`,
@@ -206,12 +219,7 @@ export function CreatePostScreen({ navigation, route }) {
         .unwrap()
         .then(() => {
           Alert.alert('Thành công', 'Đăng bài viết lên cộng đồng thành công!', [
-            {
-              text: 'OK',
-              onPress: () => {
-                navigation.goBack();
-              },
-            },
+            { text: 'OK', onPress: () => navigation.goBack() },
           ]);
         })
         .catch((err) => {
@@ -220,9 +228,69 @@ export function CreatePostScreen({ navigation, route }) {
     }
   };
 
-  // Khi đang tải vị trí, nút Đăng vẫn hoạt động (sẽ bỏ qua vị trí chưa tải xong)
-  const isPublishDisabled = creating || (!content.trim() && selectedMedia.length === 0);
+  const isPublishDisabled = creating || (!content.trim() && totalCount === 0);
 
+  // ── Render media grid ──────────────────────────────────────────
+  const renderMediaGrid = () => {
+    const items = [];
+
+    // 1) Ảnh gốc còn lại (keptUrls) — có nút X để xóa
+    keptUrls.forEach((url, i) => {
+      items.push(
+        <View key={`kept-${i}`} style={styles.mediaCell}>
+          <Image source={{ uri: url }} style={styles.mediaCellImage} resizeMode="cover" />
+          <TouchableOpacity
+            style={styles.removeCellBtn}
+            onPress={() => handleRemoveKept(i)}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Ionicons name="close" size={14} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      );
+    });
+
+    // 2) Ảnh mới vừa chọn — có nút X để xóa
+    newAssets.forEach((asset, i) => {
+      items.push(
+        <View key={`new-${i}`} style={styles.mediaCell}>
+          <Image source={{ uri: asset.uri }} style={styles.mediaCellImage} resizeMode="cover" />
+          <TouchableOpacity
+            style={styles.removeCellBtn}
+            onPress={() => handleRemoveNew(i)}
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          >
+            <Ionicons name="close" size={14} color="#FFFFFF" />
+          </TouchableOpacity>
+          {asset.type === 'video' && (
+            <View style={styles.videoBadge}>
+              <Ionicons name="play" size={12} color="#FFFFFF" />
+            </View>
+          )}
+        </View>
+      );
+    });
+
+    // 3) Nút "+" thêm ảnh (nếu chưa đủ 10)
+    if (totalCount < MAX_MEDIA) {
+      items.push(
+        <TouchableOpacity
+          key="add-btn"
+          style={styles.addCell}
+          onPress={handlePickMedia}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add" size={30} color="#FF6B35" />
+        </TouchableOpacity>
+      );
+    }
+
+    if (items.length === 0) return null;
+
+    return <View style={styles.mediaGrid}>{items}</View>;
+  };
+
+  // ── JSX ────────────────────────────────────────────────────────
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
@@ -253,7 +321,8 @@ export function CreatePostScreen({ navigation, route }) {
         style={styles.keyboardView}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          {/* User Profile Info */}
+
+          {/* ── User info ── */}
           <View style={styles.userRow}>
             {user?.picture ? (
               <Image source={{ uri: user.picture }} style={styles.avatar} />
@@ -276,7 +345,8 @@ export function CreatePostScreen({ navigation, route }) {
             </View>
           </View>
 
-          {showTagDropdown ? (
+          {/* ── Tag dropdown ── */}
+          {showTagDropdown && (
             <View style={styles.dropdownOptions}>
               {(catalogTags.length
                 ? catalogTags.filter((t) => ['Bóng đá', 'Cầu lông', 'Pickleball'].includes(t.name))
@@ -284,29 +354,19 @@ export function CreatePostScreen({ navigation, route }) {
               ).map((tag) => (
                 <TouchableOpacity
                   key={tag._id || tag.name}
-                  onPress={() => {
-                    setSelectedTag(tag.name);
-                    setShowTagDropdown(false);
-                  }}
+                  onPress={() => { setSelectedTag(tag.name); setShowTagDropdown(false); }}
                   style={[styles.dropdownItem, selectedTag === tag.name && styles.dropdownItemActive]}
                 >
-                  <Text
-                    style={[
-                      styles.dropdownItemText,
-                      selectedTag === tag.name && styles.dropdownItemTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.dropdownItemText, selectedTag === tag.name && styles.dropdownItemTextActive]}>
                     {tag.name}
                   </Text>
-                  {selectedTag === tag.name ? (
-                    <Ionicons name="checkmark" size={16} color="#FF6B35" />
-                  ) : null}
+                  {selectedTag === tag.name && <Ionicons name="checkmark" size={16} color="#FF6B35" />}
                 </TouchableOpacity>
               ))}
             </View>
-          ) : null}
+          )}
 
-          {/* Text Input */}
+          {/* ── Text input ── */}
           <TextInput
             multiline
             placeholder="Chia sẻ niềm đam mê thể thao của bạn tại đây..."
@@ -316,38 +376,29 @@ export function CreatePostScreen({ navigation, route }) {
             onChangeText={setContent}
             maxLength={3000}
           />
-          <Text style={styles.charCounter}>{content.length}/3000 ký tự</Text>
+          <Text style={[styles.charCounter, content.length > 2700 && styles.charCounterWarn]}>
+            {content.length}/3000 ký tự
+          </Text>
 
-          {/* Media Previews */}
-          {selectedMedia.length > 0 && (
-            <View style={styles.mediaGrid}>
-              {selectedMedia.map((asset, index) => (
-                <View key={index} style={styles.mediaPreviewContainer}>
-                  <Image source={{ uri: asset.uri }} style={styles.mediaPreview} />
-                  <TouchableOpacity
-                    onPress={() => handleRemoveMedia(index)}
-                    style={styles.removeMediaBtn}
-                  >
-                    <Ionicons name="close" size={16} color="#FFFFFF" />
-                  </TouchableOpacity>
-                  {asset.type === 'video' && (
-                    <View style={styles.videoBadge}>
-                      <Ionicons name="play" size={12} color="#FFFFFF" />
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
+          {/* ── Media grid (ảnh cũ + ảnh mới + nút +) ── */}
+          {renderMediaGrid()}
+
+          {/* Nút "Thêm ảnh / video" full-width (khi chưa có ảnh nào) */}
+          {totalCount === 0 && (
+            <TouchableOpacity onPress={handlePickMedia} style={styles.addMediaBtn}>
+              <Ionicons name="image-outline" size={24} color="#FF6B35" />
+              <Text style={styles.addMediaText}>Thêm ảnh / video</Text>
+            </TouchableOpacity>
           )}
 
-          {/* Location Block */}
+          {/* ── Location ── */}
           {location ? (
             <View style={[styles.locationBlock, styles.locationBlockActive]}>
               <Ionicons name="location" size={20} color="#10B981" />
-              <Text style={[styles.locationAddressText, styles.locationAddressTextActive]}>
+              <Text style={[styles.locationAddressText, styles.locationAddressTextActive]} numberOfLines={2}>
                 {location}
               </Text>
-              <TouchableOpacity onPress={handleRemoveLocation} style={styles.locationRemoveBtn}>
+              <TouchableOpacity onPress={() => setLocation('')} style={styles.locationRemoveBtn}>
                 <Ionicons name="close-circle" size={18} color="#6B7280" />
               </TouchableOpacity>
             </View>
@@ -369,27 +420,19 @@ export function CreatePostScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
 
-          {/* Add Media Button */}
-          {!isEditMode && (
-            <TouchableOpacity onPress={handlePickMedia} style={styles.addMediaBtn}>
-              <Ionicons name="image-outline" size={24} color="#FF6B35" />
-              <Text style={styles.addMediaText}>Thêm ảnh / video</Text>
-            </TouchableOpacity>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
   );
 }
 
+const CELL_SIZE = '31%';
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  keyboardView: { flex: 1 },
+
+  // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -399,14 +442,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
+  backButton: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
   publishBtn: {
     backgroundColor: '#FF6B35',
     paddingHorizontal: 16,
@@ -416,38 +453,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  publishBtnDisabled: {
-    backgroundColor: '#FFBEA3',
-  },
-  publishBtnText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
+  publishBtnDisabled: { backgroundColor: '#FFBEA3' },
+  publishBtnText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 },
+
+  scrollContent: { paddingBottom: 40 },
+
+  // ── User row ──
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 16,
   },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#E5E7EB',
-  },
-  userInfo: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
+  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#E5E7EB' },
+  avatarPlaceholder: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  avatarPlaceholderText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
+  userInfo: { marginLeft: 12, flex: 1 },
+  userName: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
   tagDropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -459,11 +481,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     gap: 4,
   },
-  tagDropdownText: {
-    color: '#FF6B35',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
+  tagDropdownText: { color: '#FF6B35', fontSize: 12, fontWeight: 'bold' },
+
+  // ── Dropdown ──
   dropdownOptions: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -487,17 +507,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  dropdownItemActive: {
-    backgroundColor: '#FFF0EA',
-  },
-  dropdownItemText: {
-    color: '#374151',
-    fontSize: 14,
-  },
-  dropdownItemTextActive: {
-    color: '#FF6B35',
-    fontWeight: 'bold',
-  },
+  dropdownItemActive: { backgroundColor: '#FFF0EA' },
+  dropdownItemText: { color: '#374151', fontSize: 14 },
+  dropdownItemTextActive: { color: '#FF6B35', fontWeight: 'bold' },
+
+  // ── Text input ──
   contentInput: {
     minHeight: 120,
     paddingHorizontal: 16,
@@ -506,53 +520,84 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     textAlignVertical: 'top',
   },
-  charCounter: {
-    alignSelf: 'flex-end',
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginRight: 16,
-    marginBottom: 16,
-  },
+  charCounter: { alignSelf: 'flex-end', fontSize: 12, color: '#9CA3AF', marginRight: 16, marginBottom: 8 },
+  charCounterWarn: { color: '#EF4444' },
+
+  // ── Media grid ──
   mediaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 12,
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  mediaPreviewContainer: {
+  // Ô ảnh (có ảnh)
+  mediaCell: {
     position: 'relative',
-    width: '31%',
+    width: CELL_SIZE,
     aspectRatio: 1,
   },
-  mediaPreview: {
+  mediaCellImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 12,
+    borderRadius: 10,
     backgroundColor: '#F3F4F6',
   },
-  removeMediaBtn: {
+  removeCellBtn: {
     position: 'absolute',
     top: 4,
     right: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     width: 22,
     height: 22,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   videoBadge: {
     position: 'absolute',
     bottom: 4,
     left: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     width: 20,
     height: 20,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Ô "+" thêm ảnh
+  addCell: {
+    width: CELL_SIZE,
+    aspectRatio: 1,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#FFD9CC',
+    borderStyle: 'dashed',
+    backgroundColor: '#FFF5F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Nút thêm ảnh full-width (khi chưa có ảnh)
+  addMediaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFD9CC',
+    borderStyle: 'dashed',
+    backgroundColor: '#FFF5F2',
+    gap: 8,
+  },
+  addMediaText: { color: '#FF6B35', fontWeight: 'bold', fontSize: 14 },
+
+  // ── Location ──
   locationBlock: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -565,55 +610,8 @@ const styles = StyleSheet.create({
     borderColor: '#F3F4F6',
     gap: 12,
   },
-  locationBlockActive: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#86EFAC',
-  },
-  locationAddressText: {
-    flex: 1,
-    color: '#6B7280',
-    fontSize: 14,
-  },
-  locationAddressTextActive: {
-    color: '#10B981',
-    fontWeight: '500',
-  },
-  locationRemoveBtn: {
-    padding: 2,
-  },
-  addMediaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 16,
-    marginTop: 16,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#FFD9CC',
-    borderStyle: 'dashed',
-    backgroundColor: '#FFF5F2',
-    gap: 8,
-  },
-  addMediaText: {
-    color: '#FF6B35',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  avatarPlaceholder: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarPlaceholderText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  tagDropdownDisabled: {
-    backgroundColor: '#E5E7EB',
-    opacity: 0.8,
-  },
+  locationBlockActive: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
+  locationAddressText: { flex: 1, color: '#6B7280', fontSize: 14 },
+  locationAddressTextActive: { color: '#10B981', fontWeight: '500' },
+  locationRemoveBtn: { padding: 2 },
 });
