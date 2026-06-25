@@ -233,6 +233,10 @@ function formatConversation(conversation, currentUserId, isFriend) {
     // Invite link fields
     inviteCode: isGroup && isAdminOrCoAdmin(conversation, currentUserId) ? (conversation.inviteCode || null) : null,
     inviteLinkEnabled: isGroup ? (conversation.inviteLinkEnabled || false) : false,
+    // Join requests: chỉ hiện cho admin/co-admin
+    joinRequests: isGroup && isAdminOrCoAdmin(conversation, currentUserId)
+      ? (conversation.joinRequests || [])
+      : [],
   };
 }
 
@@ -1756,3 +1760,230 @@ exports.joinViaInviteLink = async (req, res) => {
     res.status(500).json({ success: false, message: 'Lỗi khi tham gia nhóm' });
   }
 };
+
+// ─── GỬi ảnh trong hội thoại nhóm ─────────────────────────────────────────
+exports.sendImageMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Không có ảnh được gửi' });
+    }
+
+    const conversation = await Conversation.findById(id);
+    if (
+      !conversation ||
+      !conversation.participants.some((p) => String(p._id || p) === String(req.userId))
+    ) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    // Kiểm tra mute
+    if (
+      conversation.isGroup &&
+      (conversation.mutedMembers || []).some((id) => String(id) === String(req.userId))
+    ) {
+      return res.status(403).json({ success: false, message: 'Bạn đã bị cấm chat trong nhóm này' });
+    }
+
+    const mediaUrl = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+
+    const message = await Message.create({
+      conversationId: id,
+      senderId: req.userId,
+      type: 'image',
+      content: '',
+      mediaUrl,
+      readBy: [req.userId],
+    });
+
+    const otherParticipants = conversation.participants.filter(
+      (p) => String(p._id || p) !== String(req.userId)
+    );
+
+    conversation.lastMessage = 'ð¼ï¸ Ảnh';
+    conversation.lastMessageAt = message.createdAt;
+    setUnreadCount(conversation, req.userId, 0);
+    otherParticipants.forEach((pId) => {
+      const pIdStr = String(pId._id || pId);
+      setUnreadCount(conversation, pIdStr, getUnreadCount(conversation, pIdStr) + 1);
+    });
+    await conversation.save();
+
+    const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
+    const populatedConversation = await Conversation.findById(id).populate('participants', USER_SELECT);
+    const formattedConversation = formatConversation(populatedConversation, req.userId, true);
+
+    if (global.io) {
+      await Promise.all(
+        otherParticipants.map(async (pId) => {
+          const pIdStr = String(pId._id || pId);
+          global.io.to(pIdStr).emit('new_message', {
+            conversationId: id,
+            message: populatedMessage,
+            lastMessage: 'ð¼ï¸ Ảnh',
+            lastMessageAt: conversation.lastMessageAt,
+            conversation: formatConversation(populatedConversation, pIdStr, true),
+          });
+          await emitChatUnreadCount(pIdStr);
+        })
+      );
+    }
+
+    res.status(201).json({ success: true, data: populatedMessage, conversation: formattedConversation });
+  } catch (error) {
+    console.error('Send image message error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi ảnh' });
+  }
+};
+
+// ─── Duyệt yêu cầu gia nhóm (Admin/Mod) ─────────────────────────────────────
+exports.approveJoinRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId: targetUserId } = req.body;
+
+    const conversation = await Conversation.findById(id).populate('joinRequests.userId', USER_SELECT);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền duyệt thành viên' });
+    }
+
+    // Kiểm tra request tồn tại
+    const requestIndex = conversation.joinRequests.findIndex(
+      (r) => String(r.userId?._id || r.userId) === String(targetUserId)
+    );
+    if (requestIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+    }
+
+    // Xóa khỏi joinRequests
+    conversation.joinRequests.splice(requestIndex, 1);
+
+    // Thêm vào participants nếu chưa có
+    const isAlreadyIn = conversation.participants.some(
+      (p) => String(p._id || p) === String(targetUserId)
+    );
+    if (!isAlreadyIn) {
+      conversation.participants.push(targetUserId);
+      conversation.acceptedBy.push(targetUserId);
+      if (!conversation.unreadByUser) conversation.unreadByUser = {};
+      conversation.unreadByUser[String(targetUserId)] = 0;
+      conversation.markModified('unreadByUser');
+    }
+
+    await conversation.save();
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
+    const formatted = formatConversation(updated, req.userId, true);
+
+    // Thông báo cho thành viên vừa được duyệt
+    if (global.io) {
+      global.io.to(String(targetUserId)).emit('join_request_approved', {
+        conversationId: id,
+        conversation: formatConversation(updated, targetUserId, true),
+      });
+    }
+
+    res.status(200).json({ success: true, message: 'Phê duyệt thành công', data: formatted });
+  } catch (error) {
+    console.error('Approve join request error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi phê duyệt' });
+  }
+};
+
+// ─── Từ chối yêu cầu gia nhóm (Admin/Mod) ──────────────────────────────────
+exports.rejectJoinRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId: targetUserId } = req.body;
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    if (!isAdminOrCoAdmin(conversation, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền từ chối' });
+    }
+
+    const requestIndex = conversation.joinRequests.findIndex(
+      (r) => String(r.userId?._id || r.userId) === String(targetUserId)
+    );
+    if (requestIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+    }
+
+    conversation.joinRequests.splice(requestIndex, 1);
+    await conversation.save();
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
+    const formatted = formatConversation(updated, req.userId, true);
+
+    // Thông báo cho thành viên bị từ chối
+    if (global.io) {
+      global.io.to(String(targetUserId)).emit('join_request_rejected', { conversationId: id });
+    }
+
+    res.status(200).json({ success: true, message: 'Từ chối thành công', data: formatted });
+  } catch (error) {
+    console.error('Reject join request error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi từ chối' });
+  }
+};
+
+// ─── Gửi yêu cầu gia nhập nhóm (Thành viên yêu cầu) ─────────────────────────
+exports.requestToJoinGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    // Check if already a participant
+    if (conversation.participants.some((p) => String(p) === String(req.userId))) {
+      return res.status(400).json({ success: false, message: 'Bạn đã là thành viên của nhóm này rồi' });
+    }
+
+    // Check if already requested
+    const alreadyRequested = conversation.joinRequests.some(
+      (r) => String(r.userId) === String(req.userId)
+    );
+    if (alreadyRequested) {
+      return res.status(400).json({ success: false, message: 'Bạn đã gửi yêu cầu gia nhập nhóm rồi, vui lòng chờ duyệt' });
+    }
+
+    conversation.joinRequests.push({ userId: req.userId });
+    await conversation.save();
+
+    // Notify group admin and coAdmins via socket if online
+    const notifyUserIds = [
+      String(conversation.admin || conversation.participants[0]),
+      ...(conversation.coAdmins || []).map((id) => String(id)),
+    ];
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
+
+    if (global.io) {
+      notifyUserIds.forEach((adminId) => {
+        global.io.to(adminId).emit('group_join_requested', {
+          conversationId: id,
+          conversation: formatConversation(updated, adminId, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Gửi yêu cầu tham gia thành công, vui lòng chờ Quản trị viên duyệt',
+    });
+  } catch (error) {
+    console.error('Request to join group error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi yêu cầu tham gia' });
+  }
+};
+

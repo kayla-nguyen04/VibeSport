@@ -6,6 +6,7 @@ const {
   createOrGetConversation,
   getMessages,
   sendMessage,
+  sendImageMessage,
   markConversationRead,
   acceptConversation,
   blockConversation,
@@ -26,6 +27,9 @@ const {
   revokeInviteLink,
   getInviteLinkInfo,
   joinViaInviteLink,
+  approveJoinRequest,
+  rejectJoinRequest,
+  requestToJoinGroup,
 } = require('../controllers/chatController');
 const uploadConversation = require('../middleware/uploadConversation');
 
@@ -38,6 +42,8 @@ router.get('/unread-count', getUnreadCount);
 router.post('/conversations', createOrGetConversation);
 router.get('/conversations/:id/messages', getMessages);
 router.post('/conversations/:id/messages', sendMessage);
+// Gửi ảnh trong chat
+router.post('/conversations/:id/messages/image', uploadConversation.single('image'), sendImageMessage);
 router.put('/conversations/:id/read', markConversationRead);
 router.put('/conversations/:id/accept', acceptConversation);
 router.put('/conversations/:id/block', blockConversation);
@@ -61,5 +67,10 @@ router.post('/conversations/:id/invite-link', generateInviteLink);
 router.put('/conversations/:id/revoke-invite', revokeInviteLink);
 router.get('/invite/:code/info', getInviteLinkInfo);
 router.post('/invite/:code/join', joinViaInviteLink);
+// Join requests (duyệt thành viên)
+router.post('/conversations/:id/join-request', requestToJoinGroup);
+router.put('/conversations/:id/approve-member', approveJoinRequest);
+router.put('/conversations/:id/reject-member', rejectJoinRequest);
 
 module.exports = router;
+

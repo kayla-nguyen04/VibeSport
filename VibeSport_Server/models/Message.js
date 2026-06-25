@@ -13,11 +13,22 @@ const messageSchema = new Schema(
       ref: 'User',
       required: true,
     },
+    // Loại tin nhắn: 'text' (mặc định) hoặc 'image'
+    type: {
+      type: String,
+      enum: ['text', 'image'],
+      default: 'text',
+    },
     content: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
       maxlength: 2000,
+    },
+    // URL ảnh (chỉ dùng khi type === 'image')
+    mediaUrl: {
+      type: String,
+      default: null,
     },
     readBy: [
       {
@@ -32,3 +43,4 @@ const messageSchema = new Schema(
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 
 module.exports = model('Message', messageSchema);
+

@@ -756,10 +756,20 @@ exports.updatePost = async (req, res) => {
       post.sportType = sportType;
     }
 
-    if (req.files && req.files.length > 0) {
-      const newMediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
-      post.mediaUrls = [...post.mediaUrls, ...newMediaUrls];
+    // keepMediaUrls: danh sách URL cũ mà client muốn giữ lại (các URL không có trong này sẽ bị xóa)
+    // Nếu không gửi keepMediaUrls → giữ nguyên toàn bộ ảnh cũ
+    const { keepMediaUrls } = req.body;
+    let keptUrls = post.mediaUrls; // mặc định giữ nguyên
+    if (keepMediaUrls !== undefined) {
+      const keepList = Array.isArray(keepMediaUrls)
+        ? keepMediaUrls
+        : JSON.parse(keepMediaUrls || '[]');
+      keptUrls = keepList.filter((url) => typeof url === 'string' && url.trim() !== '');
     }
+    const newMediaUrls = req.files && req.files.length > 0
+      ? req.files.map((file) => getAbsoluteUrl(req, file.filename))
+      : [];
+    post.mediaUrls = [...keptUrls, ...newMediaUrls];
 
     await post.save();
 

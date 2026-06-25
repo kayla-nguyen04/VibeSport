@@ -126,6 +126,20 @@ const conversationSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // === Join Requests (yêu cầu tham gia nhóm chờ duyệt) ===
+    joinRequests: [
+      {
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        requestedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );

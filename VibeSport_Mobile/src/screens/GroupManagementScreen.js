@@ -38,6 +38,8 @@ import {
   muteMember,
   unmuteMember,
   updateNickname,
+  approveJoinRequest,
+  rejectJoinRequest,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
@@ -97,6 +99,9 @@ export default function GroupManagementScreen({ route, navigation }) {
   const [activeTab, setActiveTab] = useState('all'); // 'all' or 'admin'
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  // Duyệt thành viên chờ vào nhóm
+  const [showJoinRequestsModal, setShowJoinRequestsModal] = useState(false);
+  const [processingJoinRequest, setProcessingJoinRequest] = useState(null); // userId đang xử lý
 
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(300)).current;
@@ -688,6 +693,42 @@ export default function GroupManagementScreen({ route, navigation }) {
     );
   };
 
+  const handleApproveJoinRequest = async (userId) => {
+    setProcessingJoinRequest(userId);
+    try {
+      await dispatch(approveJoinRequest({ conversationId, userId })).unwrap();
+      Alert.alert('Thành công', 'Đã phê duyệt thành viên vào nhóm.');
+    } catch (err) {
+      Alert.alert('Lỗi', err || 'Không thể phê duyệt thành viên');
+    } finally {
+      setProcessingJoinRequest(null);
+    }
+  };
+
+  const handleRejectJoinRequest = (userId, userName) => {
+    Alert.alert(
+      'Từ chối yêu cầu',
+      `Bạn có chắc muốn từ chối yêu cầu của ${userName}?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Từ chối',
+          style: 'destructive',
+          onPress: async () => {
+            setProcessingJoinRequest(userId);
+            try {
+              await dispatch(rejectJoinRequest({ conversationId, userId })).unwrap();
+            } catch (err) {
+              Alert.alert('Lỗi', err || 'Không thể từ chối yêu cầu');
+            } finally {
+              setProcessingJoinRequest(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Helpers for member mock usernames and adder info
   const getMockUsername = (name) => {
     if (!name) return 'user';
@@ -852,7 +893,7 @@ export default function GroupManagementScreen({ route, navigation }) {
           <Text style={styles.sectionHeader}>Thông tin về đoạn chat</Text>
           <View style={styles.cardContainer}>
             <TouchableOpacity 
-              style={[styles.listItem, styles.lastListItem]} 
+              style={[styles.listItem, !isCurrentUserAdminOrCoAdmin && styles.lastListItem]} 
               activeOpacity={0.7}
               onPress={() => setShowMembersModal(true)}
             >
@@ -867,8 +908,30 @@ export default function GroupManagementScreen({ route, navigation }) {
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9CA3AF" style={{ marginLeft: 4 }} />
             </TouchableOpacity>
+
+            {isCurrentUserAdminOrCoAdmin && (
+              <TouchableOpacity 
+                style={[styles.listItem, styles.lastListItem]} 
+                activeOpacity={0.7}
+                onPress={() => setShowJoinRequestsModal(true)}
+              >
+                <View style={[styles.listIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="person-add" size={20} color="#D97706" />
+                </View>
+                <Text style={styles.listItemText}>Yêu cầu chờ duyệt</Text>
+                {conversationMeta?.joinRequests?.length > 0 && (
+                  <View style={[styles.memberCountBadge, { backgroundColor: '#EF4444' }]}>
+                    <Text style={[styles.memberCountText, { color: '#FFFFFF' }]}>
+                      {conversationMeta.joinRequests.length}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
+
 
         {/* Invite Link Section */}
         {(isCurrentUserAdminOrCoAdmin || conversationMeta?.inviteLinkEnabled) && (
@@ -1469,6 +1532,95 @@ export default function GroupManagementScreen({ route, navigation }) {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Join Requests Modal */}
+      <Modal
+        visible={showJoinRequestsModal}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setShowJoinRequestsModal(false)}
+      >
+        <View style={styles.darkModalContainer}>
+          {/* Header */}
+          <View style={[styles.darkHeader, { paddingTop: insets.top > 0 ? insets.top : (Platform.OS === 'ios' ? 44 : 16) }]}>
+            <TouchableOpacity onPress={() => setShowJoinRequestsModal(false)} style={styles.darkHeaderBtn} hitSlop={10}>
+              <Ionicons name="chevron-back" size={26} color="#111827" />
+            </TouchableOpacity>
+            
+            <View style={styles.darkHeaderTitleWrap}>
+              <Text style={styles.darkHeaderTitle}>Yêu cầu chờ duyệt</Text>
+              <Text style={styles.darkHeaderSubtitle}>
+                {conversationMeta?.joinRequests?.length || 0} người đang chờ duyệt
+              </Text>
+            </View>
+            <View style={styles.darkHeaderBtn} />
+          </View>
+
+          <FlatList
+            data={conversationMeta?.joinRequests || []}
+            keyExtractor={(item) => String(item.userId?._id || item.userId)}
+            contentContainerStyle={styles.requestsList}
+            ListEmptyComponent={
+              <View style={styles.emptyRequestsWrap}>
+                <Ionicons name="people-outline" size={48} color="#9CA3AF" />
+                <Text style={styles.emptyRequestsText}>Không có yêu cầu tham gia nào</Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const reqUser = item.userId;
+              if (!reqUser) return null;
+              const userId = reqUser._id;
+              const userName = reqUser.name || 'Thành viên VibeSport';
+              const userPic = reqUser.picture;
+              const isProcessing = processingJoinRequest === userId;
+
+              return (
+                <View style={styles.requestItem}>
+                  {userPic ? (
+                    <Image source={{ uri: fixMediaUrl(userPic) }} style={styles.requestAvatar} />
+                  ) : (
+                    <View style={[styles.requestAvatarFallback, { backgroundColor: getAvatarColor(userName) }]}>
+                      <Text style={styles.requestAvatarText}>{getInitials(userName)}</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.requestDetails}>
+                    <Text style={styles.requestName} numberOfLines={1}>{userName}</Text>
+                    {reqUser.area ? (
+                      <Text style={styles.requestSubtext} numberOfLines={1}>
+                        {reqUser.area} {reqUser.favoriteSport ? `• ${reqUser.favoriteSport}` : ''}
+                      </Text>
+                    ) : (
+                      <Text style={styles.requestSubtext}>Muốn tham gia nhóm</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.requestActionRow}>
+                    <TouchableOpacity
+                      onPress={() => handleRejectJoinRequest(userId, userName)}
+                      disabled={isProcessing}
+                      style={[styles.actionBtn, styles.rejectActionBtn]}
+                    >
+                      <Text style={[styles.actionBtnText, styles.rejectActionText]}>Từ chối</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleApproveJoinRequest(userId)}
+                      disabled={isProcessing}
+                      style={[styles.actionBtn, styles.approveActionBtn]}
+                    >
+                      {isProcessing ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={[styles.actionBtnText, styles.approveActionText]}>Phê duyệt</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            }}
+          />
+        </View>
       </Modal>
     </Screen>
   );
@@ -2220,5 +2372,88 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  requestsList: {
+    padding: 16,
+  },
+  emptyRequestsWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+  },
+  emptyRequestsText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  requestItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  requestAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E5E7EB',
+  },
+  requestAvatarFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestAvatarText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  requestDetails: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  requestName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  requestSubtext: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  requestActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectActionBtn: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  rejectActionText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  approveActionBtn: {
+    backgroundColor: '#10B981',
+  },
+  approveActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
