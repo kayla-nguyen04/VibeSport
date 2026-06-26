@@ -81,6 +81,14 @@ export default function JoinGroupScreen({ route, navigation }) {
       if (res.success) {
         if (res.alreadyMember) {
           Alert.alert('Thông báo', 'Bạn đã là thành viên của nhóm này.');
+        } else if (res.requiresApproval) {
+          if (res.alreadyRequested) {
+            Alert.alert('Đã gửi yêu cầu', 'Bạn đã gửi yêu cầu tham gia, vui lòng chờ Quản trị viên duyệt.');
+          } else {
+            Alert.alert('Đã gửi yêu cầu', 'Yêu cầu tham gia đã gửi đến Quản trị viên.');
+          }
+          navigation.replace('ChatList');
+          return;
         } else {
           Alert.alert('Thành công', 'Bạn đã tham gia nhóm thành công.');
         }

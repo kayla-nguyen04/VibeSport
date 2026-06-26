@@ -22,6 +22,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { fetchConversations } from '../redux/chatSlice';
 
 import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
@@ -29,6 +30,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import {
   updateGroupInfo,
   addParticipants,
+  requestAddMember,
   leaveGroup,
   removeParticipant,
   openConversation,
@@ -78,10 +80,13 @@ export default function GroupManagementScreen({ route, navigation }) {
   const conversationMeta = useMemo(() => {
     return conversations.find((item) => item._id === conversationId);
   }, [conversations, conversationId]);
-
+useEffect(() => {
+  if (!conversationMeta) {
+    dispatch(fetchConversations());
+  }
+}, [conversationMeta, dispatch]);
   const peerName = conversationMeta?.name || 'Nhóm VibeSport';
 
-  // Group editing & adding member states
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedAvatarImage, setSelectedAvatarImage] = useState(null);
@@ -660,11 +665,19 @@ export default function GroupManagementScreen({ route, navigation }) {
     if (selectedUserIds.length === 0) return;
     setIsAddingMembers(true);
     try {
-      await dispatch(addParticipants({ conversationId, userIds: selectedUserIds })).unwrap();
-      Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
+      if (isCurrentUserAdminOrCoAdmin) {
+        await dispatch(addParticipants({ conversationId, userIds: selectedUserIds })).unwrap();
+        Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
+        handleCloseAddMember();
+        return;
+      }
+
+      const targetUserId = selectedUserIds[0];
+      await dispatch(requestAddMember({ conversationId, userId: targetUserId })).unwrap();
+      Alert.alert('Đã gửi yêu cầu', 'Yêu cầu thêm thành viên đã gửi đến Quản trị viên');
       handleCloseAddMember();
     } catch (err) {
-      Alert.alert('Lỗi', err || 'Không thể thêm thành viên');
+      Alert.alert('Lỗi', err || 'Không thể xử lý yêu cầu thêm thành viên');
     } finally {
       setIsAddingMembers(false);
     }
@@ -693,10 +706,13 @@ export default function GroupManagementScreen({ route, navigation }) {
     );
   };
 
-  const handleApproveJoinRequest = async (userId) => {
-    setProcessingJoinRequest(userId);
+  const handleApproveJoinRequest = async (item) => {
+    const targetUser = item.userId || item;
+    const userId = targetUser._id || targetUser;
+    const requesterId = item.requestedBy || userId;
+    setProcessingJoinRequest(String(userId));
     try {
-      await dispatch(approveJoinRequest({ conversationId, userId })).unwrap();
+      await dispatch(approveJoinRequest({ conversationId, userId: String(userId), requesterId: String(requesterId) })).unwrap();
       Alert.alert('Thành công', 'Đã phê duyệt thành viên vào nhóm.');
     } catch (err) {
       Alert.alert('Lỗi', err || 'Không thể phê duyệt thành viên');
@@ -705,7 +721,8 @@ export default function GroupManagementScreen({ route, navigation }) {
     }
   };
 
-  const handleRejectJoinRequest = (userId, userName) => {
+  const handleRejectJoinRequest = (user) => {
+    const userName = user?.userId?.name || 'Thành viên';
     Alert.alert(
       'Từ chối yêu cầu',
       `Bạn có chắc muốn từ chối yêu cầu của ${userName}?`,
@@ -715,9 +732,9 @@ export default function GroupManagementScreen({ route, navigation }) {
           text: 'Từ chối',
           style: 'destructive',
           onPress: async () => {
-            setProcessingJoinRequest(userId);
+            setProcessingJoinRequest(String(user.userId?._id || user.userId));
             try {
-              await dispatch(rejectJoinRequest({ conversationId, userId })).unwrap();
+              await dispatch(rejectJoinRequest({ conversationId, userId: String(user.userId?._id || user.userId), requesterId: String(user.requestedBy) })).unwrap();
             } catch (err) {
               Alert.alert('Lỗi', err || 'Không thể từ chối yêu cầu');
             } finally {
@@ -742,42 +759,50 @@ export default function GroupManagementScreen({ route, navigation }) {
       .replace(/\s+/g, '.');
   };
 
-  const getMockAddedBy = (item, participants = [], currentUserId, mutualFriends = []) => {
-    const hasDetails = typeof item === 'object' && item !== null;
-    const name = hasDetails ? item.name : '';
-    const itemId = hasDetails ? item._id : item;
-    
-    const username = getMockUsername(name);
-    
-    // Check if friend
-    const isFriend = mutualFriends.some((f) => String(f._id) === String(itemId));
-    
-    if (isFriend) {
-      return `@${username} • Do bạn thêm`;
-    }
-    
-    // Otherwise, pick another participant deterministically
-    const others = (participants || []).filter(
-      (p) => String((typeof p === 'object' && p !== null) ? p._id : p) !== String(itemId)
-    );
-    
-    if (others.length === 0) {
-      return `@${username} • Do bạn thêm`;
-    }
-    
-    // Use character code sum of itemId to deterministically select an adder
+  // Helper to get adder info from real addedBy data
+  const getAddedByInfo = (itemId, participants = []) => {
     const idStr = String(itemId);
-    const sum = idStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const adder = others[sum % others.length];
-    
-    const adderId = (typeof adder === 'object' && adder !== null) ? adder._id : adder;
-    const adderName = (typeof adder === 'object' && adder !== null) ? adder.name : 'Thành viên VibeSport';
-    
-    if (String(adderId) === String(currentUserId)) {
+    const addedByMap = conversationMeta?.addedBy || {};
+    const adderId = addedByMap[idStr];
+
+    if (!adderId) {
+      // No record found
+      return null;
+    }
+
+    const adderIdStr = String(adderId);
+    const isMe = adderIdStr === String(currentUserId);
+
+    // Find adder in participants
+    const adder = (participants || []).find(
+      (p) => String(p._id || p) === adderIdStr
+    );
+    const adderName = adder?.name || 'Thành viên VibeSport';
+
+    if (isMe) {
+      return { isMe: true, adderName: 'bạn' };
+    }
+    return { isMe: false, adderName };
+  };
+
+  const formatAddedBySubtitle = (item, participants = []) => {
+    const hasDetails = typeof item === 'object' && item !== null;
+    const itemId = hasDetails ? item._id : item;
+    const name = hasDetails ? item.name : '';
+    const username = getMockUsername(name);
+
+    const addedByInfo = getAddedByInfo(itemId, participants);
+
+    if (!addedByInfo) {
+      // No addedBy record - don't show subtitle
+      return '';
+    }
+
+    if (addedByInfo.isMe) {
       return `@${username} • Do bạn thêm`;
     }
-    
-    return `@${username} • ${adderName} đã thêm`;
+
+    return `@${username} • ${addedByInfo.adderName} đã thêm`;
   };
 
   // Group participants by friendship status
@@ -1184,7 +1209,7 @@ export default function GroupManagementScreen({ route, navigation }) {
               const isOnline = hasDetails && member.lastSeenAt && (Date.now() - new Date(member.lastSeenAt).getTime() < 5 * 60 * 1000);
               const isMe = hasDetails && String(member._id) === String(currentUserId);
               
-              const subtitleText = hasDetails ? getMockAddedBy(member, conversationMeta?.participants, currentUserId, mutualFriends) : '';
+              const subtitleText = hasDetails ? formatAddedBySubtitle(member, conversationMeta?.participants) : '';
 
               const nickname = hasDetails ? getMemberNickname(member._id) : '';
               const displayName = nickname ? `${nickname} (${name})` : name;
@@ -1587,7 +1612,11 @@ export default function GroupManagementScreen({ route, navigation }) {
 
                   <View style={styles.requestDetails}>
                     <Text style={styles.requestName} numberOfLines={1}>{userName}</Text>
-                    {reqUser.area ? (
+                    {item.requestedBy ? (
+                      <Text style={styles.requestSubtext} numberOfLines={1}>
+                        Được đề xuất tham gia
+                      </Text>
+                    ) : reqUser.area ? (
                       <Text style={styles.requestSubtext} numberOfLines={1}>
                         {reqUser.area} {reqUser.favoriteSport ? `• ${reqUser.favoriteSport}` : ''}
                       </Text>
@@ -1598,14 +1627,14 @@ export default function GroupManagementScreen({ route, navigation }) {
 
                   <View style={styles.requestActionRow}>
                     <TouchableOpacity
-                      onPress={() => handleRejectJoinRequest(userId, userName)}
+                      onPress={() => handleRejectJoinRequest(item)}
                       disabled={isProcessing}
                       style={[styles.actionBtn, styles.rejectActionBtn]}
                     >
                       <Text style={[styles.actionBtnText, styles.rejectActionText]}>Từ chối</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleApproveJoinRequest(userId)}
+                      onPress={() => handleApproveJoinRequest(item)}
                       disabled={isProcessing}
                       style={[styles.actionBtn, styles.approveActionBtn]}
                     >
