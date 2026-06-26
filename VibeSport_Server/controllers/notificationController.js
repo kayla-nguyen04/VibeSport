@@ -14,6 +14,7 @@ exports.getNotifications = async (req, res) => {
       .populate('fromUserId', 'name picture')
       .populate('postId', 'content mediaUrls')
       .populate('conversationId', 'lastMessage lastMessageAt')
+      .populate('matchId', 'title date startTime locationName')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

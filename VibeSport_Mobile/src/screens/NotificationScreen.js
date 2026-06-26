@@ -19,6 +19,7 @@ import {
   markNotificationRead,
 } from '../redux/notificationSlice';
 import { API_BASE_URL } from '../components/constants/api';
+import { useNotificationNavigationQueue } from '../hooks/useNotificationNavigationQueue';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -37,6 +38,8 @@ export function NotificationScreen({ navigation }) {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
   const { notifications, loading, unreadCount } = useSelector((state) => state.notifications);
+  const conversations = useSelector((state) => state.chat.conversations);
+  const { enqueue } = useNotificationNavigationQueue(navigation);
   const visibleNotifications = notifications.filter((item) => item.type !== 'message');
 
   useEffect(() => {
@@ -52,12 +55,10 @@ export function NotificationScreen({ navigation }) {
   };
 
   const handleNotificationPress = (item) => {
-    // Đánh dấu đã đọc trước khi navigate
     if (!item.read) {
       dispatch(markNotificationRead(item._id));
     }
 
-    // ── Follow notification → navigate đến trang cá nhân của người follow ──
     if (item.type === 'follow') {
       const senderId = item.fromUserId?._id || item.fromUserId;
       if (senderId) {
@@ -66,11 +67,21 @@ export function NotificationScreen({ navigation }) {
       return;
     }
 
-    // ── Post-related notifications (like, comment, reply) → PostDetail ──
     const postId = item.postId?._id || item.postId;
     if (postId) {
       navigation.navigate('PostDetail', { postId });
+      return;
     }
+
+    const conversationId = item.conversationId?._id || item.conversationId;
+if (item.type === 'group' && conversationId) {
+  const found = conversations.find((c) => String(c._id) === String(conversationId));
+  if (found) {
+    navigation.navigate('GroupManagement', { conversationId });
+  } else {
+    enqueue(conversationId, 'group');
+  }
+}
   };
 
   const formatTime = (dateString) => {
@@ -98,7 +109,7 @@ export function NotificationScreen({ navigation }) {
         activeOpacity={0.8}
         style={[styles.notificationItem, isUnread && styles.unreadItem]}
       >
-        {/* Sender Avatar */}
+       
         {fromUser?.picture ? (
           <Image source={{ uri: fixMediaUrl(fromUser.picture) }} style={styles.avatar} />
         ) : (
@@ -109,7 +120,7 @@ export function NotificationScreen({ navigation }) {
           </View>
         )}
 
-        {/* Content Info */}
+      
         <View style={styles.contentInfo}>
           <Text style={[styles.messageText, isUnread && styles.unreadMessageText]}>
             {item.message}
@@ -117,7 +128,7 @@ export function NotificationScreen({ navigation }) {
           <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
         </View>
 
-        {/* Right side: follow badge OR post thumbnail */}
+       
         {item.type === 'follow' ? (
           <View style={styles.followBadge}>
             <Ionicons name="person-add" size={18} color="#FF6B35" />
@@ -130,7 +141,6 @@ export function NotificationScreen({ navigation }) {
           </View>
         ) : null}
 
-        {/* Unread indicator dot */}
         {isUnread && <View style={styles.unreadDot} />}
       </TouchableOpacity>
     );

@@ -10,7 +10,7 @@ const notificationSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ['follow', 'message', 'match', 'system', 'like', 'comment', 'reply'],
+      enum: ['follow', 'message', 'match', 'system', 'like', 'comment', 'reply', 'group'],
       default: 'system',
     },
     fromUserId: {
@@ -39,6 +39,11 @@ const notificationSchema = new Schema(
     },
     postThumbnail: {
       type: String,
+      default: null,
+    },
+    matchId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Match',
       default: null,
     },
     read: {
