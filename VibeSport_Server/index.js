@@ -27,6 +27,7 @@ const usersRouter = require('./routes/users');
 const notificationsRouter = require('./routes/notifications');
 const chatRouter = require('./routes/chat');
 const seedTags = require('./scripts/seedTags');
+const { startMatchNotificationCron } = require('./utils/matchNotificationCron');
 
 const app = express();
 const server = http.createServer(app);
@@ -99,6 +100,7 @@ mongoose
     console.log('Connected to MongoDB');
     await seedTags();
     console.log('Tag catalog ready');
+    startMatchNotificationCron();
     server.listen(PORT, HOST, () => {
       console.log(`Server listening at http://${HOST}:${PORT}`);
     });
