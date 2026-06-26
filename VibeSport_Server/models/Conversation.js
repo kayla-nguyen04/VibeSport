@@ -134,9 +134,53 @@ const conversationSchema = new Schema(
           ref: 'User',
           required: true,
         },
+        requestedBy: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          default: null,
+        },
         requestedAt: {
           type: Date,
           default: Date.now,
+        },
+      },
+    ],
+    // === Added-by tracking for participants ===
+    addedBy: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+    pinnedMessage: {
+      messageId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Message',
+        default: null,
+      },
+      pinnedAt: {
+        type: Date,
+        default: null,
+      },
+      pinnedBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+    },
+    pinnedMessages: [
+      {
+        messageId: {
+          type: Schema.Types.ObjectId,
+          ref: 'Message',
+          required: true,
+        },
+        pinnedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        pinnedBy: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
         },
       },
     ],

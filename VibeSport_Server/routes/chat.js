@@ -30,6 +30,9 @@ const {
   approveJoinRequest,
   rejectJoinRequest,
   requestToJoinGroup,
+  requestAddMember,
+  pinMessage,
+  unpinMessage,
 } = require('../controllers/chatController');
 const uploadConversation = require('../middleware/uploadConversation');
 
@@ -71,6 +74,10 @@ router.post('/invite/:code/join', joinViaInviteLink);
 router.post('/conversations/:id/join-request', requestToJoinGroup);
 router.put('/conversations/:id/approve-member', approveJoinRequest);
 router.put('/conversations/:id/reject-member', rejectJoinRequest);
+router.post('/conversations/:id/add-member-request', requestAddMember);
+// Pinned message
+router.put('/conversations/:id/pin', pinMessage);
+router.put('/conversations/:id/unpin', unpinMessage);
 
 module.exports = router;
 

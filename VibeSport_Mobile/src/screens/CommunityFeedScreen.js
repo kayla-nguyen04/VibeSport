@@ -325,15 +325,22 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           </TouchableOpacity>
           <View style={styles.postInfo}>
             <View style={styles.nameRow}>
-              <TouchableOpacity
-                onPress={() => {
-                  const authorId = item.userId?._id || item.userId?.id;
-                  if (authorId) navigation.navigate('UserProfile', { userId: authorId });
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
-              </TouchableOpacity>
+              <View style={styles.userNameRow}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const authorId = item.userId?._id || item.userId?.id;
+                    if (authorId) navigation.navigate('UserProfile', { userId: authorId });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
+                </TouchableOpacity>
+                {item.isFollowing ? (
+                  <View style={styles.followingBadge}>
+                    <Text style={styles.followingBadgeText}>Đang theo dõi</Text>
+                  </View>
+                ) : null}
+              </View>
               <View style={styles.tagRow}>
                 {displayTags.map((tagName, index) => renderTagBadge(tagName, `${item._id}-${index}`))}
               </View>
@@ -888,6 +895,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: '#1F2937',
+  },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  followingBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  followingBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   sportBadge: {
     flexDirection: 'row',

@@ -183,7 +183,7 @@ exports.getPosts = async (req, res) => {
       })
     );
 
-    const mappedPosts = await mapPostInteractions(populatedPosts, req.userId);
+    const mappedPosts = await mapPostInteractions(populatedPosts, req.userId, followingIds);
 
     res.status(200).json({ success: true, data: mappedPosts, page, limit });
   } catch (error) {
@@ -235,11 +235,22 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
 
     // Score branches: tên người (30) > tag (20) > sportType (15) > nội dung (10)
     const scoreBranches = [];
-    if (matchingUserIds.length > 0) {
-      scoreBranches.push({
-        case: { $in: ['$userId', matchingUserIds] },
-        then: 30,
-      });
+    let followingIds = [];
+    if (req.userId) {
+      followingIds = await Follow.find({ followerId: req.userId }).distinct('followingId');
+      if (followingIds.length > 0 && matchingUserIds.length > 0) {
+        scoreBranches.push({
+          case: { $in: ['$userId', matchingUserIds] },
+          then: 30,
+        });
+      }
+    } else {
+      if (matchingUserIds.length > 0) {
+        scoreBranches.push({
+          case: { $in: ['$userId', matchingUserIds] },
+          then: 30,
+        });
+      }
     }
     scoreBranches.push(
       {
@@ -301,7 +312,7 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
     ];
 
     const rawPosts = await Post.aggregate(pipeline);
-    const mappedPosts = await mapPostInteractions(rawPosts, req.userId);
+    const mappedPosts = await mapPostInteractions(rawPosts, req.userId, []);
 
     res.status(200).json({ success: true, data: mappedPosts, page, limit });
   } catch (error) {
@@ -311,13 +322,14 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
 }
 
 // ─── Helper: map interaction (liked, saved, topReactions) ────────
-async function mapPostInteractions(posts, currentUserId) {
+async function mapPostInteractions(posts, currentUserId, followingIds = []) {
   return Promise.all(
     posts.map(async (post) => {
       const postId = post._id;
       let isLiked = false;
       let reactionType = null;
       let isSaved = false;
+      let isFollowing = Boolean(post.isFollowing);
 
       if (currentUserId) {
         const like = await PostLike.findOne({ postId, userId: currentUserId });
@@ -342,6 +354,7 @@ async function mapPostInteractions(posts, currentUserId) {
         reactionType,
         topReactions,
         isSaved,
+        isFollowing,
       };
     })
   );
@@ -359,6 +372,7 @@ exports.getPostById = async (req, res) => {
     let isLiked = false;
     let reactionType = null;
     let isSaved = false;
+    let isFollowing = false;
     if (req.userId) {
       const like = await PostLike.findOne({ postId: post._id, userId: req.userId });
       if (like) {
@@ -366,6 +380,7 @@ exports.getPostById = async (req, res) => {
         reactionType = like.reactionType;
       }
       isSaved = Boolean(await SavedPost.exists({ postId: post._id, userId: req.userId }));
+      isFollowing = Boolean(await Follow.exists({ followerId: req.userId, followingId: post.userId }));
     }
 
     // Get top 2 reactions
@@ -424,6 +439,7 @@ exports.getPostById = async (req, res) => {
         reactionType,
         topReactions,
         isSaved,
+        isFollowing,
         comments: topLevelComments,
       },
     });

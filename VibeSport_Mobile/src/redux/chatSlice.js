@@ -30,6 +30,9 @@ import {
   approveJoinRequestRequest,
   rejectJoinRequestRequest,
   requestToJoinGroupRequest,
+  requestAddMemberRequest,
+  pinMessageRequest,
+  unpinMessageRequest,
 } from '../services/chatApi';
 
 
@@ -214,6 +217,18 @@ export const addParticipants = createAsyncThunk(
   }
 );
 
+export const requestAddMember = createAsyncThunk(
+  'chat/requestAddMember',
+  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await requestAddMemberRequest(conversationId, userId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể gửi yêu cầu thêm thành viên.');
+    }
+  }
+);
+
 export const leaveGroup = createAsyncThunk(
   'chat/leaveGroup',
   async (conversationId, { rejectWithValue, getState }) => {
@@ -348,10 +363,10 @@ export const sendImageMessage = createAsyncThunk(
 
 export const approveJoinRequest = createAsyncThunk(
   'chat/approveJoinRequest',
-  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+  async ({ conversationId, userId, requesterId }, { rejectWithValue, getState }) => {
     try {
       const token = getState().auth.token;
-      return await approveJoinRequestRequest(conversationId, userId, token);
+      return await approveJoinRequestRequest(conversationId, userId, requesterId, token);
     } catch (error) {
       return rejectWithValue(error.message || 'Không thể phê duyệt thành viên.');
     }
@@ -360,10 +375,10 @@ export const approveJoinRequest = createAsyncThunk(
 
 export const rejectJoinRequest = createAsyncThunk(
   'chat/rejectJoinRequest',
-  async ({ conversationId, userId }, { rejectWithValue, getState }) => {
+  async ({ conversationId, userId, requesterId }, { rejectWithValue, getState }) => {
     try {
       const token = getState().auth.token;
-      return await rejectJoinRequestRequest(conversationId, userId, token);
+      return await rejectJoinRequestRequest(conversationId, userId, requesterId, token);
     } catch (error) {
       return rejectWithValue(error.message || 'Không thể từ chối yêu cầu.');
     }
@@ -378,6 +393,30 @@ export const requestToJoinGroup = createAsyncThunk(
       return await requestToJoinGroupRequest(conversationId, token);
     } catch (error) {
       return rejectWithValue(error.message || 'Không thể gửi yêu cầu tham gia.');
+    }
+  }
+);
+
+export const pinMessage = createAsyncThunk(
+  'chat/pinMessage',
+  async ({ conversationId, messageId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await pinMessageRequest(conversationId, messageId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể ghim tin nhắn.');
+    }
+  }
+);
+
+export const unpinMessage = createAsyncThunk(
+  'chat/unpinMessage',
+  async ({ conversationId, messageId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await unpinMessageRequest(conversationId, messageId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể bỏ ghim tin nhắn.');
     }
   }
 );
@@ -604,6 +643,14 @@ const chatSlice = createSlice({
       state.accepting = false;
       state.processing = false;
       state.error = null;
+    },
+    joinRequestUpdated(state, action) {
+      const { conversation } = action.payload;
+      if (!conversation) return;
+      const index = state.conversations.findIndex((item) => item._id === conversation._id);
+      if (index !== -1) {
+        state.conversations[index] = { ...state.conversations[index], ...conversation };
+      }
     },
   },
   extraReducers: (builder) => {
@@ -864,6 +911,14 @@ const chatSlice = createSlice({
         const data = action.payload?.data;
         if (data) state.conversations = upsertConversation(state.conversations, data);
       })
+      .addCase(pinMessage.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) state.conversations = upsertConversation(state.conversations, data);
+      })
+      .addCase(unpinMessage.fulfilled, (state, action) => {
+        const data = action.payload?.data;
+        if (data) state.conversations = upsertConversation(state.conversations, data);
+      })
       .addCase(logoutUser.fulfilled, (state) => {
         state.activeConversationId = null;
         state.conversations = [];
@@ -895,5 +950,6 @@ export const {
   pendingMessagesDeletedByOther,
   groupUpdated,
   resetChat,
+  joinRequestUpdated,
 } = chatSlice.actions;
 export default chatSlice.reducer;

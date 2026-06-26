@@ -247,6 +247,20 @@ const postSlice = createSlice({
         post.commentsCount = commentsCount;
       });
     },
+    updatePostFollowStatus: (state, action) => {
+      const { userId, isFollowing } = action.payload;
+      if (!userId) return;
+      state.posts.forEach((post) => {
+        if (post.userId?._id && post.userId._id === userId) {
+          post.isFollowing = isFollowing;
+        }
+      });
+      state.savedPosts.forEach((post) => {
+        if (post.userId?._id && post.userId._id === userId) {
+          post.isFollowing = isFollowing;
+        }
+      });
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -461,5 +475,5 @@ const postSlice = createSlice({
   },
 });
 
-export const { resetFeed, setActiveTag, updateCommentCount } = postSlice.actions;
+export const { resetFeed, setActiveTag, updateCommentCount, updatePostFollowStatus } = postSlice.actions;
 export default postSlice.reducer;

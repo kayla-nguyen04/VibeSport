@@ -16,6 +16,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getPostsRequest } from '../services/postApi';
 import { getUserProfileRequest, getUserTeamsRequest, toggleFollowRequest } from '../services/userApi';
 import { openConversation } from '../redux/chatSlice';
+import { updatePostFollowStatus } from '../redux/postSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
 import { Screen } from '../components/Screen';
@@ -172,12 +173,14 @@ export default function UserProfileScreen({ route, navigation }) {
     setFollowLoading(true);
     try {
       const res = await toggleFollowRequest(userId, token);
+      const nextFollow = Boolean(res.following);
       setProfile((prev) => ({
         ...prev,
-        isFollowing: res.following,
+        isFollowing: nextFollow,
         isFollowedBy: res.isFollowedBy,
-        followerCount: prev.followerCount + (res.following ? 1 : -1),
+        followerCount: prev.followerCount + (nextFollow ? 1 : -1),
       }));
+      dispatch(updatePostFollowStatus({ userId, isFollowing: nextFollow }));
     } catch (err) {
       Alert.alert('Lỗi', err.message || 'Không cập nhật được theo dõi');
     } finally {
