@@ -3,6 +3,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const Follow = require('../models/Follow');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { API_BASE_URL } = require('../utils/config');
 
 const USER_SELECT = 'name picture area favoriteSport lastSeenAt';
@@ -237,6 +238,11 @@ function formatConversation(conversation, currentUserId, isFriend) {
     joinRequests: isGroup && isAdminOrCoAdmin(conversation, currentUserId)
       ? (conversation.joinRequests || [])
       : [],
+    // Added-by tracking: chỉ hiện cho admin/co-admin
+    addedBy: isGroup && isAdminOrCoAdmin(conversation, currentUserId)
+      ? (conversation.addedBy || {})
+      : {},
+    pinnedMessages: conversation.pinnedMessages || [],
   };
 }
 
@@ -245,6 +251,7 @@ exports.getConversations = async (req, res) => {
     const conversations = await Conversation.find({ participants: req.userId })
       .populate('participants', USER_SELECT)
       .populate('pendingMessages.senderId', USER_SELECT)
+      .populate('joinRequests.userId', USER_SELECT)
       .sort({ lastMessageAt: -1 });
 
     const formatted = await Promise.all(
@@ -1096,9 +1103,9 @@ exports.addParticipants = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Hội thoại này không phải là nhóm' });
     }
 
-    // Verify admin or co-admin
+    // Verify admin or co-admin (required for direct add)
     if (!isAdminOrCoAdmin(conversation, req.userId)) {
-      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền thêm thành viên' });
+      return res.status(403).json({ success: false, message: 'Chỉ quản trị viên mới có quyền thêm thành viên trực tiếp. Thành viên thường có thể yêu cầu thêm qua link mời.' });
     }
 
     // Add new userIds without duplicates
@@ -1110,11 +1117,15 @@ exports.addParticipants = async (req, res) => {
         if (!conversation.acceptedBy.includes(userId)) {
           conversation.acceptedBy.push(userId);
         }
+        // Track who added this user
+        if (!conversation.addedBy) conversation.addedBy = {};
+        conversation.addedBy[String(userId)] = String(req.userId);
         addedCount++;
       }
     });
 
     if (addedCount > 0) {
+      conversation.markModified('addedBy');
       await conversation.save();
     }
 
@@ -1708,11 +1719,10 @@ exports.joinViaInviteLink = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Link mời không hợp lệ hoặc đã hết hạn' });
     }
 
-    // Check if already a member
-    const alreadyMember = conversation.participants.some(
+    const isMember = conversation.participants.some(
       p => String(p) === String(req.userId)
     );
-    if (alreadyMember) {
+    if (isMember) {
       const populated = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
       return res.status(200).json({
         success: true,
@@ -1722,13 +1732,64 @@ exports.joinViaInviteLink = async (req, res) => {
       });
     }
 
-    // Add user to group
+    if (conversation.requireApproval) {
+      const existingRequest = conversation.joinRequests.some(
+        r => String(r.userId) === String(req.userId)
+      );
+      if (existingRequest) {
+        return res.status(200).json({
+          success: true,
+          requiresApproval: true,
+          alreadyRequested: true,
+          message: 'Bạn đã gửi yêu cầu tham gia, vui lòng chờ duyệt',
+        });
+      }
+
+      conversation.joinRequests.push({ userId: req.userId, requestedBy: req.userId });
+      await conversation.save();
+
+      const updated = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
+
+      const rawNotifyUserIds = [
+        String(conversation.admin || conversation.participants?.[0]),
+        ...(conversation.coAdmins || []).map(id => String(id)),
+      ];
+      const notifyUserIds = [...new Set(rawNotifyUserIds.filter(Boolean))];
+
+      await Promise.all(
+        notifyUserIds.map(adminId =>
+          Notification.create({
+            userId: adminId,
+            type: 'group',
+            fromUserId: req.userId,
+            message: `${req.user?.name || 'Ai đó'} đã gửi yêu cầu tham gia nhóm "${conversation.name || ''}"`,
+            conversationId: conversation._id,
+          })
+        )
+      );
+
+      if (global.io) {
+        notifyUserIds.forEach(adminId => {
+          global.io.to(adminId).emit('group_join_requested', {
+            conversationId: conversation._id,
+            conversation: formatConversation(updated, adminId, true),
+          });
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        requiresApproval: true,
+        alreadyRequested: false,
+        message: 'Đã gửi yêu cầu tham gia, vui lòng chờ Quản trị viên duyệt',
+      });
+    }
+
     conversation.participants.push(req.userId);
     if (!conversation.acceptedBy.some(id => String(id) === String(req.userId))) {
       conversation.acceptedBy.push(req.userId);
     }
 
-    // Initialize unread count for new member
     if (!conversation.unreadByUser || typeof conversation.unreadByUser !== 'object') {
       conversation.unreadByUser = {};
     }
@@ -1739,7 +1800,6 @@ exports.joinViaInviteLink = async (req, res) => {
 
     const updated = await Conversation.findById(conversation._id).populate('participants', USER_SELECT);
 
-    // Notify all participants via socket
     if (global.io) {
       updated.participants.forEach(p => {
         const pIdStr = String(p._id || p);
@@ -1750,8 +1810,9 @@ exports.joinViaInviteLink = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
+      requiresApproval: false,
       message: 'Đã tham gia nhóm thành công',
       data: formatConversation(updated, req.userId, true),
     });
@@ -1841,7 +1902,7 @@ exports.sendImageMessage = async (req, res) => {
 exports.approveJoinRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId: targetUserId } = req.body;
+    const { userId: targetUserId, requesterId } = req.body;
 
     const conversation = await Conversation.findById(id).populate('joinRequests.userId', USER_SELECT);
     if (!conversation || !conversation.isGroup) {
@@ -1852,38 +1913,58 @@ exports.approveJoinRequest = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền duyệt thành viên' });
     }
 
-    // Kiểm tra request tồn tại
-    const requestIndex = conversation.joinRequests.findIndex(
-      (r) => String(r.userId?._id || r.userId) === String(targetUserId)
-    );
-    if (requestIndex === -1) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+    const targetIdStr = String(targetUserId);
+    const requesterIdStr = requesterId ? String(requesterId) : null;
+
+    const request = conversation.joinRequests.find((r) => {
+      const userIdMatch = String(r.userId?._id || r.userId) === targetIdStr;
+      const requesterMatch = requesterIdStr
+        ? String(r.requestedBy || '') === requesterIdStr
+        : true;
+      return userIdMatch && requesterMatch;
+    });
+
+    if (!request) {
+      const fallback = conversation.joinRequests.find(
+        (r) => String(r.userId?._id || r.userId) === targetIdStr
+      );
+      if (!fallback) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
+      }
+      return res.status(200).json({
+        success: false,
+        message: 'Yêu cầu hiện tại không khớp người duyệt, vui lòng thử lại.',
+      });
     }
 
-    // Xóa khỏi joinRequests
-    conversation.joinRequests.splice(requestIndex, 1);
+    const requestedBy = request.requestedBy;
 
-    // Thêm vào participants nếu chưa có
+    conversation.joinRequests = conversation.joinRequests.filter(
+      (r) => String(r.userId?._id || r.userId) !== targetIdStr
+    );
+
     const isAlreadyIn = conversation.participants.some(
-      (p) => String(p._id || p) === String(targetUserId)
+      (p) => String(p._id || p) === targetIdStr
     );
     if (!isAlreadyIn) {
       conversation.participants.push(targetUserId);
       conversation.acceptedBy.push(targetUserId);
       if (!conversation.unreadByUser) conversation.unreadByUser = {};
-      conversation.unreadByUser[String(targetUserId)] = 0;
+      conversation.unreadByUser[targetIdStr] = 0;
       conversation.markModified('unreadByUser');
+      if (!conversation.addedBy) conversation.addedBy = {};
+      conversation.addedBy[targetIdStr] = String(requestedBy || req.userId);
+      conversation.markModified('addedBy');
     }
 
     await conversation.save();
     const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
     const formatted = formatConversation(updated, req.userId, true);
 
-    // Thông báo cho thành viên vừa được duyệt
     if (global.io) {
-      global.io.to(String(targetUserId)).emit('join_request_approved', {
+      global.io.to(targetIdStr).emit('join_request_approved', {
         conversationId: id,
-        conversation: formatConversation(updated, targetUserId, true),
+        conversation: formatConversation(updated, targetIdStr, true),
       });
     }
 
@@ -1898,9 +1979,9 @@ exports.approveJoinRequest = async (req, res) => {
 exports.rejectJoinRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId: targetUserId } = req.body;
+    const { userId: targetUserId, requesterId } = req.body;
 
-    const conversation = await Conversation.findById(id);
+    const conversation = await Conversation.findById(id).populate('joinRequests.userId', USER_SELECT);
     if (!conversation || !conversation.isGroup) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
     }
@@ -1909,14 +1990,23 @@ exports.rejectJoinRequest = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền từ chối' });
     }
 
-    const requestIndex = conversation.joinRequests.findIndex(
-      (r) => String(r.userId?._id || r.userId) === String(targetUserId)
-    );
-    if (requestIndex === -1) {
+    const targetIdStr = String(targetUserId);
+    const requesterIdStr = requesterId ? String(requesterId) : null;
+
+    const request = conversation.joinRequests.find((r) => {
+      const userIdMatch = String(r.userId?._id || r.userId) === targetIdStr;
+      const requesterMatch = requesterIdStr
+        ? String(r.requestedBy || '') === requesterIdStr
+        : true;
+      return userIdMatch && requesterMatch;
+    });
+    if (!request) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu' });
     }
 
-    conversation.joinRequests.splice(requestIndex, 1);
+    conversation.joinRequests = conversation.joinRequests.filter(
+      (r) => String(r.userId?._id || r.userId) !== targetIdStr
+    );
     await conversation.save();
 
     const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
@@ -1924,13 +2014,124 @@ exports.rejectJoinRequest = async (req, res) => {
 
     // Thông báo cho thành viên bị từ chối
     if (global.io) {
-      global.io.to(String(targetUserId)).emit('join_request_rejected', { conversationId: id });
+      global.io.to(targetIdStr).emit('join_request_rejected', {
+        conversationId: id,
+        conversation: formatConversation(updated, targetIdStr, true),
+      });
     }
 
     res.status(200).json({ success: true, message: 'Từ chối thành công', data: formatted });
   } catch (error) {
     console.error('Reject join request error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi từ chối' });
+  }
+};
+
+// ─── Gửi yêu cầu thêm thành viên (Thành viên thường yêu cầu admin thêm) ───────
+exports.requestAddMember = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId: targetUserId } = req.body;
+
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin người cần thêm' });
+    }
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
+    }
+
+    // Người gửi yêu cầu phải là thành viên của nhóm
+    const isParticipant = conversation.participants.some(
+      (p) => String(p) === String(req.userId)
+    );
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: 'Bạn không phải là thành viên của nhóm này' });
+    }
+
+    // Người được thêm không được là thành viên hiện tại
+    if (conversation.participants.some((p) => String(p) === String(targetUserId))) {
+      return res.status(400).json({ success: false, message: 'Người này đã là thành viên của nhóm' });
+    }
+
+    // Kiểm tra đã gửi yêu cầu thêm người này chưa
+    const alreadyRequested = conversation.joinRequests.some(
+      (r) => String(r.userId) === String(targetUserId) && String(r.requestedBy) === String(req.userId)
+    );
+    if (alreadyRequested) {
+      return res.status(400).json({ success: false, message: 'Bạn đã gửi yêu cầu thêm người này rồi, vui lòng chờ duyệt' });
+    }
+
+    conversation.joinRequests.push({
+      userId: targetUserId,
+      requestedBy: req.userId,
+      requestedAt: new Date(),
+    });
+    await conversation.save();
+
+    const requester = await User.findById(req.userId).select('name').lean();
+    const requesterName = requester?.name || 'Thành viên';
+
+    const targetUser = await User.findById(targetUserId).select('name').lean();
+    const targetUserName = targetUser?.name || 'Thành viên';
+
+    const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
+    const formatted = formatConversation(updated, req.userId, true);
+
+    // Notify admin and coAdmins via socket
+    const rawNotifyUserIds = [
+      String(conversation.admin || conversation.participants?.[0]),
+      ...(conversation.coAdmins || []).map((uid) => String(uid)),
+    ];
+    const notifyUserIds = [...new Set(rawNotifyUserIds.filter(Boolean))];
+
+    if (global.io) {
+      notifyUserIds.forEach((adminId) => {
+        global.io.to(adminId).emit('group_join_requested', {
+          conversationId: id,
+          conversation: formatConversation(updated, adminId, true),
+        });
+      });
+    }
+
+    const createdNotifications = await Promise.all(
+      notifyUserIds.map((adminId) =>
+        Notification.create({
+          userId: adminId,
+          type: 'group',
+          fromUserId: req.userId,
+          message: `${requesterName} đã đề xuất thêm ${targetUserName} vào nhóm "${conversation.name || ''}"`,
+          conversationId: id,
+        })
+      )
+    );
+
+    const populatedNotifications = await Promise.all(
+      createdNotifications.map((notif) =>
+        Notification.findById(notif._id)
+          .populate('fromUserId', 'name picture')
+          .populate('conversationId', 'name lastMessage lastMessageAt')
+      )
+    );
+
+    if (global.io) {
+      notifyUserIds.forEach((adminId, idx) => {
+        const notif = populatedNotifications[idx];
+        if (notif) {
+          global.io.to(String(adminId)).emit('new_notification', notif);
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã gửi yêu cầu thêm thành viên, vui lòng chờ Quản trị viên duyệt',
+      data: formatted,
+    });
+  } catch (error) {
+    console.error('Request add member error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi yêu cầu thêm thành viên' });
   }
 };
 
@@ -1957,16 +2158,49 @@ exports.requestToJoinGroup = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Bạn đã gửi yêu cầu gia nhập nhóm rồi, vui lòng chờ duyệt' });
     }
 
-    conversation.joinRequests.push({ userId: req.userId });
+    conversation.joinRequests.push({ userId: req.userId, requestedBy: req.userId });
     await conversation.save();
 
+    const requester = await User.findById(req.userId).select('name').lean();
+    const requesterName = requester?.name || 'Thành viên';
+
     // Notify group admin and coAdmins via socket if online
-    const notifyUserIds = [
-      String(conversation.admin || conversation.participants[0]),
+    const rawNotifyUserIds = [
+      String(conversation.admin || conversation.participants?.[0]),
       ...(conversation.coAdmins || []).map((id) => String(id)),
     ];
+    const notifyUserIds = [...new Set(rawNotifyUserIds.filter(Boolean))];
 
     const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
+
+    await Promise.all(
+      notifyUserIds.map((adminId) =>
+        Notification.create({
+          userId: adminId,
+          type: 'group',
+          fromUserId: req.userId,
+          message: `${requesterName} đã gửi yêu cầu tham gia nhóm "${conversation.name || ''}"`,
+          conversationId: id,
+        })
+      )
+    );
+
+    const populatedNotifications = await Promise.all(
+      notifyUserIds.map((adminId) =>
+        Notification.findOne({ userId: adminId, type: 'group', conversationId: id, fromUserId: req.userId })
+          .sort({ createdAt: -1 })
+          .populate('fromUserId', 'name picture')
+      )
+    );
+
+    if (global.io) {
+      notifyUserIds.forEach((adminId, idx) => {
+        const notif = populatedNotifications[idx];
+        if (notif) {
+          global.io.to(String(adminId)).emit('new_notification', notif);
+        }
+      });
+    }
 
     if (global.io) {
       notifyUserIds.forEach((adminId) => {
@@ -1984,6 +2218,124 @@ exports.requestToJoinGroup = async (req, res) => {
   } catch (error) {
     console.error('Request to join group error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi gửi yêu cầu tham gia' });
+  }
+};
+
+// ─── Ghim / Bỏ ghim tin nhắn ───────────────────────────────────────────────
+// === Ghim / Bỏ ghim tin nhắn (tối đa 3) ===
+const MAX_PINNED_MESSAGES = 3;
+
+exports.pinMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { messageId } = req.body;
+
+    const conversation = await Conversation.findById(id);
+    if (
+      !conversation ||
+      !conversation.participants.some((p) => String(p) === String(req.userId))
+    ) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message || String(message.conversationId) !== String(id)) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tin nhắn' });
+    }
+
+    const pinnedMessages = conversation.pinnedMessages || [];
+
+    const alreadyPinned = pinnedMessages.some(
+      (p) => String(p.messageId) === String(messageId)
+    );
+    if (alreadyPinned) {
+      return res.status(400).json({ success: false, message: 'Tin nhắn này đã được ghim' });
+    }
+
+    if (pinnedMessages.length >= MAX_PINNED_MESSAGES) {
+      return res.status(400).json({
+        success: false,
+        message: `Chỉ được ghim tối đa ${MAX_PINNED_MESSAGES} tin nhắn`,
+      });
+    }
+
+    pinnedMessages.push({
+      messageId: message._id,
+      pinnedAt: new Date(),
+      pinnedBy: req.userId,
+    });
+
+    conversation.pinnedMessages = pinnedMessages;
+    await conversation.save();
+
+    const populated = await Conversation.findById(id)
+      .populate('participants', USER_SELECT)
+      .populate('pinnedMessages.messageId', USER_SELECT);
+
+    const formatted = formatConversation(populated, req.userId, true);
+
+    if (global.io) {
+      conversation.participants.forEach((p) => {
+        const pIdStr = String(p);
+        global.io.to(pIdStr).emit('pinned_message', {
+          conversationId: id,
+          conversation: formatConversation(populated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: formatted,
+    });
+  } catch (error) {
+    console.error('Pin message error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi ghim tin nhắn' });
+  }
+};
+
+exports.unpinMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { messageId } = req.body;
+
+    const conversation = await Conversation.findById(id);
+    if (
+      !conversation ||
+      !conversation.participants.some((p) => String(p) === String(req.userId))
+    ) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hội thoại' });
+    }
+
+    const pinnedMessages = (conversation.pinnedMessages || [])
+      .filter((p) => String(p.messageId) !== String(messageId));
+
+    conversation.pinnedMessages = pinnedMessages;
+    await conversation.save();
+
+    const populated = await Conversation.findById(id)
+      .populate('participants', USER_SELECT)
+      .populate('pinnedMessages.messageId', USER_SELECT);
+
+    const formatted = formatConversation(populated, req.userId, true);
+
+    if (global.io) {
+      conversation.participants.forEach((p) => {
+        const pIdStr = String(p);
+        global.io.to(pIdStr).emit('unpinned_message', {
+          conversationId: id,
+          conversation: formatConversation(populated, pIdStr, true),
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: formatted,
+    });
+  } catch (error) {
+    console.error('Unpin message error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi bỏ ghim tin nhắn' });
   }
 };
 

@@ -158,20 +158,38 @@ export const sendImageMessageRequest = (conversationId, formData, token) =>
   }, token);
 
 // === Duyệt / Từ chối yêu cầu gia nhóm ===
-export const approveJoinRequestRequest = (conversationId, userId, token) =>
+export const approveJoinRequestRequest = (conversationId, userId, requesterId, token) =>
   request(`/api/chat/conversations/${conversationId}/approve-member`, {
     method: 'PUT',
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ userId, requesterId }),
   }, token);
 
-export const rejectJoinRequestRequest = (conversationId, userId, token) =>
+export const rejectJoinRequestRequest = (conversationId, userId, requesterId, token) =>
   request(`/api/chat/conversations/${conversationId}/reject-member`, {
     method: 'PUT',
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ userId, requesterId }),
   }, token);
 
 export const requestToJoinGroupRequest = (conversationId, token) =>
   request(`/api/chat/conversations/${conversationId}/join-request`, {
     method: 'POST',
+  }, token);
+
+export const requestAddMemberRequest = (conversationId, userId, token) =>
+  request(`/api/chat/conversations/${conversationId}/add-member-request`, {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  }, token);
+
+export const pinMessageRequest = (conversationId, messageId, token) =>
+  request(`/api/chat/conversations/${conversationId}/pin`, {
+    method: 'PUT',
+    body: JSON.stringify({ messageId }),
+  }, token);
+
+export const unpinMessageRequest = (conversationId, messageId, token) =>
+  request(`/api/chat/conversations/${conversationId}/unpin`, {
+    method: 'PUT',
+    body: JSON.stringify({ messageId }),
   }, token);
 

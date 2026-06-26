@@ -16,6 +16,7 @@ import {
   groupUpdated,
   memberMuted,
   memberUnmuted,
+  joinRequestUpdated,
 } from '../redux/chatSlice';
 
 export function useSocket() {
@@ -98,6 +99,22 @@ export function useSocket() {
 
     socket.on('member_unmuted', (payload) => {
       dispatch(memberUnmuted(payload));
+    });
+
+    socket.on('pinned_message', (payload) => {
+      dispatch(groupUpdated(payload));
+    });
+
+    socket.on('unpinned_message', (payload) => {
+      dispatch(groupUpdated(payload));
+    });
+
+    socket.on('join_request_approved', (payload) => {
+      dispatch(joinRequestUpdated(payload));
+    });
+
+    socket.on('join_request_rejected', (payload) => {
+      dispatch(joinRequestUpdated(payload));
     });
 
     socket.on('disconnect', () => {

@@ -33,6 +33,8 @@ import {
   sendImageMessage,
   setActiveConversation,
   unmuteConversation,
+  pinMessage,
+  unpinMessage,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 
@@ -72,20 +74,19 @@ export default function ChatDetailScreen({ route, navigation }) {
   const [input, setInput] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  // Ảnh chờ gửi
-  const [pendingImage, setPendingImage] = useState(null); // { uri, type }
+  const [pendingImage, setPendingImage] = useState(null);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const [showPinnedList, setShowPinnedList] = useState(false);
 
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
 
-  // Get conversation metadata from state (for UI decisions, not message source)
   const conversationMeta = conversations.find((item) => item._id === conversationId);
 
-  // Select raw data from Redux
   const rawAccepted = useSelector((state) => state.chat.messagesByConversation[conversationId]);
   const pendingMessages = conversationMeta?.pendingMessages || [];
 
-  // Memoized merge of pending + accepted messages
   const allMessages = useMemo(() => {
     const accepted = rawAccepted || [];
     return [...pendingMessages, ...accepted];
@@ -123,6 +124,9 @@ export default function ChatDetailScreen({ route, navigation }) {
     if (!isGroup) return false;
     return (conversationMeta?.mutedMembers || []).some(id => String(id._id || id) === String(currentUserId));
   }, [isGroup, conversationMeta?.mutedMembers, currentUserId]);
+
+  const pinnedMessages = conversationMeta?.pinnedMessages || [];
+  const pinnedCount = pinnedMessages.length;
 
   React.useEffect(() => {
     setIsMuted(conversationMuted);
@@ -289,6 +293,25 @@ export default function ChatDetailScreen({ route, navigation }) {
     navigation.navigate('UserProfile', { userId: peer?._id });
   };
 
+  const handlePinMessage = async () => {
+    if (!selectedMessage) return;
+    try {
+      await dispatch(pinMessage({ conversationId, messageId: selectedMessage._id })).unwrap();
+      setShowMessageMenu(false);
+      setSelectedMessage(null);
+    } catch (error) {
+      Alert.alert('Lỗi', error || 'Không thể ghim tin nhắn');
+    }
+  };
+
+  const handleUnpinMessage = async (messageId) => {
+    try {
+      await dispatch(unpinMessage({ conversationId, messageId })).unwrap();
+    } catch (error) {
+      Alert.alert('Lỗi', error || 'Không thể bỏ ghim tin nhắn');
+    }
+  };
+
 
 
   const renderMessageContent = (content, isMine) => {
@@ -364,25 +387,34 @@ export default function ChatDetailScreen({ route, navigation }) {
     };
 
     return (
-      <View style={[styles.messageRow, rowStyle]}>
-        <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
-          {!isMine && isGroup && (
-            <Text style={styles.senderName}>{getSenderName()}</Text>
-          )}
-          <View style={[styles.messageBubble, bubbleStyle]}>
-            {item.type === 'image' && item.mediaUrl ? (
-              <Image
-                source={{ uri: fixMediaUrl(item.mediaUrl) }}
-                style={styles.messageImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onLongPress={() => {
+          setSelectedMessage(item);
+          setShowMessageMenu(true);
+        }}
+        delayLongPress={500}
+      >
+        <View style={[styles.messageRow, rowStyle]}>
+          <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
+            {!isMine && isGroup && (
+              <Text style={styles.senderName}>{getSenderName()}</Text>
             )}
-            <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
+            <View style={[styles.messageBubble, bubbleStyle]}>
+              {item.type === 'image' && item.mediaUrl ? (
+                <Image
+                  source={{ uri: fixMediaUrl(item.mediaUrl) }}
+                  style={styles.messageImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
+              )}
+              <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
+            </View>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -400,7 +432,6 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     if (isFriend || status === 'active') return null;
 
-    // Chỉ hiện banner yêu cầu cho người nhận (có tin nhắn pending từ người khác)
     if (hasOtherPendingRequest) {
       return (
         <View style={styles.pendingBanner}>
@@ -470,6 +501,74 @@ export default function ChatDetailScreen({ route, navigation }) {
     }
 
     return null;
+  };
+
+  const getMessageId = (pinned) => {
+    const raw = pinned?.messageId;
+    return typeof raw === 'object' ? String(raw?._id || raw) : String(raw || '');
+  };
+
+  const renderPinnedBanner = () => {
+    if (!pinnedCount) return null;
+
+    const lastPinned = pinnedMessages[pinnedMessages.length - 1];
+    const messageId = getMessageId(lastPinned);
+    const pinnedMsg = allMessages.find((m) => String(m._id) === messageId);
+
+    let bannerText;
+    if (pinnedCount === 1 && pinnedMsg) {
+      const content = pinnedMsg.type === 'image' ? '📷 Ảnh đã ghim' : (pinnedMsg.content || 'Tin nhắn đã ghim');
+      const senderName = pinnedMsg.senderId?.name || 'Thành viên';
+      bannerText = `${senderName}: ${content}`;
+    } else {
+      bannerText = `${pinnedCount} tin nhắn đã được ghim`;
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.pinnedBanner}
+        activeOpacity={0.8}
+        onPress={() => {
+          if (pinnedCount === 1 && pinnedMsg) {
+            const index = allMessages.findIndex((m) => String(m._id) === messageId);
+            if (index !== -1 && flatListRef.current) {
+              try {
+                flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+              } catch {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }
+            }
+          }
+          setShowPinnedList(true);
+        }}
+        onLongPress={() => {
+          if (pinnedMessages.length > 0) {
+            const lastPinned = pinnedMessages[pinnedMessages.length - 1];
+            Alert.alert(
+              'Bỏ ghim tin nhắn',
+              'Bạn có muốn bỏ ghim tin nhắn này?',
+              [
+                { text: 'Hủy', style: 'cancel' },
+                {
+                  text: 'Bỏ ghim',
+                  style: 'destructive',
+                  onPress: () => handleUnpinMessage(getMessageId(lastPinned)),
+                },
+              ]
+            );
+          }
+        }}
+        delayLongPress={500}
+      >
+        <Ionicons name="pin" size={14} color="#0b74ff" style={styles.pinnedIcon} />
+        <View style={styles.pinnedContent}>
+          <Text style={styles.pinnedText} numberOfLines={1}>
+            {bannerText}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="#0b74ff" />
+      </TouchableOpacity>
+    );
   };
 
   const renderInputBar = () => {
@@ -634,6 +733,7 @@ export default function ChatDetailScreen({ route, navigation }) {
       </ScreenHeader>
 
       {renderStatusBanner()}
+      {renderPinnedBanner()}
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -743,6 +843,135 @@ export default function ChatDetailScreen({ route, navigation }) {
                 >
                   <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600' }}>Hủy</Text>
                 </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={showMessageMenu}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setShowMessageMenu(false);
+          setSelectedMessage(null);
+        }}
+      >
+        <TouchableWithoutFeedback onPress={() => {
+          setShowMessageMenu(false);
+          setSelectedMessage(null);
+        }}>
+          <View style={styles.menuOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.menuContainer}>
+                <View style={styles.menuHandle} />
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowMessageMenu(false);
+                    const isPinned = pinnedMessages.some(
+                      (p) => String((p.messageId && p.messageId._id) || p.messageId) === String(selectedMessage?._id)
+                    );
+                    if (isPinned) {
+                      const pinned = pinnedMessages.find(
+                        (p) => String((p.messageId && p.messageId._id) || p.messageId) === String(selectedMessage?._id)
+                      );
+                      handleUnpinMessage(pinned.messageId);
+                    } else {
+                      handlePinMessage();
+                    }
+                  }}
+                >
+                  <Ionicons
+                    name={
+                      pinnedMessages.some(
+                        (p) => String((p.messageId && p.messageId._id) || p.messageId) === String(selectedMessage?._id)
+                      )
+                        ? 'pin'
+                        : 'pin-outline'
+                    }
+                    size={22}
+                    color="#374151"
+                  />
+                  <Text style={styles.menuItemText}>
+                    {pinnedMessages.some(
+                      (p) => String((p.messageId && p.messageId._id) || p.messageId) === String(selectedMessage?._id)
+                    )
+                      ? 'Bỏ ghim tin nhắn'
+                      : 'Ghim tin nhắn'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.menuCancel}
+                  onPress={() => {
+                    setShowMessageMenu(false);
+                    setSelectedMessage(null);
+                  }}
+                >
+                  <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600' }}>Hủy</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={showPinnedList}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPinnedList(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowPinnedList(false)}>
+          <View style={styles.menuOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Tin nhắn đã ghim</Text>
+                  <TouchableOpacity onPress={() => setShowPinnedList(false)}>
+                    <Ionicons name="close" size={22} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalBody}>
+                  {pinnedMessages.length === 0 ? (
+                    <Text style={styles.emptyFriendsText}>Chưa có tin nhắn nào được ghim</Text>
+                  ) : (
+                    pinnedMessages.map((pinned, index) => {
+                      const messageId = typeof pinned.messageId === 'object' ? String(pinned.messageId._id || pinned.messageId) : String(pinned.messageId || '');
+                      const pinnedMsg = allMessages.find((m) => String(m._id) === messageId) || {};
+                      const senderName = pinnedMsg.senderId?.name || 'Thành viên';
+                      const content = pinnedMsg.type === 'image' ? '📷 Ảnh đã ghim' : (pinnedMsg.content || '');
+                      const isPinnedByMe = String(pinned.pinnedBy || '') === String(currentUserId);
+
+                      return (
+                        <View key={pinnedMsg._id || messageId || index} style={styles.friendItem}>
+                          <View style={styles.pinnedContent}>
+                            <Text style={styles.pinnedSender}>{senderName}</Text>
+                            <Text style={styles.pinnedText} numberOfLines={1}>{content}</Text>
+                          </View>
+                          {isPinnedByMe && (
+                            <TouchableOpacity
+                              style={styles.menuItem}
+                              onPress={() => {
+                                handleUnpinMessage(messageId);
+                                if (pinnedMessages.length <= 1) {
+                                  setShowPinnedList(false);
+                                }
+                              }}
+                            >
+                              <Ionicons name="pin-outline" size={22} color="#DC2626" />
+                              <Text style={[styles.menuItemText, styles.menuItemDanger]}>Bỏ ghim</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -937,7 +1166,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '78%',
+    maxWidth: '92%',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -957,18 +1186,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1F2937',
     lineHeight: 21,
+    flexShrink: 1,
   },
   messageTextMine: {
     color: '#FFFFFF',
+    flexShrink: 1,
   },
   messageTime: {
     marginTop: 4,
-    fontSize: 11,
+    fontSize: 10,
     color: '#9CA3AF',
     alignSelf: 'flex-end',
   },
   messageTimeMine: {
     color: 'rgba(255,255,255,0.75)',
+    fontSize: 10,
   },
   inputBar: {
     flexDirection: 'row',
@@ -1113,7 +1345,7 @@ const styles = StyleSheet.create({
   },
   messageContainer: {
     flexDirection: 'column',
-    maxWidth: '100%',
+    maxWidth: '85%',
   },
   senderName: {
     fontSize: 12,
@@ -1121,6 +1353,34 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     marginLeft: 6,
     fontWeight: '600',
+  },
+  pinnedBanner: {
+    backgroundColor: '#EFF6FF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#BFDBFE',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pinnedIcon: {
+    marginRight: 8,
+  },
+  pinnedContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pinnedSender: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0b74ff',
+    marginRight: 4,
+  },
+  pinnedText: {
+    fontSize: 13,
+    color: '#374151',
+    flex: 1,
   },
   modalOverlay: {
     flex: 1,
