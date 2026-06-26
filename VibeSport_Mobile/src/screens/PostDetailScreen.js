@@ -698,7 +698,14 @@ export default function PostDetailScreen({ route, navigation }) {
             </View>
           )}
           <View style={styles.headerNameCol}>
-            <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
+            <View style={styles.headerNameRow}>
+              <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
+              {post.isFollowing ? (
+                <View style={styles.headerFollowBadge}>
+                  <Text style={styles.headerFollowBadgeText}>Đang theo dõi</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.headerSubtext}>
               {post.sportType ? `⚽ ${post.sportType} • ` : ''}
               {formatTime(post.createdAt)}
