@@ -564,10 +564,14 @@ router.post("/:id/team-status", async (req, res) => {
 // Kick member
 router.post("/:id/kick-member", async (req, res) => {
   try {
-    const { userId, reason } = req.body;
+    const { ownerId, userId, reason } = req.body;
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+    // Kiểm tra quyền chủ đội
+    if (!ownerId || String(ownerId) !== String(match.createdBy)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
     }
     // Remove user from participants
     match.participants = match.participants.filter((p) => String(p) !== String(userId));
@@ -596,6 +600,9 @@ router.post("/:id/kick-member", async (req, res) => {
       console.error("Create notification error:", notifErr);
     }
 
+    // Emit socket event thông báo realtime cho user bị kick
+    try { global.io.to(String(userId)).emit('team-member-kicked', { matchId: match._id }); } catch(e) {}
+
     const updated = await Match.findById(match._id).populate(populateFields);
     return res.json({ success: true, message: "Đã kích thành viên khỏi đội", data: updated });
   } catch (error) {
@@ -607,10 +614,14 @@ router.post("/:id/kick-member", async (req, res) => {
 // Invite member (owner sends invite → user goes to pendingJoinRequests, must accept)
 router.post("/:id/invite-member", async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { ownerId, userId } = req.body;
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+    // Kiểm tra quyền chủ đội
+    if (!ownerId || String(ownerId) !== String(match.createdBy)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
     }
     if (match.participants.some((p) => String(p) === String(userId))) {
       return res.status(400).json({ success: false, message: "Thành viên đã ở trong đội" });
@@ -639,6 +650,9 @@ router.post("/:id/invite-member", async (req, res) => {
       console.error("Create notification error:", notifErr);
     }
 
+    // Emit socket event thông báo realtime cho user được mời
+    try { global.io.to(String(userId)).emit('team-invite', { matchId: match._id }); } catch(e) {}
+
     const updated = await Match.findById(match._id).populate(populateFields);
     return res.json({ success: true, message: "Đã gửi lời mời, chờ người được mời chấp nhận", data: updated });
   } catch (error) {
@@ -647,13 +661,85 @@ router.post("/:id/invite-member", async (req, res) => {
   }
 });
 
-// Update member role / transfer ownership
-router.post("/:id/update-member-role", async (req, res) => {
+// Thêm thành viên trực tiếp vào đội (không cần chấp nhận)
+router.post("/:id/add-member", async (req, res) => {
   try {
-    const { userId, role } = req.body; // role: "owner" or "member"
+    const { ownerId, userId } = req.body;
+    if (!ownerId || !userId) {
+      return res.status(400).json({ success: false, message: "Thiếu ownerId hoặc userId" });
+    }
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+    // Kiểm tra quyền chủ đội
+    if (String(match.createdBy) !== String(ownerId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
+    }
+    // Kiểm tra đã là thành viên chưa
+    if (match.participants.some((p) => String(p) === String(userId))) {
+      return res.status(400).json({ success: false, message: "Thành viên đã ở trong đội" });
+    }
+    // Kiểm tra đội đầy chưa
+    if (match.participants.length >= match.maxPlayers) {
+      return res.status(400).json({ success: false, message: "Đội đã đầy người" });
+    }
+
+    // Thêm thành viên vào đội
+    match.participants.push(userId);
+    match.currentPlayers = match.participants.length;
+    if (match.currentPlayers >= match.maxPlayers) {
+      match.status = "full";
+    }
+
+    // Gán role và position mặc định
+    if (!match.memberRoles) match.memberRoles = [];
+    match.memberRoles.push({ userId, role: "member" });
+    if (!match.memberPositions) match.memberPositions = [];
+    match.memberPositions.push({ userId, positionId: "" });
+
+    // Xoá khỏi pendingJoinRequests nếu có
+    if (match.pendingJoinRequests) {
+      match.pendingJoinRequests = match.pendingJoinRequests.filter(
+        (p) => String(p) !== String(userId)
+      );
+    }
+
+    await match.save();
+
+    // Tạo thông báo cho user được thêm
+    try {
+      await Notification.create({
+        userId,
+        type: "match",
+        message: `Bạn đã được thêm vào đội "${match.title}"`,
+      });
+    } catch (notifErr) {
+      console.error("Create notification error:", notifErr);
+    }
+
+    // Emit socket event thông báo realtime
+    try { global.io.to(String(userId)).emit('team-member-added', { matchId: match._id }); } catch(e) {}
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+    return res.json({ success: true, message: "Đã thêm thành viên vào đội", data: updated });
+  } catch (error) {
+    console.error("Add member error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+});
+
+// Update member role / transfer ownership
+router.post("/:id/update-member-role", async (req, res) => {
+  try {
+    const { ownerId, userId, role } = req.body; // role: "owner" or "member"
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+    // Kiểm tra quyền chủ đội
+    if (!ownerId || String(ownerId) !== String(match.createdBy)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
     }
 
     if (!match.memberRoles) match.memberRoles = [];
@@ -679,6 +765,10 @@ router.post("/:id/update-member-role", async (req, res) => {
     }
 
     await match.save();
+
+    // Emit socket event thông báo realtime cho user bị thay đổi role
+    try { global.io.to(String(userId)).emit('team-role-changed', { matchId: match._id }); } catch(e) {}
+
     const updated = await Match.findById(match._id).populate(populateFields);
     return res.json({ success: true, message: "Cập nhật chức vụ thành công", data: updated });
   } catch (error) {
@@ -690,10 +780,14 @@ router.post("/:id/update-member-role", async (req, res) => {
 // Update member position
 router.post("/:id/update-member-position", async (req, res) => {
   try {
-    const { userId, positionId } = req.body;
+    const { ownerId, userId, positionId } = req.body;
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+    // Kiểm tra quyền chủ đội
+    if (!ownerId || String(ownerId) !== String(match.createdBy)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
     }
 
     if (!match.memberPositions) match.memberPositions = [];

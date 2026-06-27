@@ -140,6 +140,11 @@ export default function MyTeamsScreen({ navigation }) {
             <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
             <Text style={styles.cardCreator}>Chủ đội: {item.createdBy?.name || "Bạn"}</Text>
           </View>
+          {isOwner && item.pendingJoinRequests && item.pendingJoinRequests.length > 0 && (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>{item.pendingJoinRequests.length} chờ duyệt</Text>
+            </View>
+          )}
           {renderStatusBadge(item.teamStatus, item.status)}
         </View>
 
@@ -432,5 +437,19 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
+  },
+  pendingBadge: {
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  pendingBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#92400e",
   },
 });

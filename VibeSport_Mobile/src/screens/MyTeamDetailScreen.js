@@ -11,8 +11,11 @@ import {
   Modal,
   TextInput,
   Share,
+  Clipboard,
+  Platform,
 } from "react-native";
 import { useSelector } from "react-redux";
+import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import {
@@ -20,10 +23,13 @@ import {
   updateTeamStatus,
   kickTeamMember,
   inviteTeamMember,
+  addTeamMember,
   updateMemberRole,
   updateMemberPosition,
+  acceptJoinMatch,
+  rejectJoinMatch,
 } from "../services/matchService";
-import { getFollowingListRequest } from "../services/userApi";
+import { getFollowingListRequest, searchUsersRequest } from "../services/userApi";
 import { API_BASE_URL } from "../components/constants/api";
 
 const TEAM1_POSITIONS = [
@@ -78,6 +84,10 @@ export default function MyTeamDetailScreen({ route, navigation }) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [followingUsers, setFollowingUsers] = useState([]);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteSearchText, setInviteSearchText] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [inviteTab, setInviteTab] = useState("following"); // "following" | "search"
 
   const [showKickModal, setShowKickModal] = useState(false);
   const [kickTargetUser, setKickTargetUser] = useState(null);
@@ -143,11 +153,13 @@ export default function MyTeamDetailScreen({ route, navigation }) {
   const handleInviteUser = async (targetUserId) => {
     try {
       setActionLoading(true);
-      const data = await inviteTeamMember(matchId, targetUserId);
+      const creatorId = typeof match.createdBy === "object" ? match.createdBy?._id || match.createdBy?.id : match.createdBy;
+      const data = await inviteTeamMember(matchId, String(creatorId), targetUserId);
       setMatch(data);
-      Alert.alert("Đã mời");
+      Alert.alert("Đã mời", "Đã gửi lời mời, chờ người được mời chấp nhận.");
       // Remove from list
       setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
+      setSearchResults(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
     } catch (err) {
       Alert.alert("Lỗi", err.message || "Không thể mời thành viên");
     } finally {
@@ -155,11 +167,78 @@ export default function MyTeamDetailScreen({ route, navigation }) {
     }
   };
 
-  const handleSendLinkInvite = async () => {
+  const handleAddMemberDirect = async (targetUserId) => {
     try {
-      const matchLink = `vibesport://match/${matchId}`;
+      setActionLoading(true);
+      const creatorId = typeof match.createdBy === "object" ? match.createdBy?._id || match.createdBy?.id : match.createdBy;
+      const data = await addTeamMember(matchId, String(creatorId), targetUserId);
+      setMatch(data);
+      Alert.alert("Thành công", "Đã thêm thành viên vào đội.");
+      setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
+      setSearchResults(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể thêm thành viên");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSearchUsers = async () => {
+    if (!inviteSearchText.trim()) return;
+    try {
+      setSearchLoading(true);
+      const res = await searchUsersRequest(inviteSearchText.trim(), token);
+      const list = res?.data || [];
+      const participantIds = (match?.participants || []).map(p => String(p._id || p.id));
+      const filtered = list.filter(u => {
+        const uid = String(u._id || u.id);
+        return !participantIds.includes(uid) && uid !== String(userId);
+      });
+      setSearchResults(filtered);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể tìm kiếm");
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleAcceptRequest = async (targetUserId) => {
+    try {
+      setActionLoading(true);
+      const data = await acceptJoinMatch(matchId, String(userId), targetUserId);
+      setMatch(data);
+      Alert.alert("Thành công", "Đã chấp nhận yêu cầu tham gia.");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể chấp nhận");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (targetUserId) => {
+    try {
+      setActionLoading(true);
+      const data = await rejectJoinMatch(matchId, String(userId), targetUserId);
+      setMatch(data);
+      Alert.alert("Đã từ chối", "Đã từ chối yêu cầu tham gia.");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể từ chối");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const teamLink = `vibesport://match/${matchId}`;
+
+  const handleCopyLink = () => {
+    Clipboard.setString(teamLink);
+    Alert.alert("Đã sao chép", "Link đội đã được sao chép. Bạn có thể dán vào tin nhắn trong app.");
+  };
+
+  const handleShareLink = async () => {
+    try {
       await Share.share({
-        message: `Tham gia đội của tôi trong trận đấu "${match.title}" tại đây: ${matchLink}`,
+        message: `Tham gia đội của tôi trong trận đấu "${match.title}" tại đây: ${teamLink}`,
       });
     } catch (error) {
       Alert.alert("Lỗi", "Không thể chia sẻ liên kết");
@@ -170,7 +249,8 @@ export default function MyTeamDetailScreen({ route, navigation }) {
     if (!kickTargetUser) return;
     try {
       setActionLoading(true);
-      const data = await kickTeamMember(matchId, kickTargetUser._id || kickTargetUser.id, kickReason);
+      const creatorId = typeof match.createdBy === "object" ? match.createdBy?._id || match.createdBy?.id : match.createdBy;
+      const data = await kickTeamMember(matchId, String(creatorId), kickTargetUser._id || kickTargetUser.id, kickReason);
       setMatch(data);
       Alert.alert("Thành công", "Đã kích thành viên");
       setShowKickModal(false);
@@ -196,7 +276,8 @@ export default function MyTeamDetailScreen({ route, navigation }) {
           onPress: async () => {
             try {
               setActionLoading(true);
-              const data = await updateMemberRole(matchId, targetUserId, newRole);
+              const creatorId = typeof match.createdBy === "object" ? match.createdBy?._id || match.createdBy?.id : match.createdBy;
+              const data = await updateMemberRole(matchId, String(creatorId), targetUserId, newRole);
               setMatch(data);
               Alert.alert("Thành công", "Đã cập nhật chức vụ");
               setShowRoleModal(false);
@@ -215,7 +296,8 @@ export default function MyTeamDetailScreen({ route, navigation }) {
   const handleUpdatePosition = async (targetUserId, positionId) => {
     try {
       setActionLoading(true);
-      const data = await updateMemberPosition(matchId, targetUserId, positionId);
+      const creatorId = typeof match.createdBy === "object" ? match.createdBy?._id || match.createdBy?.id : match.createdBy;
+      const data = await updateMemberPosition(matchId, String(creatorId), targetUserId, positionId);
       setMatch(data);
       Alert.alert("Thành công", "Đã cập nhật vị trí thi đấu");
       setShowPositionModal(false);
@@ -308,17 +390,21 @@ export default function MyTeamDetailScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Kick Button */}
-        {isOwner && !isMe && (
-          <TouchableOpacity
-            style={styles.actionBtnKick}
-            onPress={() => {
-              setKickTargetUser(item);
-              setShowKickModal(true);
-            }}
-          >
-            <Text style={styles.actionBtnKickText}>Kích</Text>
-          </TouchableOpacity>
+        {/* Kick Button or Placeholder */}
+        {isOwner && (
+          !isMe ? (
+            <TouchableOpacity
+              style={styles.actionBtnKick}
+              onPress={() => {
+                setKickTargetUser(item);
+                setShowKickModal(true);
+              }}
+            >
+              <Text style={styles.actionBtnKickText}>Kích</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.actionBtnKickPlaceholder} />
+          )
         )}
       </View>
     );
@@ -328,19 +414,18 @@ export default function MyTeamDetailScreen({ route, navigation }) {
     <Screen style={styles.container}>
       <ScreenHeader style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtnText}>←</Text>
+          <View style={styles.backBtnCircle}>
+            <Text style={styles.backBtnIcon}>‹</Text>
+          </View>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thành viên 2 đội</Text>
-        <TouchableOpacity style={styles.btnInviteLink} onPress={handleSendLinkInvite}>
-          <Text style={styles.btnInviteLinkText}>🔗 Link</Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={styles.btnInvite}
           onPress={() => {
             if (isOwner) {
               handleOpenInviteModal();
             } else {
-              Alert.alert("Gợi ý mời", "Bạn có thể gửi liên kết chia sẻ cho người khác!");
+              Alert.alert("Gợi ý mời", "Bạn có thể sao chép liên kết bên dưới và gửi cho người khác!");
             }
           }}
         >
@@ -354,6 +439,67 @@ export default function MyTeamDetailScreen({ route, navigation }) {
           <Text style={styles.timeBadgeText}>🕒 Bắt đầu: {match.startTime} • {match.date}</Text>
         </View>
       </View>
+
+      {/* Liên kết tham gia đội (như trong nhóm chat) */}
+      <View style={styles.linkShareSection}>
+        <Text style={styles.linkShareTitle}>🔗 Liên kết tham gia đội</Text>
+        <Text style={styles.linkShareUrl} numberOfLines={1}>
+          {teamLink}
+        </Text>
+        <View style={styles.linkActionsRow}>
+          <TouchableOpacity
+            onPress={handleCopyLink}
+            style={styles.linkActionBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="copy-outline" size={15} color="#0b74ff" />
+            <Text style={styles.linkActionBtnText}>Sao chép</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleShareLink}
+            style={styles.linkActionBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="share-social-outline" size={15} color="#0b74ff" />
+            <Text style={styles.linkActionBtnText}>Chia sẻ</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ─── Pending Join Requests Section ─── */}
+      {isOwner && match.pendingJoinRequests && match.pendingJoinRequests.length > 0 && (
+        <View style={styles.pendingSection}>
+          <Text style={styles.pendingSectionTitle}>📋 Yêu cầu chờ duyệt ({match.pendingJoinRequests.length})</Text>
+          {match.pendingJoinRequests.map((reqUser) => {
+            const rId = reqUser._id || reqUser.id;
+            return (
+              <View key={rId} style={styles.pendingCard}>
+                <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[reqUser.name ? reqUser.name.length % AVATAR_COLORS.length : 2] }]}>
+                  <Text style={styles.avatarText}>{getInitials(reqUser.name)}</Text>
+                </View>
+                <View style={styles.pendingInfo}>
+                  <Text style={styles.pendingName}>{reqUser.name || "Người dùng"}</Text>
+                  <Text style={styles.pendingSub}>{reqUser.favoriteSport || "Thể thao"} {reqUser.area ? `• ${reqUser.area}` : ""}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.btnAccept}
+                  onPress={() => handleAcceptRequest(String(rId))}
+                  disabled={actionLoading}
+                >
+                  <Text style={styles.btnAcceptText}>✓ Duyệt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnReject}
+                  onPress={() => handleRejectRequest(String(rId))}
+                  disabled={actionLoading}
+                >
+                  <Text style={styles.btnRejectText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       <FlatList
         data={match.participants}
@@ -421,52 +567,143 @@ export default function MyTeamDetailScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* Invite Member Modal (from following list) */}
+      {/* Invite Member Modal (from following list + search) */}
       <Modal visible={showInviteModal} animationType="slide">
         <Screen style={styles.modalScreen}>
           <ScreenHeader>
-            <TouchableOpacity style={styles.backBtn} onPress={() => setShowInviteModal(false)}>
-              <Text style={styles.backBtnText}>←</Text>
+            <TouchableOpacity style={styles.backBtn} onPress={() => { setShowInviteModal(false); setInviteTab("following"); setInviteSearchText(""); setSearchResults([]); }}>
+              <View style={styles.backBtnCircle}>
+                <Text style={styles.backBtnIcon}>‹</Text>
+              </View>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Mời người đang follow</Text>
+            <Text style={styles.headerTitle}>Mời thành viên</Text>
           </ScreenHeader>
 
-          {inviteLoading ? (
-            <ActivityIndicator size="large" color="#0b74ff" style={styles.loader} />
-          ) : followingUsers.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Không có người dùng nào để mời.</Text>
-              <Text style={[styles.emptyText, { marginTop: 4, color: '#94a3b8' }]}>Bạn chưa follow ai hoặc tất cả đã tham gia.</Text>
+          {/* Invite Tabs: Following / Search */}
+          <View style={styles.inviteTabRow}>
+            <TouchableOpacity
+              style={[styles.inviteTab, inviteTab === "following" && styles.inviteTabActive]}
+              onPress={() => setInviteTab("following")}
+            >
+              <Text style={[styles.inviteTabText, inviteTab === "following" && styles.inviteTabTextActive]}>Đang follow</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.inviteTab, inviteTab === "search" && styles.inviteTabActive]}
+              onPress={() => setInviteTab("search")}
+            >
+              <Text style={[styles.inviteTabText, inviteTab === "search" && styles.inviteTabTextActive]}>Tìm kiếm</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Search box (only in search tab) */}
+          {inviteTab === "search" && (
+            <View style={styles.searchBox}>
+              <TextInput
+                style={styles.searchInput}
+                value={inviteSearchText}
+                onChangeText={setInviteSearchText}
+                placeholder="Tìm theo tên người dùng..."
+                placeholderTextColor="#94a3b8"
+                returnKeyType="search"
+                onSubmitEditing={handleSearchUsers}
+              />
+              <TouchableOpacity style={styles.btnSearch} onPress={handleSearchUsers}>
+                <Text style={styles.btnSearchText}>Tìm</Text>
+              </TouchableOpacity>
             </View>
+          )}
+
+          {inviteTab === "following" ? (
+            // Following tab
+            inviteLoading ? (
+              <ActivityIndicator size="large" color="#0b74ff" style={styles.loader} />
+            ) : followingUsers.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Không có người dùng nào để mời.</Text>
+                <Text style={[styles.emptyText, { marginTop: 4, color: '#94a3b8' }]}>Bạn chưa follow ai hoặc tất cả đã tham gia.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={followingUsers}
+                keyExtractor={(item) => String(item._id || item.id)}
+                contentContainerStyle={styles.searchList}
+                renderItem={({ item }) => (
+                  <View style={styles.searchResultCard}>
+                    <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[item.name ? item.name.length % AVATAR_COLORS.length : 0] }]}>
+                      <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
+                    </View>
+                    <View style={styles.searchResultInfo}>
+                      <Text style={styles.searchResultName}>{item.name}</Text>
+                      <Text style={styles.searchResultSub}>{item.favoriteSport || "Thể thao"} {item.area ? `• ${item.area}` : ""}</Text>
+                    </View>
+                    <View style={styles.inviteActionBtns}>
+                      <TouchableOpacity
+                        style={styles.btnAddDirectGreen}
+                        onPress={() => handleAddMemberDirect(String(item._id || item.id))}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.btnAddDirectGreenText}>+ Thêm</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnAddDirect}
+                        onPress={() => handleInviteUser(String(item._id || item.id))}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.btnAddDirectText}>Mời</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>Không có ai để mời.</Text>
+                  </View>
+                }
+              />
+            )
           ) : (
-            <FlatList
-              data={followingUsers}
-              keyExtractor={(item) => String(item._id || item.id)}
-              contentContainerStyle={styles.searchList}
-              renderItem={({ item }) => (
-                <View style={styles.searchResultCard}>
-                  <View style={[styles.avatar, { backgroundColor: "#0b74ff" }]}>
-                    <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
+            // Search tab
+            searchLoading ? (
+              <ActivityIndicator size="large" color="#0b74ff" style={styles.loader} />
+            ) : (
+              <FlatList
+                data={searchResults}
+                keyExtractor={(item) => String(item._id || item.id)}
+                contentContainerStyle={styles.searchList}
+                renderItem={({ item }) => (
+                  <View style={styles.searchResultCard}>
+                    <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[item.name ? item.name.length % AVATAR_COLORS.length : 3] }]}>
+                      <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
+                    </View>
+                    <View style={styles.searchResultInfo}>
+                      <Text style={styles.searchResultName}>{item.name}</Text>
+                      <Text style={styles.searchResultSub}>{item.favoriteSport || "Thể thao"} {item.area ? `• ${item.area}` : ""}</Text>
+                    </View>
+                    <View style={styles.inviteActionBtns}>
+                      <TouchableOpacity
+                        style={styles.btnAddDirectGreen}
+                        onPress={() => handleAddMemberDirect(String(item._id || item.id))}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.btnAddDirectGreenText}>+ Thêm</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnAddDirect}
+                        onPress={() => handleInviteUser(String(item._id || item.id))}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.btnAddDirectText}>Mời</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={styles.searchResultInfo}>
-                    <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultSub}>{item.favoriteSport || "Thể thao"}</Text>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>{inviteSearchText ? "Không tìm thấy người dùng." : "Nhập tên để tìm kiếm."}</Text>
                   </View>
-                  <TouchableOpacity
-                    style={styles.btnAddDirect}
-                    onPress={() => handleInviteUser(String(item._id || item.id))}
-                    disabled={actionLoading}
-                  >
-                    <Text style={styles.btnAddDirectText}>Mời vào đội</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>Không có ai để mời.</Text>
-                </View>
-              }
-            />
+                }
+              />
+            )
           )}
         </Screen>
       </Modal>
@@ -603,13 +840,23 @@ const styles = StyleSheet.create({
     minHeight: 60,
   },
   backBtn: {
+    marginRight: 4,
+  },
+  backBtnCircle: {
     width: 36,
     height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  backBtnText: {
-    fontSize: 22,
-    color: "#333",
+  backBtnIcon: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#334155",
+    marginTop: -2,
   },
   headerTitle: {
     flex: 1,
@@ -617,18 +864,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1e293b",
     marginLeft: 8,
-  },
-  btnInviteLink: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  btnInviteLinkText: {
-    color: "#475569",
-    fontWeight: "700",
-    fontSize: 12,
   },
   btnInvite: {
     backgroundColor: "#0b74ff",
@@ -640,6 +875,50 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 13,
+  },
+  // ─── Link Share Section (Nhóm chat style) ───────────────────
+  linkShareSection: {
+    backgroundColor: "#fff",
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  linkShareTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#334155",
+    marginBottom: 6,
+  },
+  linkShareUrl: {
+    fontSize: 13,
+    color: "#4b5563",
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    marginBottom: 8,
+  },
+  linkActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  linkActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  linkActionBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#0b74ff",
   },
   topMeta: {
     paddingHorizontal: 16,
@@ -766,13 +1045,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#fecaca",
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    width: 54,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
   },
   actionBtnKickText: {
     color: "#dc2626",
     fontSize: 12,
     fontWeight: "700",
+  },
+  actionBtnKickPlaceholder: {
+    width: 54,
+    marginLeft: 12,
   },
   bottomControlBar: {
     position: "absolute",
@@ -1053,5 +1339,114 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 40,
+  },
+  // ─── Pending Requests ─────────────────────────────────────────
+  pendingSection: {
+    backgroundColor: "#fffbeb",
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  pendingSectionTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#92400e",
+    marginBottom: 12,
+  },
+  pendingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  pendingInfo: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  pendingName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  pendingSub: {
+    fontSize: 11,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  btnAccept: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#86efac",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 6,
+  },
+  btnAcceptText: {
+    color: "#15803d",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  btnReject: {
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  btnRejectText: {
+    color: "#dc2626",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  // ─── Invite Tabs ──────────────────────────────────────────────
+  inviteTabRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  inviteTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  inviteTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: "#0b74ff",
+  },
+  inviteTabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#94a3b8",
+  },
+  inviteTabTextActive: {
+    color: "#0b74ff",
+    fontWeight: "700",
+  },
+  inviteActionBtns: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  btnAddDirectGreen: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#86efac",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  btnAddDirectGreenText: {
+    color: "#15803d",
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

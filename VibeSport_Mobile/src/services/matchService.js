@@ -134,42 +134,52 @@ export async function updateTeamStatus(matchId, status) {
   });
 }
 
-export async function kickTeamMember(matchId, userId, reason) {
+export async function kickTeamMember(matchId, ownerId, userId, reason) {
   return matchRequest(`${MATCHES_URL}/${matchId}/kick-member`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ userId, reason }),
+    body: JSON.stringify({ ownerId, userId, reason }),
   });
 }
 
-export async function inviteTeamMember(matchId, userId) {
+export async function inviteTeamMember(matchId, ownerId, userId) {
   return matchRequest(`${MATCHES_URL}/${matchId}/invite-member`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ ownerId, userId }),
   });
 }
 
-export async function updateMemberRole(matchId, userId, role) {
+export async function addTeamMember(matchId, ownerId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/add-member`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ownerId, userId }),
+  });
+}
+
+export async function updateMemberRole(matchId, ownerId, userId, role) {
   return matchRequest(`${MATCHES_URL}/${matchId}/update-member-role`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ userId, role }),
+    body: JSON.stringify({ ownerId, userId, role }),
   });
 }
 
-export async function updateMemberPosition(matchId, userId, positionId) {
+export async function updateMemberPosition(matchId, ownerId, userId, positionId) {
   return matchRequest(`${MATCHES_URL}/${matchId}/update-member-position`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ userId, positionId }),
+    body: JSON.stringify({ ownerId, userId, positionId }),
   });
 }
