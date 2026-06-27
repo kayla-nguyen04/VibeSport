@@ -157,11 +157,13 @@ const styles = StyleSheet.create({
   headingGroup: {
     marginTop: 8,
     marginBottom: 18,
+    alignItems: 'center',
   },
   heading: {
     fontSize: 32,
     fontWeight: '800',
     color: '#111111',
+    textAlign: 'center',
   },
   logo: {
     width: 140,
@@ -174,6 +176,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#4b4b4b',
     lineHeight: 24,
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,

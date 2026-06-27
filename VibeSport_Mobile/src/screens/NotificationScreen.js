@@ -141,7 +141,7 @@ if (item.type === 'group' && conversationId) {
           </View>
         ) : null}
 
-        {isUnread && <View style={styles.unreadDot} />}
+        <View style={[styles.unreadDot, { backgroundColor: isUnread ? '#FF6B35' : 'transparent' }]} />
       </TouchableOpacity>
     );
   };

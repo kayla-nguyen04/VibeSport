@@ -14,7 +14,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
 import { BackButton } from '../components/BackButton';
@@ -35,8 +35,10 @@ import {
   unmuteConversation,
   pinMessage,
   unpinMessage,
+  recallMessage,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
+import { getPresenceDisplay } from '../utils/presence';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -109,6 +111,18 @@ export default function ChatDetailScreen({ route, navigation }) {
   } = conversationMeta || {};
 
   const isGroup = route.params.isGroup || isGroupFromMeta;
+
+  const [presenceTick, setPresenceTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setPresenceTick((t) => t + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const presence = useMemo(() => {
+    if (isGroup || !peer?.lastSeenAt) return null;
+    return getPresenceDisplay(peer.lastSeenAt);
+  }, [isGroup, peer?.lastSeenAt, presenceTick]);
 
   const peerName = useMemo(() => {
     if (isGroup) {
@@ -312,6 +326,18 @@ export default function ChatDetailScreen({ route, navigation }) {
     }
   };
 
+  const handleRecallMessage = async () => {
+    if (!selectedMessage) return;
+    try {
+      await dispatch(recallMessage({ messageId: selectedMessage._id })).unwrap();
+    } catch (error) {
+      Alert.alert('Lỗi', error || 'Không thể thu hồi tin nhắn');
+    } finally {
+      setShowMessageMenu(false);
+      setSelectedMessage(null);
+    }
+  };
+
 
 
   const renderMessageContent = (content, isMine) => {
@@ -369,6 +395,7 @@ export default function ChatDetailScreen({ route, navigation }) {
     const senderId = item.senderId?._id || item.senderId;
     const isMine = String(senderId) === String(currentUserId);
     const isPending = !!item.isPending;
+    const isRecalled = !!item.isRecalled;
 
     const rowStyle = isMine
       ? styles.messageRowMine
@@ -388,8 +415,9 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={isRecalled ? 1 : 0.8}
         onLongPress={() => {
+          if (isRecalled) return;
           setSelectedMessage(item);
           setShowMessageMenu(true);
         }}
@@ -401,7 +429,11 @@ export default function ChatDetailScreen({ route, navigation }) {
               <Text style={styles.senderName}>{getSenderName()}</Text>
             )}
             <View style={[styles.messageBubble, bubbleStyle]}>
-              {item.type === 'image' && item.mediaUrl ? (
+              {isRecalled ? (
+                <Text style={[textStyle, isMine ? styles.recalledTextMine : styles.recalledText]}>
+                  Tin nhắn đã bị thu hồi
+                </Text>
+              ) : item.type === 'image' && item.mediaUrl ? (
                 <Image
                   source={{ uri: fixMediaUrl(item.mediaUrl) }}
                   style={styles.messageImage}
@@ -698,23 +730,34 @@ export default function ChatDetailScreen({ route, navigation }) {
       <ScreenHeader style={styles.header}>
         <BackButton onPress={() => navigation.goBack()} />
 
-        {peer?.picture ? (
-          <Image source={{ uri: fixMediaUrl(peer.picture) }} style={styles.headerAvatar} />
-        ) : (
-          <View style={[styles.headerAvatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
-            <Text style={styles.headerAvatarText}>{getInitials(peerName)}</Text>
-          </View>
-        )}
+        <View style={styles.headerAvatarContainer}>
+          {peer?.picture ? (
+            <Image source={{ uri: fixMediaUrl(peer.picture) }} style={styles.headerAvatar} />
+          ) : (
+            <View style={[styles.headerAvatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
+              <Text style={styles.headerAvatarText}>{getInitials(peerName)}</Text>
+            </View>
+          )}
+          {!isGroup && presence?.isOnline && (
+            <View style={styles.headerOnlineDot} />
+          )}
+        </View>
 
         <View style={styles.headerInfo}>
           <Text style={styles.headerName} numberOfLines={1}>
             {peerName}
           </Text>
-          {!isGroup && (isFriend ? (
-            <Text style={styles.headerMeta}>Bạn bè</Text>
-          ) : peer?.area ? (
-            <Text style={styles.headerMeta}>{peer.area}</Text>
-          ) : null)}
+          {!isGroup ? (
+            <Text 
+              style={[
+                styles.headerMeta, 
+                presence?.isOnline && { color: '#22C55E', fontWeight: '600' }
+              ]}
+              numberOfLines={1}
+            >
+              {presence ? presence.label : (isFriend ? 'Bạn bè' : (peer?.area || ''))}
+            </Text>
+          ) : null}
         </View>
 
         <TouchableOpacity
@@ -837,12 +880,7 @@ export default function ChatDetailScreen({ route, navigation }) {
                   <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa cuộc trò chuyện</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.menuCancel}
-                  onPress={() => setShowMenu(false)}
-                >
-                  <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600' }}>Hủy</Text>
-                </TouchableOpacity>
+                {/* Cancel button removed since clicking outside closes the modal */}
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -904,15 +942,17 @@ export default function ChatDetailScreen({ route, navigation }) {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.menuCancel}
-                  onPress={() => {
-                    setShowMessageMenu(false);
-                    setSelectedMessage(null);
-                  }}
-                >
-                  <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600' }}>Hủy</Text>
-                </TouchableOpacity>
+                {selectedMessage && String(selectedMessage.senderId?._id || selectedMessage.senderId) === String(currentUserId) && !selectedMessage.isRecalled && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={handleRecallMessage}
+                  >
+                    <MaterialCommunityIcons name="undo" size={22} color="#EF4444" />
+                    <Text style={[styles.menuItemText, styles.menuItemDanger]}>Thu hồi tin nhắn</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Cancel button removed since clicking outside closes the modal */}
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -998,12 +1038,26 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
   },
+  headerAvatarContainer: {
+    position: 'relative',
+    marginLeft: 8,
+  },
+  headerOnlineDot: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#22C55E',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
   headerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: '#E5E7EB',
-    marginLeft: 8,
   },
   headerAvatarFallback: {
     width: 40,
@@ -1011,7 +1065,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
   },
   headerAvatarText: {
     color: '#FFFFFF',
@@ -1549,5 +1602,13 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 15,
     textAlign: 'center',
+  },
+  recalledText: {
+    fontStyle: 'italic',
+    color: '#94A3B8',
+  },
+  recalledTextMine: {
+    fontStyle: 'italic',
+    color: '#E2E8F0',
   },
 });

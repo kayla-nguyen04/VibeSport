@@ -193,3 +193,9 @@ export const unpinMessageRequest = (conversationId, messageId, token) =>
     body: JSON.stringify({ messageId }),
   }, token);
 
+export const recallMessageRequest = (messageId, token) =>
+  request(`/api/chat/messages/${messageId}/recall`, {
+    method: 'PUT',
+  }, token);
+
+

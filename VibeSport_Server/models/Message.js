@@ -36,6 +36,10 @@ const messageSchema = new Schema(
         ref: 'User',
       },
     ],
+    isRecalled: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
