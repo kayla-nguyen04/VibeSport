@@ -33,6 +33,7 @@ const {
   requestAddMember,
   pinMessage,
   unpinMessage,
+  recallMessage,
 } = require('../controllers/chatController');
 const uploadConversation = require('../middleware/uploadConversation');
 
@@ -78,6 +79,8 @@ router.post('/conversations/:id/add-member-request', requestAddMember);
 // Pinned message
 router.put('/conversations/:id/pin', pinMessage);
 router.put('/conversations/:id/unpin', unpinMessage);
+// Recall message
+router.put('/messages/:messageId/recall', recallMessage);
 
 module.exports = router;
 

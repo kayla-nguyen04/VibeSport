@@ -2339,3 +2339,68 @@ exports.unpinMessage = async (req, res) => {
   }
 };
 
+exports.recallMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tin nhắn' });
+    }
+
+    // Only the sender can recall the message
+    if (String(message.senderId) !== String(req.userId)) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền thu hồi tin nhắn này' });
+    }
+
+    if (message.isRecalled) {
+      return res.status(400).json({ success: false, message: 'Tin nhắn đã được thu hồi trước đó' });
+    }
+
+    // Set isRecalled to true and clear content / mediaUrl for privacy
+    message.isRecalled = true;
+    message.content = 'Tin nhắn đã bị thu hồi';
+    message.type = 'text'; // force text type so the client renders it as text
+    message.mediaUrl = null;
+    await message.save();
+
+    // Update conversation if needed
+    const conversation = await Conversation.findById(message.conversationId);
+    if (conversation) {
+      // If pinned, remove it
+      conversation.pinnedMessages = (conversation.pinnedMessages || []).filter(
+        (p) => String(p.messageId) !== String(messageId)
+      );
+
+      // If last message, update lastMessage
+      const msgCreatedAt = message.createdAt ? new Date(message.createdAt).getTime() : 0;
+      const convLastMsgAt = conversation.lastMessageAt ? new Date(conversation.lastMessageAt).getTime() : 0;
+      if (Math.abs(convLastMsgAt - msgCreatedAt) < 1000) {
+        conversation.lastMessage = 'Tin nhắn đã bị thu hồi';
+      }
+      await conversation.save();
+    }
+
+    // Broadcast socket event so other users in the conversation know the message was recalled
+    if (global.io && conversation) {
+      conversation.participants.forEach((participantId) => {
+        const pIdStr = String(participantId._id || participantId);
+        global.io.to(pIdStr).emit('message_recalled', {
+          conversationId: conversation._id,
+          messageId: message._id,
+        });
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Thu hồi tin nhắn thành công',
+      data: message,
+    });
+  } catch (error) {
+    console.error('Recall message error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi thu hồi tin nhắn' });
+  }
+};
+
+

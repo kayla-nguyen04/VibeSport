@@ -70,8 +70,11 @@ async function buildPostTags({ tagsInput, sportType, content }) {
 
 exports.createPost = async (req, res) => {
   try {
-    const { content, location, sportType, tags } = req.body;
-    const finalSportType = sportType || 'Bóng đá';
+    let { content, location, sportType, tags } = req.body;
+    if (sportType === 'Không chọn' || sportType === 'Không') {
+      sportType = '';
+    }
+    const finalSportType = sportType;
 
     let mediaUrls = [];
     if (req.files && req.files.length > 0) {
@@ -89,7 +92,7 @@ exports.createPost = async (req, res) => {
       content: content || '',
       mediaUrls,
       location: location || '',
-      sportType: resolvedTags[0] || finalSportType,
+      sportType: resolvedTags[0] || finalSportType || '',
       tags: resolvedTags,
     });
 
@@ -743,7 +746,10 @@ exports.updatePost = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền sửa bài viết này' });
     }
 
-    const { content, location, sportType, tags } = req.body;
+    let { content, location, sportType, tags } = req.body;
+    if (sportType === 'Không chọn' || sportType === 'Không') {
+      sportType = '';
+    }
     const previousTags = [...(post.tags || [])];
 
     if (content !== undefined) post.content = content;
@@ -766,10 +772,10 @@ exports.updatePost = async (req, res) => {
       });
 
       post.tags = resolvedTags;
-      post.sportType = resolvedTags[0] || sportType || post.sportType;
+      post.sportType = resolvedTags[0] || (sportType !== undefined ? sportType : post.sportType) || '';
       await updateTagUsageCounts(previousTags, resolvedTags);
     } else if (sportType !== undefined) {
-      post.sportType = sportType;
+      post.sportType = sportType || '';
     }
 
     // keepMediaUrls: danh sách URL cũ mà client muốn giữ lại (các URL không có trong này sẽ bị xóa)

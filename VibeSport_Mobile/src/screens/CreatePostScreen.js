@@ -53,9 +53,9 @@ export function CreatePostScreen({ navigation, route }) {
   const [selectedTag, setSelectedTag] = React.useState(() => {
     if (editPost) {
       const sportTag = editPost.tags?.find((t) => t !== 'Tìm đội');
-      return sportTag || editPost.sportType || 'Bóng đá';
+      return sportTag || editPost.sportType || 'Không chọn';
     }
-    return 'Bóng đá';
+    return 'Không chọn';
   });
   const [showTagDropdown, setShowTagDropdown] = React.useState(false);
   const [location, setLocation] = React.useState(editPost?.location ?? '');
@@ -83,7 +83,9 @@ export function CreatePostScreen({ navigation, route }) {
     () => new Set(catalogTags.filter((t) => t.category === 'sport').map((t) => t.name)),
     [catalogTags]
   );
-  const sportType = sportTagNames.has(selectedTag) ? selectedTag : editPost?.sportType || 'Bóng đá';
+  const sportType = selectedTag === 'Không chọn'
+    ? ''
+    : sportTagNames.has(selectedTag) ? selectedTag : editPost?.sportType || 'Bóng đá';
 
   // ── Pick media ─────────────────────────────────────────────────
   const handlePickMedia = async () => {
@@ -170,9 +172,11 @@ export function CreatePostScreen({ navigation, route }) {
     if (locationLoading) setLocationLoading(false);
 
     const originalTags = editPost?.tags || [];
-    const finalTags = originalTags.includes('Tìm đội')
-      ? ['Tìm đội', selectedTag]
-      : [selectedTag];
+    const finalTags = selectedTag === 'Không chọn'
+      ? originalTags.filter((t) => t === 'Tìm đội')
+      : originalTags.includes('Tìm đội')
+        ? ['Tìm đội', selectedTag]
+        : [selectedTag];
 
     const formData = new FormData();
     formData.append('content', content.trim());
@@ -274,14 +278,15 @@ export function CreatePostScreen({ navigation, route }) {
     // 3) Nút "+" thêm ảnh (nếu chưa đủ 10)
     if (totalCount < MAX_MEDIA) {
       items.push(
-        <TouchableOpacity
-          key="add-btn"
-          style={styles.addCell}
-          onPress={handlePickMedia}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={30} color="#FF6B35" />
-        </TouchableOpacity>
+        <View key="add-btn" style={styles.addCellWrapper}>
+          <TouchableOpacity
+            style={styles.addCell}
+            onPress={handlePickMedia}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={30} color="#FF6B35" />
+          </TouchableOpacity>
+        </View>
       );
     }
 
@@ -348,10 +353,12 @@ export function CreatePostScreen({ navigation, route }) {
           {/* ── Tag dropdown ── */}
           {showTagDropdown && (
             <View style={styles.dropdownOptions}>
-              {(catalogTags.length
-                ? catalogTags.filter((t) => ['Bóng đá', 'Cầu lông', 'Pickleball'].includes(t.name))
-                : [{ name: 'Bóng đá' }, { name: 'Cầu lông' }, { name: 'Pickleball' }]
-              ).map((tag) => (
+              {[
+                { name: 'Không chọn' },
+                ...(catalogTags.length
+                  ? catalogTags.filter((t) => ['Bóng đá', 'Cầu lông', 'Pickleball'].includes(t.name))
+                  : [{ name: 'Bóng đá' }, { name: 'Cầu lông' }, { name: 'Pickleball' }])
+              ].map((tag) => (
                 <TouchableOpacity
                   key={tag._id || tag.name}
                   onPress={() => { setSelectedTag(tag.name); setShowTagDropdown(false); }}
@@ -566,10 +573,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Ô "+" thêm ảnh
-  addCell: {
+  addCellWrapper: {
     width: CELL_SIZE,
     aspectRatio: 1,
+  },
+  // Ô "+" thêm ảnh
+  addCell: {
+    width: '100%',
+    height: '100%',
     borderRadius: 10,
     borderWidth: 1.5,
     borderColor: '#FFD9CC',

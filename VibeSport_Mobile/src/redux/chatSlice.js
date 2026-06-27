@@ -33,6 +33,7 @@ import {
   requestAddMemberRequest,
   pinMessageRequest,
   unpinMessageRequest,
+  recallMessageRequest,
 } from '../services/chatApi';
 
 
@@ -421,6 +422,18 @@ export const unpinMessage = createAsyncThunk(
   }
 );
 
+export const recallMessage = createAsyncThunk(
+  'chat/recallMessage',
+  async ({ messageId }, { rejectWithValue, getState }) => {
+    try {
+      const token = getState().auth.token;
+      return await recallMessageRequest(messageId, token);
+    } catch (error) {
+      return rejectWithValue(error.message || 'Không thể thu hồi tin nhắn.');
+    }
+  }
+);
+
 
 const upsertConversation = (conversations, conversation) => {
   const index = conversations.findIndex((item) => item._id === conversation._id);
@@ -650,6 +663,29 @@ const chatSlice = createSlice({
       const index = state.conversations.findIndex((item) => item._id === conversation._id);
       if (index !== -1) {
         state.conversations[index] = { ...state.conversations[index], ...conversation };
+      }
+    },
+    messageRecalled(state, action) {
+      const { conversationId, messageId } = action.payload;
+      const messages = state.messagesByConversation[conversationId] || [];
+      const index = messages.findIndex((m) => m._id === messageId);
+      if (index !== -1) {
+        messages[index] = {
+          ...messages[index],
+          isRecalled: true,
+          content: 'Tin nhắn đã bị thu hồi',
+          mediaUrl: null,
+          type: 'text',
+        };
+      }
+
+      const conv = state.conversations.find((c) => c._id === conversationId);
+      if (conv) {
+        const msg = messages.find((m) => m._id === messageId);
+        // If this was the last message, update lastMessage
+        if (msg && conv.lastMessageAt === msg.createdAt) {
+          conv.lastMessage = 'Tin nhắn đã bị thu hồi';
+        }
       }
     },
   },
@@ -919,6 +955,20 @@ const chatSlice = createSlice({
         const data = action.payload?.data;
         if (data) state.conversations = upsertConversation(state.conversations, data);
       })
+      .addCase(recallMessage.fulfilled, (state, action) => {
+        const message = action.payload.data;
+        if (!message) return;
+        const conversationId = message.conversationId;
+        const messages = state.messagesByConversation[conversationId] || [];
+        const index = messages.findIndex((m) => m._id === message._id);
+        if (index !== -1) {
+          messages[index] = { ...messages[index], ...message };
+        }
+        const conv = state.conversations.find((c) => c._id === conversationId);
+        if (conv && conv.lastMessageAt === message.createdAt) {
+          conv.lastMessage = 'Tin nhắn đã bị thu hồi';
+        }
+      })
       .addCase(logoutUser.fulfilled, (state) => {
         state.activeConversationId = null;
         state.conversations = [];
@@ -951,5 +1001,6 @@ export const {
   groupUpdated,
   resetChat,
   joinRequestUpdated,
+  messageRecalled,
 } = chatSlice.actions;
 export default chatSlice.reducer;

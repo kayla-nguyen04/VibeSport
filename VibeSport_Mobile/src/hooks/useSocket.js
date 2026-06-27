@@ -17,6 +17,7 @@ import {
   memberMuted,
   memberUnmuted,
   joinRequestUpdated,
+  messageRecalled,
 } from '../redux/chatSlice';
 
 export function useSocket() {
@@ -115,6 +116,10 @@ export function useSocket() {
 
     socket.on('join_request_rejected', (payload) => {
       dispatch(joinRequestUpdated(payload));
+    });
+
+    socket.on('message_recalled', (payload) => {
+      dispatch(messageRecalled(payload));
     });
 
     socket.on('disconnect', () => {

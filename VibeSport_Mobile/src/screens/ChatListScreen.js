@@ -33,6 +33,7 @@ import {
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
 import * as ImagePicker from 'expo-image-picker';
+import { isUserOnline } from '../utils/presence';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời'];
@@ -365,20 +366,7 @@ export default function ChatListScreen({ navigation }) {
     });
   }, [conversations, searchText]);
 
-  // DEBUG: Log all conversations before filtering
-  React.useEffect(() => {
-    if (allConversations.length === 0) return;
-    console.log('[DEBUG ChatListScreen] allConversations:', allConversations.map((item) => ({
-      _id: item._id,
-      viewState: item.viewState,
-      hasOtherPendingRequest: item.hasOtherPendingRequest,
-      blockedByMe: item.blockedByMe,
-      isHidden: item.isHidden,
-      status: item.status,
-    })));
-    console.log('[DEBUG ChatListScreen] inboxConversations ids:', inboxConversations.map((i) => i._id));
-    console.log('[DEBUG ChatListScreen] pendingConversations ids:', pendingConversations.map((i) => i._id));
-  }, [allConversations, inboxConversations, pendingConversations]);
+  // DEBUG: Log all conversations removed to keep console clean
 
   const inboxConversations = React.useMemo(() => {
     return applyFilter(
@@ -558,21 +546,26 @@ export default function ChatListScreen({ navigation }) {
             }
           }}
         >
-          {peer?.picture ? (
-            <Image
-              source={{ uri: fixMediaUrl(peer.picture) }}
-              style={styles.avatar}
-            />
-          ) : (
-            <View
-              style={[
-                styles.avatarFallback,
-                { backgroundColor: getAvatarColor(peerName) },
-              ]}
-            >
-              <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
-            </View>
-          )}
+          <View style={{ position: 'relative' }}>
+            {peer?.picture ? (
+              <Image
+                source={{ uri: fixMediaUrl(peer.picture) }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.avatarFallback,
+                  { backgroundColor: getAvatarColor(peerName) },
+                ]}
+              >
+                <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
+              </View>
+            )}
+            {!item.isGroup && peer?.lastSeenAt && isUserOnline(peer.lastSeenAt) && (
+              <View style={styles.onlineDot} />
+            )}
+          </View>
 
           <View style={styles.conversationBody}>
             <View style={styles.conversationTopRow}>
@@ -952,12 +945,7 @@ export default function ChatListScreen({ navigation }) {
                   </TouchableOpacity>
                 )}
 
-                <TouchableOpacity
-                  style={styles.menuCancel}
-                  onPress={() => setShowOptionsModal(false)}
-                >
-                  <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600', textAlign: 'center' }}>Hủy</Text>
-                </TouchableOpacity>
+                {/* Cancel button removed since clicking outside closes the modal */}
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -1697,5 +1685,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#22C55E',
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
   },
 });
