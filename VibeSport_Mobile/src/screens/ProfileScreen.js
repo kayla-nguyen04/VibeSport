@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { useSelector } from 'react-redux';
 import {
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { getUserProfileRequest } from '../services/userApi';
 const SPORTS = [
   { key: 'Bóng đá', label: 'Bóng đá' },
   { key: 'Cầu lông', label: 'Cầu lông' },
@@ -35,6 +38,8 @@ function getUserId(user) {
 }
 
 export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
+  const token = useSelector((state) => state.auth.token);
+  const [profileStats, setProfileStats] = useState(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
@@ -54,6 +59,35 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       setEditBio(user.bio ?? '');
     }
   }, [user]);
+
+  const loadProfileStats = useCallback(async () => {
+    const userId = getUserId(user);
+    if (!userId || !token) return;
+
+    try {
+      const response = await getUserProfileRequest(userId, token);
+      setProfileStats(response.data);
+    } catch (error) {
+      console.error('Load profile stats error:', error);
+    }
+  }, [user, token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfileStats();
+    }, [loadProfileStats])
+  );
+
+  const openFollowList = (initialTab) => {
+    navigation?.navigate('FollowList', { initialTab });
+  };
+
+  const openPublicProfile = () => {
+    const userId = getUserId(user);
+    if (userId) {
+      navigation?.navigate('UserProfile', { userId });
+    }
+  };
 
   const handlePickAvatar = () => {
     Alert.alert(
@@ -159,6 +193,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       });
       Alert.alert('Thành công', 'Cập nhật hồ sơ thành công.');
       setIsEditModalVisible(false);
+      loadProfileStats();
     } catch (error) {
       Alert.alert('Lỗi', getProfileErrorMessage(error, 'Cập nhật thông tin hồ sơ thất bại.'));
     } finally {
@@ -190,6 +225,25 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
             {user?.name || user?.email?.split('@')[0] || 'Người dùng VibeSport'}
           </Text>
           <Text style={styles.emailText}>{user?.email}</Text>
+
+          <View style={styles.followStatsRow}>
+            <TouchableOpacity style={styles.followStatItem} onPress={() => openFollowList('following')}>
+              <Text style={styles.followStatValue}>{profileStats?.followingCount ?? 0}</Text>
+              <Text style={styles.followStatLabel}>Đang theo dõi</Text>
+            </TouchableOpacity>
+            <View style={styles.followStatDivider} />
+            <TouchableOpacity style={styles.followStatItem} onPress={() => openFollowList('followers')}>
+              <Text style={styles.followStatValue}>{profileStats?.followerCount ?? 0}</Text>
+              <Text style={styles.followStatLabel}>Người theo dõi</Text>
+            </TouchableOpacity>
+          </View>
+
+          {user?.bio ? (
+            <View style={styles.bioBox}>
+              <Text style={styles.bioTitle}>Giới thiệu</Text>
+              <Text style={styles.bioText}>{user.bio}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.profileHighlights}>
             <View style={styles.profileItem}>
@@ -224,6 +278,32 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 
         {/* Menu Options Section */}
         <View style={styles.menuContainer}>
+          <TouchableOpacity
+            onPress={openPublicProfile}
+            style={styles.menuItem}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIconWrap, { backgroundColor: '#eef5ff' }]}>
+                <Feather name="eye" size={18} color="#0b74ff" />
+              </View>
+              <Text style={styles.menuText}>Quản lý trang cá nhân</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => openFollowList('following')}
+            style={styles.menuItem}
+          >
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIconWrap, { backgroundColor: '#f0fdf4' }]}>
+                <Feather name="users" size={18} color="#16a34a" />
+              </View>
+              <Text style={styles.menuText}>Danh sách theo dõi</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => setIsEditModalVisible(true)}
             style={styles.menuItem}
@@ -508,6 +588,36 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  followStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    width: '100%',
+  },
+  followStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  followStatDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: '#e2e8f0',
+  },
+  followStatValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  followStatLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
   profileHighlights: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -546,6 +656,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 16,
     marginTop: 18,
+    width: '100%',
   },
   bioTitle: {
     fontSize: 13,
