@@ -361,9 +361,44 @@ export default function UserProfileScreen({ route, navigation }) {
             ) : null}
           </View>
 
+          {profile.bio ? (
+            <Text style={styles.bioText}>{profile.bio}</Text>
+          ) : null}
+
           <Text style={[styles.activeStatus, !presence.isOnline && styles.activeStatusOffline]}>
             {presence.label}
           </Text>
+
+          <View style={styles.followStatsRow}>
+            <TouchableOpacity
+              style={styles.followStatItem}
+              onPress={() =>
+                navigation.navigate('FollowList', {
+                  initialTab: 'following',
+                  userId: profile.isSelf ? undefined : userId,
+                  ownerName: profile.isSelf ? undefined : profile.name,
+                })
+              }
+            >
+              <Text style={styles.followStatValue}>{profile.followingCount ?? 0}</Text>
+              <Text style={styles.followStatLabel}>Đang theo dõi</Text>
+            </TouchableOpacity>
+            <View style={styles.followStatDivider} />
+            <TouchableOpacity
+              style={styles.followStatItem}
+              onPress={() =>
+                navigation.navigate('FollowList', {
+                  initialTab: 'followers',
+                  userId: profile.isSelf ? undefined : userId,
+                  ownerName: profile.isSelf ? undefined : profile.name,
+                })
+              }
+            >
+              <Text style={styles.followStatValue}>{profile.followerCount ?? 0}</Text>
+              <Text style={styles.followStatLabel}>Người theo dõi</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.statsRow}>
             <StatBox value={stats.matchesPlayed || 0} label="Trận đã chơi" />
             <StatBox value={stats.matchesWon || 0} label="Trận thắng" />
@@ -411,7 +446,17 @@ export default function UserProfileScreen({ route, navigation }) {
                 )}
               </TouchableOpacity>
             </View>
-          ) : null}
+          ) : (
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => navigation.navigate('FollowList', { initialTab: 'following' })}
+              >
+                <Feather name="users" size={18} color="#1F2937" />
+                <Text style={styles.actionBtnText}>Quản lý theo dõi</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {profile.mutualFriends > 0 ? (
             <Text style={styles.mutualText}>{profile.mutualFriends} bạn chung</Text>
@@ -507,8 +552,46 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginTop: 8 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   metaText: { color: '#68707f', fontSize: 13 },
+  bioText: {
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 12,
+    marginHorizontal: 20,
+  },
   activeStatus: { color: '#22C55E', fontSize: 13, marginTop: 6 },
   activeStatusOffline: { color: '#9CA3AF' },
+  followStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    marginHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    width: '100%',
+  },
+  followStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  followStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#E5E7EB',
+  },
+  followStatValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#101828',
+  },
+  followStatLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#68707f',
+    fontWeight: '600',
+  },
   statsRow: {
     flexDirection: 'row',
     backgroundColor: '#F9FAFB',

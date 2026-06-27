@@ -24,6 +24,7 @@ import UserProfileScreen from '../screens/UserProfileScreen';
 import SavedPostsScreen from '../screens/SavedPostsScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
+import FollowListScreen from '../screens/FollowListScreen';
 import GroupManagementScreen from '../screens/GroupManagementScreen';
 import JoinGroupScreen from '../screens/JoinGroupScreen';
 import MyTeamDetailScreen from '../screens/MyTeamDetailScreen';
@@ -125,6 +126,7 @@ export function AuthNavigator() {
             <Stack.Screen name="SavedPosts" component={SavedPostsScreen} />
             <Stack.Screen name="Notification" component={NotificationScreen} />
             <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
+            <Stack.Screen name="FollowList" component={FollowListScreen} />
             <Stack.Screen name="GroupManagement" component={GroupManagementScreen} />
             <Stack.Screen name="JoinGroup" component={JoinGroupScreen} />
             <Stack.Screen name="MyTeamDetail" component={MyTeamDetailScreen} />

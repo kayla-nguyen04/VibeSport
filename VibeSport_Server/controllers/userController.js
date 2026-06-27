@@ -269,20 +269,72 @@ exports.getMutualFriends = async (req, res) => {
 
 exports.getFollowingList = async (req, res) => {
   try {
-    const followDocs = await Follow.find({ followerId: req.userId })
-      .populate('followingId', '_id name picture favoriteSport position area lastSeenAt');
+    const targetUserId = req.params.id || req.userId;
+    const followDocs = await Follow.find({ followerId: targetUserId })
+      .populate('followingId', '_id name picture favoriteSport position area lastSeenAt bio');
 
-    const users = followDocs
-      .map((f) => f.followingId)
-      .filter(Boolean);
+    const users = followDocs.map((f) => f.followingId).filter(Boolean);
+    const userIds = users.map((u) => u._id);
+
+    const [followedByTarget, followedByViewer] = await Promise.all([
+      Follow.find({ followerId: { $in: userIds }, followingId: targetUserId }).distinct('followerId'),
+      req.userId
+        ? Follow.find({ followerId: req.userId, followingId: { $in: userIds } }).distinct('followingId')
+        : [],
+    ]);
+
+    const followedByTargetSet = new Set(followedByTarget.map(String));
+    const followedByViewerSet = new Set(followedByViewer.map(String));
+    const isSelf = String(req.userId) === String(targetUserId);
+
+    const data = users.map((user) => ({
+      ...formatUserPublic(user),
+      _id: user._id,
+      isFollowing: isSelf ? true : followedByViewerSet.has(String(user._id)),
+      isFollowedBy: followedByTargetSet.has(String(user._id)),
+    }));
 
     res.status(200).json({
       success: true,
-      data: users,
+      data,
+      total: data.length,
     });
   } catch (error) {
     console.error('getFollowingList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách đang follow' });
+  }
+};
+
+exports.getFollowersList = async (req, res) => {
+  try {
+    const targetUserId = req.params.id || req.userId;
+    const followDocs = await Follow.find({ followingId: targetUserId })
+      .populate('followerId', '_id name picture favoriteSport position area lastSeenAt bio');
+
+    const users = followDocs.map((f) => f.followerId).filter(Boolean);
+    const userIds = users.map((u) => u._id);
+
+    const followedByViewer = req.userId
+      ? await Follow.find({ followerId: req.userId, followingId: { $in: userIds } }).distinct('followingId')
+      : [];
+
+    const followedByViewerSet = new Set(followedByViewer.map(String));
+
+    const data = users.map((user) => ({
+      ...formatUserPublic(user),
+      _id: user._id,
+      isFollowing: followedByViewerSet.has(String(user._id)),
+      isFollowedBy: true,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data,
+      total: data.length,
+    });
+  } catch (error) {
+    console.error('getFollowersList error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách người theo dõi' });
   }
 };
 
