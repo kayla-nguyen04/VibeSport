@@ -28,6 +28,7 @@ router.post("/", async (req, res) => {
       selectedPositionIds,
       benchMembersTeam1,
       benchMembersTeam2,
+      footballFormation,
     } = req.body;
 
     if (!sport || !title || !date || !startTime || !maxPlayers || !locationName) {
@@ -61,6 +62,7 @@ router.post("/", async (req, res) => {
       selectedPositionIds: sport === "football" ? selectedPositionIds || [] : [],
       benchMembersTeam1: sport === "football" ? Number(benchMembersTeam1 || 0) : 0,
       benchMembersTeam2: sport === "football" ? Number(benchMembersTeam2 || 0) : 0,
+      footballFormation: sport === "football" ? footballFormation || "" : "",
       costPerPerson: Number(costPerPerson || 0),
       locationName,
       location: location || {},
@@ -259,6 +261,7 @@ router.put("/:id", async (req, res) => {
       selectedPositionIds,
       benchMembersTeam1,
       benchMembersTeam2,
+      footballFormation,
     } = req.body;
 
     const match = await Match.findById(req.params.id);
@@ -304,6 +307,9 @@ router.put("/:id", async (req, res) => {
     }
     if (benchMembersTeam2 !== undefined) {
       match.benchMembersTeam2 = sport === "football" || match.sport === "football" ? Number(benchMembersTeam2 || 0) : 0;
+    }
+    if (footballFormation !== undefined) {
+      match.footballFormation = sport === "football" || match.sport === "football" ? footballFormation || "" : "";
     }
     if (costPerPerson !== undefined) match.costPerPerson = Number(costPerPerson || 0);
     if (locationName) match.locationName = locationName.trim();
