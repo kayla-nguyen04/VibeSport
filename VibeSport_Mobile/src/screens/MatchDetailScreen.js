@@ -24,6 +24,8 @@ import {
   leaveMatch,
   kickTeamMember,
   inviteTeamMember,
+  acceptInvite,
+  approveInvite,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
 import { Screen } from "../components/Screen";
@@ -117,25 +119,26 @@ function UserRow({ user, label, badge, onPress, rightAction }) {
 
   return (
     <View style={styles.userRowWrap}>
-      <TouchableOpacity style={styles.userRow} onPress={onPress} activeOpacity={0.7} disabled={!onPress}>
-        <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
-          <Text style={styles.userInitials}>{getInitials(name)}</Text>
-        </View>
-        <View style={styles.userInfo}>
-          <View style={styles.userNameRow}>
-            <Text style={styles.userName}>{name}</Text>
-            {badge ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{badge}</Text>
-              </View>
-            ) : null}
+      <View style={styles.userRowContent}>
+        <TouchableOpacity style={styles.userRow} onPress={onPress} activeOpacity={0.7} disabled={!onPress}>
+          <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
+            <Text style={styles.userInitials}>{getInitials(name)}</Text>
           </View>
-          {label ? <Text style={styles.userMeta}>{label}</Text> : null}
-          {user.area ? <Text style={styles.userMeta}>📍 {user.area}</Text> : null}
-        </View>
-        {onPress ? <Text style={styles.chevron}>›</Text> : null}
-      </TouchableOpacity>
-      {rightAction}
+          <View style={styles.userInfo}>
+            <View style={styles.userNameRow}>
+              <Text style={styles.userName}>{name}</Text>
+              {badge ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            {label ? <Text style={styles.userMeta}>{label}</Text> : null}
+            {user.area ? <Text style={styles.userMeta}>📍 {user.area}</Text> : null}
+          </View>
+        </TouchableOpacity>
+        {rightAction ? <View style={styles.userRowRightAction}>{rightAction}</View> : null}
+      </View>
     </View>
   );
 }
@@ -157,6 +160,8 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [followingUsers, setFollowingUsers] = useState([]);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [showKickModal, setShowKickModal] = useState(false);
+  const [showJoinRequests, setShowJoinRequests] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
 
@@ -210,30 +215,36 @@ export default function MatchDetailScreen({ navigation, route }) {
     })();
   }, [matchId, navigation]);
 
-  if (loading || !match) {
-    return (
-      <Screen style={styles.safeArea}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#0066cc" />
-        </View>
-      </Screen>
-    );
-  }
-
-  const creator = typeof match.createdBy === "object" ? match.createdBy : null;
+  const creator = typeof match?.createdBy === "object" ? match.createdBy : null;
   const creatorId = getUserId(creator || match.createdBy);
-  const isOwner = creatorId === userId;
+  const ownerRoleEntry = Array.isArray(match.memberRoles)
+    ? match.memberRoles.find((entry) => entry?.role === "owner")
+    : null;
+  const ownerId = getUserId(ownerRoleEntry?.userId || creator || match.createdBy);
+  const isOwner = !!ownerId && String(ownerId) === String(userId);
   const icon = SPORT_ICONS[match.sport] || "⚽";
   const currentCount = match.currentPlayers || match.participants?.length || 0;
   const maxCount = match.maxPlayers || 10;
   const coords = match.location;
   const participants = match.participants || [];
   const pendingRequests = match.pendingJoinRequests || [];
+  const pendingRequestPositions = match.pendingJoinRequestPositions || [];
 
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
-  const isFull = match.status === "full" || currentCount >= maxCount;
-  const isEnded = match.status === "completed" || match.status === "cancelled";
+
+  const getRequestPositions = (requestUserId) => {
+    const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
+    return Array.isArray(entry?.positionIds) ? entry.positionIds : [];
+  };
+  const isFull = match?.status === "full" || currentCount >= maxCount;
+  const isEnded = match?.status === "completed" || match?.status === "cancelled";
+
+  useEffect(() => {
+    if (isOwner && pendingRequests.length > 0) {
+      setShowJoinRequests(true);
+    }
+  }, [isOwner, pendingRequests.length]);
 
   const openProfile = (profileUser) => {
     const profileUserId = getUserId(profileUser);
@@ -406,11 +417,11 @@ export default function MatchDetailScreen({ navigation, route }) {
       const res = await getFollowingListRequest(token);
       const list = res?.data || [];
       // Filter out users already participating or with pending requests
-      const participantIds = participants.map(p => getUserId(p));
-      const pendingIds = pendingRequests.map(p => getUserId(p));
-      const filtered = list.filter(u => {
+      const participantIds = participants.map((p) => getUserId(p));
+      const pendingIds = pendingRequests.map((p) => getUserId(p));
+      const filtered = list.filter((u) => {
         const uid = String(u._id || u.id);
-        return !participantIds.includes(uid) && !pendingIds.includes(uid) && uid !== userId;
+        return !participantIds.includes(uid) && !pendingIds.includes(uid) && uid !== ownerId;
       });
       setFollowingUsers(filtered);
     } catch (err) {
@@ -423,10 +434,12 @@ export default function MatchDetailScreen({ navigation, route }) {
   const handleInviteUser = async (targetUserId) => {
     try {
       setActionLoading(true);
-      const data = await inviteTeamMember(match._id, targetUserId);
+      const data = await inviteTeamMember(match._id, userId, targetUserId);
       setMatch(data);
-      Alert.alert("Đã gửi lời mời", "Người được mời sẽ thấy yêu cầu và cần chấp nhận để vào trận.");
-      // Remove invited user from the list
+      const message = String(ownerId) === String(userId)
+        ? "Người được mời có thể chấp nhận ngay."
+        : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
+      Alert.alert("Đã gửi lời mời", message);
       setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
     } catch (err) {
       Alert.alert("Lỗi", err.message || "Không thể mời");
@@ -447,7 +460,7 @@ export default function MatchDetailScreen({ navigation, route }) {
     try {
       setActionLoading(true);
       const targetId = getUserId(kickTarget);
-      const data = await kickTeamMember(match._id, targetId, kickReason);
+      const data = await kickTeamMember(match._id, ownerId, targetId, kickReason);
       setMatch(data);
       Alert.alert("Thành công", "Đã kích thành viên ra khỏi trận");
       setShowKickModal(false);
@@ -460,7 +473,13 @@ export default function MatchDetailScreen({ navigation, route }) {
     }
   };
 
-  return (
+  const content = loading || !match ? (
+    <Screen style={styles.safeArea}>
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#0066cc" />
+      </View>
+    </Screen>
+  ) : (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
         <TouchableOpacity
@@ -622,7 +641,7 @@ export default function MatchDetailScreen({ navigation, route }) {
             <Text style={styles.sectionTitle}>
               Người tham gia ({participants.length})
             </Text>
-            {isOwner && !isEnded && (
+            {isOwner && (
               <TouchableOpacity style={styles.inviteSmallBtn} onPress={handleOpenInvite} activeOpacity={0.7}>
                 <Text style={styles.inviteSmallBtnText}>＋ Mời</Text>
               </TouchableOpacity>
@@ -659,39 +678,83 @@ export default function MatchDetailScreen({ navigation, route }) {
         </View>
 
         {isOwner && pendingRequests.length > 0 && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Yêu cầu tham gia ({pendingRequests.length})</Text>
-            {pendingRequests.map((p, idx) => {
-              const requestUserId = getUserId(p);
-              return (
-                <UserRow
-                  key={requestUserId || idx}
-                  user={typeof p === "object" ? p : { name: "Người dùng" }}
-                  label="Muốn tham gia trận"
-                  onPress={() => openProfile(p)}
-                  rightAction={
-                    <View style={styles.requestActions}>
-                      <TouchableOpacity
-                        style={styles.acceptBtn}
-                        onPress={() => handleAcceptRequest(requestUserId)}
-                        disabled={actionLoading}
-                      >
-                        <Text style={styles.acceptBtnText}>Chấp nhận</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.rejectBtn}
-                        onPress={() => handleRejectRequest(requestUserId)}
-                        disabled={actionLoading}
-                      >
-                        <Text style={styles.rejectBtnText}>Từ chối</Text>
-                      </TouchableOpacity>
-                    </View>
-                  }
-                />
-              );
-            })}
+          <View style={styles.requestSummaryCard}>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>Yêu cầu tham gia ({pendingRequests.length})</Text>
+              <TouchableOpacity
+                style={styles.openRequestBtn}
+                onPress={() => setShowRequestModal(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.openRequestBtnText}>Xem tất cả</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.requestSummaryText} numberOfLines={2}>
+              Nhấn vào để xem chi tiết yêu cầu tham gia, vị trí ứng tuyển và chấp nhận/từ chối.
+            </Text>
           </View>
         )}
+
+        <Modal visible={showRequestModal} animationType="slide">
+          <Screen style={styles.safeArea}>
+            <ScreenHeader style={styles.header}>
+              <TouchableOpacity style={styles.backButton} onPress={() => setShowRequestModal(false)}>
+                <Text style={styles.backArrow}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Yêu cầu tham gia</Text>
+              <View style={styles.headerSpacer} />
+            </ScreenHeader>
+
+            <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+              {pendingRequests.map((p, idx) => {
+                const requestUserId = getUserId(p);
+                const requestPositions = getRequestPositions(requestUserId);
+                return (
+                  <View key={requestUserId || idx} style={styles.requestModalItem}>
+                    <UserRow
+                      user={typeof p === "object" ? p : { name: "Người dùng" }}
+                      label="Muốn tham gia trận"
+                      onPress={() => openProfile(p)}
+                      rightAction={
+                        <View style={styles.requestActions}>
+                          <TouchableOpacity
+                            style={styles.acceptBtn}
+                            onPress={() => handleAcceptRequest(requestUserId)}
+                            disabled={actionLoading}
+                          >
+                            <Text style={styles.acceptBtnText}>Chấp nhận</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.rejectBtn}
+                            onPress={() => handleRejectRequest(requestUserId)}
+                            disabled={actionLoading}
+                          >
+                            <Text style={styles.rejectBtnText}>Từ chối</Text>
+                          </TouchableOpacity>
+                        </View>
+                      }
+                    />
+                    {requestPositions.length > 0 && (
+                      <View style={styles.requestPositionBox}>
+                        <Text style={styles.requestPositionLabel}>Vị trí ứng tuyển</Text>
+                        <View style={styles.requestPositionTags}>
+                          {requestPositions.map((posId) => {
+                            const pos = ALL_POSITIONS.find((item) => item.id === posId);
+                            return (
+                              <View key={posId} style={styles.requestPositionTag}>
+                                <Text style={styles.requestPositionTagText}>{pos?.label || posId}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </Screen>
+        </Modal>
 
         {!isOwner && !isEnded && !isParticipant && (
           <View style={styles.joinSection}>
@@ -893,6 +956,8 @@ export default function MatchDetailScreen({ navigation, route }) {
       </Modal>
     </Screen>
   );
+
+  return content;
 }
 
 const styles = StyleSheet.create({
@@ -1025,7 +1090,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontWeight: "800", color: "#333", marginBottom: 12 },
   emptyText: { fontSize: 13, color: "#999" },
   userRowWrap: { marginBottom: 10 },
-  userRow: { flexDirection: "row", alignItems: "center" },
+  userRowContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  userRow: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
+  userRowRightAction: { marginLeft: 8, justifyContent: "center", flexShrink: 0 },
   userAvatar: {
     width: 40,
     height: 40,
@@ -1046,10 +1113,63 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 10, color: "#0066cc", fontWeight: "700" },
   chevron: { fontSize: 22, color: "#ccc", marginLeft: 8 },
-  requestActions: { flexDirection: "row", gap: 8, marginTop: 8, marginLeft: 52 },
+  requestSummaryCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  requestSummaryText: {
+    fontSize: 13,
+    color: "#475569",
+    lineHeight: 20,
+  },
+  openRequestBtn: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  openRequestBtnText: {
+    color: "#0369a1",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  requestModalItem: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  requestActions: { flexDirection: "row", gap: 8, marginLeft: 8, alignItems: "center" },
+  requestPanel: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    marginBottom: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  requestPanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#f8fafc",
+  },
+  requestPanelTitle: { fontSize: 14, fontWeight: "800", color: "#334155" },
+  requestPanelChevron: { fontSize: 16, color: "#64748b" },
+  requestPanelBody: { padding: 12, paddingTop: 8 },
+  requestItem: { marginBottom: 10 },
+  requestActions: { flexDirection: "row", gap: 8, marginLeft: 8, alignItems: "center" },
   acceptBtn: {
     backgroundColor: "#0066cc",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
   },
@@ -1057,11 +1177,27 @@ const styles = StyleSheet.create({
   rejectBtn: {
     borderWidth: 1,
     borderColor: "#ef4444",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
   },
   rejectBtnText: { color: "#ef4444", fontSize: 12, fontWeight: "700" },
+  requestPositionBox: {
+    marginTop: 6,
+    marginLeft: 52,
+    padding: 8,
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+  },
+  requestPositionLabel: { fontSize: 11, fontWeight: "700", color: "#475569", marginBottom: 6 },
+  requestPositionTags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  requestPositionTag: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  requestPositionTagText: { fontSize: 11, fontWeight: "700", color: "#0369a1" },
   joinSection: { marginBottom: 12 },
   joinBtn: {
     backgroundColor: "#0066cc",
@@ -1215,16 +1351,17 @@ const styles = StyleSheet.create({
   },
   kickSmallBtn: {
     backgroundColor: "#fee2e2",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    marginTop: 6,
-    marginLeft: 52,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignSelf: "center",
   },
   kickSmallBtnText: {
     color: "#b91c1c",
     fontSize: 12,
     fontWeight: "700",
+  
+    
   },
   // ─── Invite Modal ───
   inviteUserCard: {

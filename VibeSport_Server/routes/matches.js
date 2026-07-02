@@ -15,6 +15,7 @@ router.post("/", async (req, res) => {
   try {
     const {
       sport,
+      formation,
       title,
       date,
       startTime,
@@ -51,8 +52,15 @@ router.post("/", async (req, res) => {
       });
     }
 
+    const defaultFormation = {
+      football: "11v11",
+      badminton: "2v2",
+      pickleball: "2v2",
+    };
+
     const match = await Match.create({
       sport,
+      formation: formation || defaultFormation[sport],
       title,
       date,
       startTime,
@@ -290,6 +298,7 @@ router.put("/:id", async (req, res) => {
     }
 
     if (sport) match.sport = sport;
+    if (formation !== undefined) match.formation = formation;
     if (title) match.title = title.trim();
     if (date) match.date = date;
     if (startTime) match.startTime = startTime;
@@ -342,7 +351,7 @@ router.delete("/:id", async (req, res) => {
 // Request to join a match (sends notification to owner)
 router.post("/:id/request-join", async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId, selectedPositionIds } = req.body;
     if (!userId) {
       return res.status(400).json({ success: false, message: "Thiếu userId" });
     }
@@ -370,6 +379,13 @@ router.post("/:id/request-join", async (req, res) => {
     }
 
     match.pendingJoinRequests.push(userId);
+    if (Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0) {
+      match.pendingJoinRequestPositions = match.pendingJoinRequestPositions || [];
+      match.pendingJoinRequestPositions.push({
+        userId,
+        positionIds: selectedPositionIds,
+      });
+    }
     await match.save();
 
     const requester = await User.findById(userId).select("name");
@@ -413,6 +429,9 @@ router.post("/:id/cancel-request", async (req, res) => {
     // Remove user from pendingJoinRequests
     match.pendingJoinRequests = match.pendingJoinRequests.filter(
       (p) => String(p) !== String(userId)
+    );
+    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
+      (entry) => String(entry.userId) !== String(userId)
     );
     await match.save();
 
@@ -462,6 +481,9 @@ router.post("/:id/accept-join", async (req, res) => {
     }
 
     match.pendingJoinRequests.splice(requestIndex, 1);
+    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
+      (entry) => String(entry.userId) !== String(userId)
+    );
     match.participants.push(userId);
     match.currentPlayers = match.participants.length;
     if (match.currentPlayers >= match.maxPlayers) {
@@ -521,6 +543,9 @@ router.post("/:id/reject-join", async (req, res) => {
     }
 
     match.pendingJoinRequests.splice(requestIndex, 1);
+    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
+      (entry) => String(entry.userId) !== String(userId)
+    );
     await match.save();
 
     const updated = await Match.findById(match._id).populate(populateFields);
@@ -570,7 +595,11 @@ router.post("/:id/kick-member", async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
     // Kiểm tra quyền chủ đội
-    if (!ownerId || String(ownerId) !== String(match.createdBy)) {
+    const ownerEntry = Array.isArray(match.memberRoles)
+      ? match.memberRoles.find((entry) => entry?.role === "owner")
+      : null;
+    const actualOwnerId = ownerEntry?.userId || match.createdBy;
+    if (!ownerId || String(ownerId) !== String(actualOwnerId)) {
       return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
     }
     // Remove user from participants
@@ -611,52 +640,151 @@ router.post("/:id/kick-member", async (req, res) => {
   }
 });
 
-// Invite member (owner sends invite → user goes to pendingJoinRequests, must accept)
+// Invite member (owner invite can be accepted directly; member invite needs owner approval)
 router.post("/:id/invite-member", async (req, res) => {
   try {
-    const { ownerId, userId } = req.body;
+    const { ownerId, userId, inviterId } = req.body;
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
-    // Kiểm tra quyền chủ đội
-    if (!ownerId || String(ownerId) !== String(match.createdBy)) {
-      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
+
+    const ownerEntry = Array.isArray(match.memberRoles)
+      ? match.memberRoles.find((entry) => entry?.role === "owner")
+      : null;
+    const actualOwnerId = ownerEntry?.userId || match.createdBy;
+    const inviter = inviterId || ownerId;
+    const isOwnerInvite = String(inviter) === String(actualOwnerId);
+
+    if (!inviter || String(inviter) !== String(actualOwnerId) && String(inviter) !== String(userId) && String(inviter) !== String(match.createdBy)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội hoặc thành viên trong đội mới có quyền mời" });
     }
+
     if (match.participants.some((p) => String(p) === String(userId))) {
       return res.status(400).json({ success: false, message: "Thành viên đã ở trong đội" });
     }
     if (match.participants.length >= match.maxPlayers) {
       return res.status(400).json({ success: false, message: "Đội đã đầy người" });
     }
-    // Check not already invited
-    if (!match.pendingJoinRequests) match.pendingJoinRequests = [];
-    if (match.pendingJoinRequests.some((p) => String(p) === String(userId))) {
+    if (!match.pendingInviteRequests) match.pendingInviteRequests = [];
+    if (match.pendingInviteRequests.some((entry) => String(entry.userId) === String(userId))) {
       return res.status(400).json({ success: false, message: "Đã gửi lời mời cho người này rồi" });
     }
 
-    // Add to pending (awaiting acceptance from the invited user)
-    match.pendingJoinRequests.push(userId);
+    match.pendingInviteRequests.push({
+      userId,
+      invitedBy: inviter,
+      requiresOwnerApproval: !isOwnerInvite,
+    });
     await match.save();
 
-    // Notify invited user
     try {
       await Notification.create({
         userId,
         type: "match",
-        message: `Bạn được mời tham gia đội "${match.title}". Vào Chi tiết trận đấu để chấp nhận.`,
+        message: isOwnerInvite
+          ? `Bạn được chủ đội mời tham gia đội "${match.title}". Vào Chi tiết trận đấu để chấp nhận.`
+          : `Bạn được mời tham gia đội "${match.title}". Chủ đội sẽ duyệt lời mời của bạn.`,
       });
     } catch (notifErr) {
       console.error("Create notification error:", notifErr);
     }
 
-    // Emit socket event thông báo realtime cho user được mời
     try { global.io.to(String(userId)).emit('team-invite', { matchId: match._id }); } catch(e) {}
 
     const updated = await Match.findById(match._id).populate(populateFields);
-    return res.json({ success: true, message: "Đã gửi lời mời, chờ người được mời chấp nhận", data: updated });
+    return res.json({
+      success: true,
+      message: isOwnerInvite
+        ? "Đã gửi lời mời, người được mời có thể chấp nhận ngay"
+        : "Đã gửi lời mời, chủ đội sẽ duyệt trước khi người này vào đội",
+      data: updated,
+    });
   } catch (error) {
     console.error("Invite member error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+});
+
+// Accept a direct invite from the owner
+router.post("/:id/accept-invite", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    const inviteEntry = (match.pendingInviteRequests || []).find((entry) => String(entry.userId) === String(userId));
+    if (!inviteEntry) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy lời mời" });
+    }
+    if (inviteEntry.requiresOwnerApproval) {
+      return res.status(403).json({ success: false, message: "Lời mời này cần chủ đội duyệt trước" });
+    }
+
+    match.pendingInviteRequests = (match.pendingInviteRequests || []).filter((entry) => String(entry.userId) !== String(userId));
+    if (!match.participants.some((p) => String(p) === String(userId))) {
+      match.participants.push(userId);
+      match.currentPlayers = match.participants.length;
+      if (match.currentPlayers >= match.maxPlayers) {
+        match.status = "full";
+      }
+      if (!match.memberRoles) match.memberRoles = [];
+      match.memberRoles.push({ userId, role: "member" });
+      if (!match.memberPositions) match.memberPositions = [];
+      match.memberPositions.push({ userId, positionId: "" });
+    }
+    await match.save();
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+    return res.json({ success: true, message: "Đã vào đội thành công", data: updated });
+  } catch (error) {
+    console.error("Accept invite error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+});
+
+// Owner approves an invite sent by a member
+router.post("/:id/approve-invite", async (req, res) => {
+  try {
+    const { ownerId, userId } = req.body;
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    const ownerEntry = Array.isArray(match.memberRoles)
+      ? match.memberRoles.find((entry) => entry?.role === "owner")
+      : null;
+    const actualOwnerId = ownerEntry?.userId || match.createdBy;
+    if (!ownerId || String(ownerId) !== String(actualOwnerId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền duyệt lời mời" });
+    }
+
+    const inviteEntry = (match.pendingInviteRequests || []).find((entry) => String(entry.userId) === String(userId));
+    if (!inviteEntry || !inviteEntry.requiresOwnerApproval) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy lời mời cần duyệt" });
+    }
+
+    match.pendingInviteRequests = (match.pendingInviteRequests || []).filter((entry) => String(entry.userId) !== String(userId));
+    if (!match.participants.some((p) => String(p) === String(userId))) {
+      match.participants.push(userId);
+      match.currentPlayers = match.participants.length;
+      if (match.currentPlayers >= match.maxPlayers) {
+        match.status = "full";
+      }
+      if (!match.memberRoles) match.memberRoles = [];
+      match.memberRoles.push({ userId, role: "member" });
+      if (!match.memberPositions) match.memberPositions = [];
+      match.memberPositions.push({ userId, positionId: "" });
+    }
+    await match.save();
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+    return res.json({ success: true, message: "Đã duyệt lời mời và thêm vào đội", data: updated });
+  } catch (error) {
+    console.error("Approve invite error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 });
@@ -673,7 +801,11 @@ router.post("/:id/add-member", async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
     // Kiểm tra quyền chủ đội
-    if (String(match.createdBy) !== String(ownerId)) {
+    const ownerEntry = Array.isArray(match.memberRoles)
+      ? match.memberRoles.find((entry) => entry?.role === "owner")
+      : null;
+    const actualOwnerId = ownerEntry?.userId || match.createdBy;
+    if (String(actualOwnerId) !== String(ownerId)) {
       return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
     }
     // Kiểm tra đã là thành viên chưa

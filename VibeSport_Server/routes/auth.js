@@ -205,7 +205,7 @@ router.post('/google', async (request, response) => {
 
 router.put('/update-profile', async (request, response) => {
   try {
-    const { userId, name, phone, picture, favoriteSport, position, area, bio, featuredPost } = request.body ?? {};
+    const { userId, name, phone, picture, favoriteSport, favoriteSports, position, area, bio, featuredPost } = request.body ?? {};
 
     if (!userId) {
       response.status(400).json({ message: 'Thiếu thông tin ID người dùng (userId).' });
@@ -227,6 +227,12 @@ router.put('/update-profile', async (request, response) => {
       updateFields.picture = picture;
     }
     if (favoriteSport !== undefined) updateFields.favoriteSport = favoriteSport;
+    if (favoriteSports !== undefined) {
+      const normalizedFavoriteSports = Array.isArray(favoriteSports)
+        ? favoriteSports.map((sport) => String(sport).trim()).filter(Boolean)
+        : [];
+      updateFields.favoriteSports = normalizedFavoriteSports;
+    }
     if (position !== undefined) updateFields.position = position;
     if (area !== undefined) updateFields.area = area;
     if (bio !== undefined) updateFields.bio = bio;
@@ -258,6 +264,7 @@ router.put('/update-profile', async (request, response) => {
         provider: user.provider ?? 'email',
         phone: user.phone ?? null,
         favoriteSport: user.favoriteSport ?? null,
+        favoriteSports: user.favoriteSports ?? [],
         position: user.position ?? null,
         area: user.area ?? null,
         bio: user.bio ?? null,

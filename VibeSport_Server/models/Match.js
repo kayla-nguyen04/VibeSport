@@ -27,6 +27,12 @@ const matchSchema = new Schema(
       required: true,
     },
 
+    formation: {
+      type: String,
+      enum: ["5v5", "7v7", "9v9", "11v11", "1v1", "2v2"],
+      default: "11v11",
+    },
+
     title: {
       type: String,
       required: true,
@@ -129,6 +135,36 @@ const matchSchema = new Schema(
       {
         type: Schema.Types.ObjectId,
         ref: "User",
+      },
+    ],
+
+    pendingJoinRequestPositions: [
+      {
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        positionIds: {
+          type: [String],
+          default: [],
+        },
+      },
+    ],
+
+    pendingInviteRequests: [
+      {
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        invitedBy: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+        },
+        requiresOwnerApproval: {
+          type: Boolean,
+          default: false,
+        },
       },
     ],
 

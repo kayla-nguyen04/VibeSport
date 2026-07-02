@@ -4,6 +4,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthNavigator } from './src/navigation/AuthNavigator';
 import { store } from './src/redux/store';
+import { initCustomAlert } from './src/utils/CustomAlertService';
+import CustomAlertModal from './src/components/CustomAlertModal';
+
+// Initialize the global custom Alert modal override
+initCustomAlert();
 
 export default function App() {
   return (
@@ -11,6 +16,7 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <AuthNavigator />
+        <CustomAlertModal />
       </SafeAreaProvider>
     </Provider>
   );

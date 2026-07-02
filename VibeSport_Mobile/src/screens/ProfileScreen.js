@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import {
@@ -12,10 +12,14 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getUserProfileRequest } from '../services/userApi';
+import { ScreenHeader } from '../components/ScreenHeader';
+
 const SPORTS = [
   { key: 'Bóng đá', label: 'Bóng đá' },
   { key: 'Cầu lông', label: 'Cầu lông' },
@@ -37,6 +41,12 @@ function getUserId(user) {
   return user?.id || user?._id;
 }
 
+const SPORT_EMOJIS = {
+  'Bóng đá': '⚽',
+  'Cầu lông': '🏸',
+  Pickleball: '🏓',
+};
+
 export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const token = useSelector((state) => state.auth.token);
   const [profileStats, setProfileStats] = useState(null);
@@ -48,6 +58,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const [editArea, setEditArea] = useState(user?.area ?? '');
   const [editBio, setEditBio] = useState(user?.bio ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'achievements' | 'teams'
 
   useEffect(() => {
     if (user) {
@@ -80,13 +91,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 
   const openFollowList = (initialTab) => {
     navigation?.navigate('FollowList', { initialTab });
-  };
-
-  const openPublicProfile = () => {
-    const userId = getUserId(user);
-    if (userId) {
-      navigation?.navigate('UserProfile', { userId });
-    }
   };
 
   const handlePickAvatar = () => {
@@ -201,10 +205,49 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
     }
   };
 
+  const handleMoreOptions = () => {
+    Alert.alert(
+      "Tùy chọn",
+      null,
+      [
+        { text: "✏️ Chỉnh sửa hồ sơ", onPress: () => setIsEditModalVisible(true) },
+        { text: "🚪 Đăng xuất", style: "destructive", onPress: onLogout },
+        { text: "Hủy", style: "cancel" }
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const getCleanArea = (fullArea) => {
+    if (!fullArea) return "Chưa chọn";
+    const parts = fullArea.split(",");
+    // Return last part (usually city) or first part depending on length
+    return parts[parts.length - 1]?.trim() || fullArea;
+  };
+
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      
+      {/* Redesigned Screen Header matching the mockup */}
+      <ScreenHeader style={styles.screenHeader}>
+        <TouchableOpacity
+          style={styles.headerBackBtn}
+          onPress={() => {
+            if (navigation?.canGoBack()) navigation.goBack();
+          }}
+        >
+          <Ionicons name="arrow-back" size={24} color="#e14f2e" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Profile</Text>
+        <TouchableOpacity style={styles.headerMoreBtn} onPress={handleMoreOptions}>
+          <Ionicons name="ellipsis-horizontal" size={24} color="#e14f2e" />
+        </TouchableOpacity>
+      </ScreenHeader>
+
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Avatar Section */}
+        
+        {/* Profile Card Info */}
         <View style={styles.avatarSection}>
           <TouchableOpacity onPress={handlePickAvatar} activeOpacity={0.8} style={styles.avatarWrapper}>
             {user?.picture ? (
@@ -226,162 +269,145 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
           </Text>
           <Text style={styles.emailText}>{user?.email}</Text>
 
-          <View style={styles.followStatsRow}>
-            <TouchableOpacity style={styles.followStatItem} onPress={() => openFollowList('following')}>
-              <Text style={styles.followStatValue}>{profileStats?.followingCount ?? 0}</Text>
-              <Text style={styles.followStatLabel}>Đang theo dõi</Text>
-            </TouchableOpacity>
-            <View style={styles.followStatDivider} />
-            <TouchableOpacity style={styles.followStatItem} onPress={() => openFollowList('followers')}>
-              <Text style={styles.followStatValue}>{profileStats?.followerCount ?? 0}</Text>
-              <Text style={styles.followStatLabel}>Người theo dõi</Text>
-            </TouchableOpacity>
+          {/* Active Status Pill */}
+          <View style={styles.activeStatusPill}>
+            <View style={styles.activeDot} />
+            <Text style={styles.activeStatusText}>Đang hoạt động</Text>
           </View>
-
-          {user?.bio ? (
-            <View style={styles.bioBox}>
-              <Text style={styles.bioTitle}>Giới thiệu</Text>
-              <Text style={styles.bioText}>{user.bio}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.profileHighlights}>
-            <View style={styles.profileItem}>
-              <Text style={styles.profileLabel}>Môn thể thao</Text>
-              <Text style={styles.profileValue}>{user?.favoriteSport || 'Chưa cập nhật'}</Text>
-            </View>
-            <View style={styles.profileItem}>
-              <Text style={styles.profileLabel}>Vị trí</Text>
-              <Text style={styles.profileValue}>{user?.position || 'Chưa cập nhật'}</Text>
-            </View>
-            <View style={styles.profileItem}>
-              <Text style={styles.profileLabel}>Khu vực</Text>
-              <Text style={styles.profileValue}>{user?.area || 'Chưa cập nhật'}</Text>
-            </View>
-          </View>
-
-          <View style={styles.ratingRow}>
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Feather
-                key={index}
-                name="star"
-                size={18}
-                color={index < (user?.rating ?? 5) ? '#f59e0b' : '#d1d5db'}
-              />
-            ))}
-            <Text style={styles.ratingText}>{((user?.rating ?? 5)).toFixed(1)} / 5.0</Text>
-          </View>
-
         </View>
 
-        <View style={styles.divider} />
+        {/* 2x2 Grid Statistics Box */}
+        <View style={styles.statsGridContainer}>
+          <View style={styles.gridRow}>
+            <TouchableOpacity style={styles.gridCell} onPress={() => openFollowList('following')}>
+              <Text style={styles.gridValue}>{profileStats?.followingCount ?? 0}</Text>
+              <Text style={styles.gridLabel}>Đang theo dõi</Text>
+            </TouchableOpacity>
+            <View style={styles.gridVerticalDivider} />
+            <TouchableOpacity style={styles.gridCell} onPress={() => openFollowList('followers')}>
+              <Text style={styles.gridValue}>{profileStats?.followerCount ?? 0}</Text>
+              <Text style={styles.gridLabel}>Người theo dõi</Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Menu Options Section */}
-        <View style={styles.menuContainer}>
-          <TouchableOpacity
-            onPress={openPublicProfile}
-            style={styles.menuItem}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#eef5ff' }]}>
-                <Feather name="eye" size={18} color="#0b74ff" />
-              </View>
-              <Text style={styles.menuText}>Quản lý trang cá nhân</Text>
+          <View style={styles.gridHorizontalDivider} />
+
+          <View style={styles.gridRow}>
+            <View style={styles.gridCell}>
+              <Text style={styles.gridValue}>{profileStats?.stats?.matchesPlayed ?? 0}</Text>
+              <Text style={styles.gridLabel}>Trận đã chơi</Text>
             </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
+            <View style={styles.gridVerticalDivider} />
+            <View style={styles.gridCell}>
+              <View style={styles.ratingValueWrap}>
+                <Text style={styles.gridValue}>
+                  {((profileStats?.stats?.rating ?? user?.rating ?? 5.0)).toFixed(1)}
+                </Text>
+                <Ionicons name="star" size={14} color="#cbd5e1" style={styles.ratingStarIcon} />
+              </View>
+              <Text style={styles.gridLabel}>Đánh giá</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Highlights Row Redesigned to stack vertically (column) */}
+        <View style={styles.highlightsColumnContainer}>
+          {/* Card 1: Favorite Sport */}
+          <View style={styles.highlightCardRow}>
+            <View style={[styles.highlightIconWrap, { backgroundColor: '#fff7ed' }]}>
+              <Text style={styles.highlightEmoji}>
+                {SPORT_EMOJIS[user?.favoriteSport] || '⚽'}
+              </Text>
+            </View>
+            <View style={styles.highlightTextWrap}>
+              <Text style={styles.highlightTitle}>Môn thể thao</Text>
+              <Text style={styles.highlightValue}>
+                {user?.favoriteSport || 'Bóng đá'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Card 2: Playing Position */}
+          <View style={styles.highlightCardRow}>
+            <View style={[styles.highlightIconWrap, { backgroundColor: '#fff1f2' }]}>
+              <Ionicons name="git-network-outline" size={20} color="#e11d48" />
+            </View>
+            <View style={styles.highlightTextWrap}>
+              <Text style={styles.highlightTitle}>Vị trí</Text>
+              <Text style={styles.highlightValue}>
+                {user?.position || 'Tiền đạo'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Card 3: Selected Area */}
+          <View style={styles.highlightCardRow}>
+            <View style={[styles.highlightIconWrap, { backgroundColor: '#ecfdf5' }]}>
+              <Ionicons name="location-outline" size={20} color="#10b981" />
+            </View>
+            <View style={styles.highlightTextWrap}>
+              <Text style={styles.highlightTitle}>Khu vực</Text>
+              <Text style={styles.highlightValue}>
+                {user?.area || 'Hà Nội'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Tabs Bar Segment */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'posts' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('posts')}
+          >
+            <Text style={[styles.tabButtonText, activeTab === 'posts' && styles.tabButtonTextActive]}>
+              Bài viết
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'achievements' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('achievements')}
+          >
+            <Text style={[styles.tabButtonText, activeTab === 'achievements' && styles.tabButtonTextActive]}>
+              Thành tích
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => openFollowList('following')}
-            style={styles.menuItem}
+            style={[styles.tabButton, activeTab === 'teams' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('teams')}
           >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#f0fdf4' }]}>
-                <Feather name="users" size={18} color="#16a34a" />
-              </View>
-              <Text style={styles.menuText}>Danh sách theo dõi</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setIsEditModalVisible(true)}
-            style={styles.menuItem}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#ffebe3' }]}>
-                <Feather name="user" size={18} color="#ff5800" />
-              </View>
-              <Text style={styles.menuText}>Chỉnh sửa hồ sơ</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => Alert.alert('Hoạt động', 'Tính năng hiển thị danh sách hoạt động đang được phát triển.')}
-            style={styles.menuItem}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#e8f3ff' }]}>
-                <Feather name="activity" size={18} color="#0b74ff" />
-              </View>
-              <Text style={styles.menuText}>Hoạt động</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => navigation?.navigate('SavedPosts')}
-            style={styles.menuItem}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#fff7ed' }]}>
-                <Feather name="bookmark" size={18} color="#f97316" />
-              </View>
-              <Text style={styles.menuText}>Bài viết đã lưu</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => Alert.alert('Lịch trình', 'Tính năng lập lịch trình thể thao đang được phát triển.')}
-            style={styles.menuItem}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#eafaf1' }]}>
-                <Feather name="calendar" size={18} color="#22c55e" />
-              </View>
-              <Text style={styles.menuText}>Lịch trình</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => Alert.alert('Đội nhóm', 'Tính năng quản lý đội nhóm đang được phát triển.')}
-            style={styles.menuItem}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#f5f3ff' }]}>
-                <Feather name="users" size={18} color="#8b5cf6" />
-              </View>
-              <Text style={styles.menuText}>Đội nhóm</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={onLogout}
-            style={[styles.menuItem, { borderBottomWidth: 0 }]}
-          >
-            <View style={styles.menuItemLeft}>
-              <View style={[styles.menuIconWrap, { backgroundColor: '#fef2f2' }]}>
-                <Feather name="log-out" size={18} color="#ef4444" />
-              </View>
-              <Text style={[styles.menuText, { color: '#ef4444' }]}>Đăng xuất</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color="#ef4444" />
+            <Text style={[styles.tabButtonText, activeTab === 'teams' && styles.tabButtonTextActive]}>
+              Đội
+            </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Tab Content Area */}
+        <View style={styles.tabContentContainer}>
+          {activeTab === 'posts' && (
+            <View style={styles.emptyStateBox}>
+              <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
+              <Text style={styles.emptyStateText}>Chưa có bài viết</Text>
+            </View>
+          )}
+
+          {activeTab === 'achievements' && (
+            <View style={styles.emptyStateBox}>
+              <Ionicons name="trophy-outline" size={48} color="#d1d5db" />
+              <Text style={styles.emptyStateText}>Chưa có thành tích</Text>
+            </View>
+          )}
+
+          {activeTab === 'teams' && (
+            <View style={styles.emptyStateBox}>
+              <Ionicons name="people-outline" size={48} color="#d1d5db" />
+              <Text style={styles.emptyStateText}>Chưa gia nhập đội nào</Text>
+            </View>
+          )}
+        </View>
+
       </ScrollView>
 
       {/* Edit Profile Modal */}
@@ -466,7 +492,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
                 style={styles.modalInput}
                 value={editArea}
                 onChangeText={setEditArea}
-                placeholder="Ví dụ: Đống Đa, Hà Nội"
+                placeholder="Ví dụ: Cầu Giấy, Hà Nội"
                 placeholderTextColor="#9ca3af"
               />
 
@@ -521,210 +547,248 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: '100%',
-    backgroundColor: '#f4f6fb',
+    backgroundColor: '#f8fafc',
+  },
+  screenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: Platform.OS === 'ios' ? 44 : 56,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  headerBackBtn: {
+    padding: 6,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#000',
+  },
+  headerMoreBtn: {
+    padding: 6,
   },
   scrollContainer: {
-    width: '100%',
     paddingBottom: 40,
   },
   avatarSection: {
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 20,
   },
   avatarWrapper: {
     position: 'relative',
-    shadowColor: '#101828',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 3,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
     borderColor: '#ffffff',
   },
   defaultAvatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#ffebe3',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: '#ffffff',
   },
   defaultAvatarText: {
-    fontSize: 40,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#ff5800',
   },
   editBadge: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
+    bottom: 0,
+    right: 0,
     backgroundColor: '#ff5800',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2.5,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
     borderColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
   },
   displayName: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#101828',
-    marginTop: 16,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginTop: 12,
     textAlign: 'center',
   },
   emailText: {
-    fontSize: 13,
-    color: '#68707f',
-    marginTop: 4,
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 2,
     textAlign: 'center',
   },
-  followStatsRow: {
+  activeStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 18,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginTop: 10,
+    alignSelf: 'center',
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22c55e',
+    marginRight: 6,
+  },
+  activeStatusText: {
+    fontSize: 12,
+    color: '#166534',
+    fontWeight: '700',
+  },
+  statsGridContainer: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    width: '100%',
+    marginHorizontal: 16,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.02,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
-  followStatItem: {
-    flex: 1,
+  gridRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  followStatDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: '#e2e8f0',
+  gridCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
   },
-  followStatValue: {
+  gridValue: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#111827',
+    color: '#1e293b',
   },
-  followStatLabel: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  profileHighlights: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 22,
-    width: '100%',
-  },
-  profileItem: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    marginRight: 10,
-  },
-  profileLabel: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 6,
-  },
-  profileValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  ratingRow: {
+  ratingValueWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 18,
   },
-  ratingText: {
-    marginLeft: 10,
-    fontSize: 13,
-    color: '#475569',
+  ratingStarIcon: {
+    marginLeft: 3,
   },
-  bioBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-    width: '100%',
+  gridLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    marginTop: 4,
   },
-  bioTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
+  gridVerticalDivider: {
+    width: 1,
+    height: '60%',
+    backgroundColor: '#e2e8f0',
   },
-  bioText: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  featuredBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    padding: 16,
-    marginTop: 18,
-  },
-  featuredTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  featuredText: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  divider: {
+  gridHorizontalDivider: {
     height: 1,
     backgroundColor: '#e2e8f0',
-    marginVertical: 24,
-    width: '100%',
   },
-  menuContainer: {
+  highlightsColumnContainer: {
+    paddingHorizontal: 16,
+    marginTop: 20,
+    gap: 12,
+  },
+  highlightCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#ffffff',
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    shadowColor: '#101828',
-    shadowOpacity: 0.04,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.02,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    elevation: 1,
   },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+  highlightTextWrap: {
+    marginLeft: 14,
+    flex: 1,
   },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  menuIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  highlightIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
   },
-  menuText: {
-    fontSize: 14,
+  highlightEmoji: {
+    fontSize: 22,
+  },
+  highlightTitle: {
+    fontSize: 11,
+    color: '#94a3b8',
     fontWeight: '600',
-    color: '#334155',
+    textTransform: 'uppercase',
+  },
+  highlightValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginTop: 2,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    marginTop: 24,
+    paddingHorizontal: 16,
+  },
+  tabButton: {
+    paddingVertical: 12,
+    marginRight: 24,
+    position: 'relative',
+  },
+  tabButtonActive: {
+    borderBottomWidth: 2.5,
+    borderBottomColor: '#e14f2e',
+  },
+  tabButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  tabButtonTextActive: {
+    color: '#e14f2e',
+    fontWeight: '700',
+  },
+  tabContentContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    fontWeight: '600',
+    marginTop: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -834,6 +898,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
     borderColor: '#e2e8f0',
     color: '#64748b',
+  },
+  modalTextarea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   modalFooter: {
     flexDirection: 'row',

@@ -44,13 +44,13 @@ export async function getMatches(filters = {}) {
   return matchRequest(`${MATCHES_URL}${query}`);
 }
 
-export async function requestJoinMatch(matchId, userId) {
+export async function requestJoinMatch(matchId, userId, selectedPositionIds = []) {
   return matchRequest(`${MATCHES_URL}/${matchId}/request-join`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ userId, selectedPositionIds }),
   });
 }
 
@@ -144,8 +144,28 @@ export async function kickTeamMember(matchId, ownerId, userId, reason) {
   });
 }
 
-export async function inviteTeamMember(matchId, ownerId, userId) {
+export async function inviteTeamMember(matchId, inviterId, userId) {
   return matchRequest(`${MATCHES_URL}/${matchId}/invite-member`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ownerId: inviterId, inviterId, userId }),
+  });
+}
+
+export async function acceptInvite(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/accept-invite`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function approveInvite(matchId, ownerId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/approve-invite`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

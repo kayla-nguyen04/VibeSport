@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   },
   profileContent: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
     backgroundColor: '#f4f6fb',
     width: '100%',
   },
