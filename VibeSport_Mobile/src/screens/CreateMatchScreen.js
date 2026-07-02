@@ -45,40 +45,81 @@ const TEAM1_POSITIONS = [
   { id: "t1_gk",  label: "Thủ môn", role: "goalkeeper", x: 0.50, y: 0.05 },
   // Defenders
   { id: "t1_lb",  label: "Hậu vệ",  role: "defender",   x: 0.15, y: 0.15 },
-  { id: "t1_cb1", label: "Hậu vệ",  role: "defender",   x: 0.38, y: 0.15 },
-  { id: "t1_cb2", label: "Hậu vệ",  role: "defender",   x: 0.62, y: 0.15 },
+  { id: "t1_cb",  label: "Hậu vệ",  role: "defender",   x: 0.50, y: 0.15 },
+  { id: "t1_cb1", label: "Hậu vệ",  role: "defender",   x: 0.35, y: 0.15 },
+  { id: "t1_cb2", label: "Hậu vệ",  role: "defender",   x: 0.65, y: 0.15 },
   { id: "t1_rb",  label: "Hậu vệ",  role: "defender",   x: 0.85, y: 0.15 },
-  // Defensive Midfielders
+  // Midfielders
   { id: "t1_dm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.24 },
   { id: "t1_dm2", label: "Tiền vệ",  role: "midfielder", x: 0.65, y: 0.24 },
-  // Attacking Midfielders / Wingers
-  { id: "t1_lm",  label: "Tiền vệ",  role: "midfielder", x: 0.18, y: 0.33 },
-  { id: "t1_am",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.33 },
-  { id: "t1_rm",  label: "Tiền vệ",  role: "midfielder", x: 0.82, y: 0.33 },
-  // Striker
-  { id: "t1_st",  label: "Tiền đạo", role: "striker",    x: 0.50, y: 0.42 },
+  { id: "t1_lm",  label: "Tiền vệ",  role: "midfielder", x: 0.18, y: 0.30 },
+  { id: "t1_cm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.30 },
+  { id: "t1_cm",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.30 },
+  { id: "t1_cm2", label: "Tiền vệ",  role: "midfielder", x: 0.65, y: 0.30 },
+  { id: "t1_rm",  label: "Tiền vệ",  role: "midfielder", x: 0.82, y: 0.30 },
+  { id: "t1_am",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.36 },
+  // Strikers
+  { id: "t1_lw",  label: "Tiền đạo", role: "striker",    x: 0.20, y: 0.40 },
+  { id: "t1_lf",  label: "Tiền đạo", role: "striker",    x: 0.38, y: 0.42 },
+  { id: "t1_st",  label: "Tiền đạo", role: "striker",    x: 0.50, y: 0.44 },
+  { id: "t1_rf",  label: "Tiền đạo", role: "striker",    x: 0.62, y: 0.42 },
+  { id: "t1_rw",  label: "Tiền đạo", role: "striker",    x: 0.80, y: 0.40 },
 ];
 
 const TEAM2_POSITIONS = [
-  // Striker
-  { id: "t2_st",  label: "Tiền đạo", role: "striker",    x: 0.50, y: 0.58 },
-  // Attacking Midfielders / Wingers
-  { id: "t2_lm",  label: "Tiền vệ",  role: "midfielder", x: 0.18, y: 0.67 },
-  { id: "t2_am",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.67 },
-  { id: "t2_rm",  label: "Tiền vệ",  role: "midfielder", x: 0.82, y: 0.67 },
-  // Defensive Midfielders
-  { id: "t2_dm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.76 },
+  // Strikers
+  { id: "t2_rw",  label: "Tiền đạo", role: "striker",    x: 0.80, y: 0.60 },
+  { id: "t2_rf",  label: "Tiền đạo", role: "striker",    x: 0.62, y: 0.58 },
+  { id: "t2_st",  label: "Tiền đạo", role: "striker",    x: 0.50, y: 0.56 },
+  { id: "t2_lf",  label: "Tiền đạo", role: "striker",    x: 0.38, y: 0.58 },
+  { id: "t2_lw",  label: "Tiền đạo", role: "striker",    x: 0.20, y: 0.60 },
+  // Midfielders
+  { id: "t2_am",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.64 },
+  { id: "t2_rm",  label: "Tiền vệ",  role: "midfielder", x: 0.82, y: 0.70 },
+  { id: "t2_cm2", label: "Tiền vệ",  role: "midfielder", x: 0.65, y: 0.70 },
+  { id: "t2_cm",  label: "Tiền vệ",  role: "midfielder", x: 0.50, y: 0.70 },
+  { id: "t2_cm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.70 },
+  { id: "t2_lm",  label: "Tiền vệ",  role: "midfielder", x: 0.18, y: 0.70 },
   { id: "t2_dm2", label: "Tiền vệ",  role: "midfielder", x: 0.65, y: 0.76 },
+  { id: "t2_dm1", label: "Tiền vệ",  role: "midfielder", x: 0.35, y: 0.76 },
   // Defenders
-  { id: "t2_lb",  label: "Hậu vệ",  role: "defender",   x: 0.15, y: 0.85 },
-  { id: "t2_cb1", label: "Hậu vệ",  role: "defender",   x: 0.38, y: 0.85 },
-  { id: "t2_cb2", label: "Hậu vệ",  role: "defender",   x: 0.62, y: 0.85 },
   { id: "t2_rb",  label: "Hậu vệ",  role: "defender",   x: 0.85, y: 0.85 },
+  { id: "t2_cb2", label: "Hậu vệ",  role: "defender",   x: 0.65, y: 0.85 },
+  { id: "t2_cb1", label: "Hậu vệ",  role: "defender",   x: 0.35, y: 0.85 },
+  { id: "t2_cb",  label: "Hậu vệ",  role: "defender",   x: 0.50, y: 0.85 },
+  { id: "t2_lb",  label: "Hậu vệ",  role: "defender",   x: 0.15, y: 0.85 },
   // Goalkeeper
   { id: "t2_gk",  label: "Thủ môn", role: "goalkeeper", x: 0.50, y: 0.95 },
 ];
 
 const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
+
+const FOOTBALL_FORMATS = {
+  10: {
+    label: "5 vs 5",
+    playerCountPerTeam: 5,
+    team1Ids: ["t1_gk", "t1_cb1", "t1_cb2", "t1_cm", "t1_st"],
+    team2Ids: ["t2_gk", "t2_cb1", "t2_cb2", "t2_cm", "t2_st"],
+  },
+  14: {
+    label: "7 vs 7",
+    playerCountPerTeam: 7,
+    team1Ids: ["t1_gk", "t1_lb", "t1_rb", "t1_lm", "t1_cm", "t1_rm", "t1_st"],
+    team2Ids: ["t2_gk", "t2_lb", "t2_rb", "t2_lm", "t2_cm", "t2_rm", "t2_st"],
+  },
+  22: {
+    label: "11 vs 11",
+    playerCountPerTeam: 11,
+    team1Ids: ["t1_gk", "t1_lb", "t1_cb1", "t1_cb2", "t1_rb", "t1_dm1", "t1_dm2", "t1_lm", "t1_am", "t1_rm", "t1_st"],
+    team2Ids: ["t2_gk", "t2_lb", "t2_cb1", "t2_cb2", "t2_rb", "t2_dm1", "t2_dm2", "t2_lm", "t2_am", "t2_rm", "t2_st"],
+  },
+};
+
+// ─── Badminton / Pickleball formats ───────────────────────────────────────────
+const RACKET_FORMATS = {
+  2: { label: "1 vs 1", playerCountPerSide: 1, totalPlayers: 2 },
+  4: { label: "2 vs 2", playerCountPerSide: 2, totalPlayers: 4 },
+};
 
 const ROLE_COLORS = {
   goalkeeper: "#22c55e",
@@ -122,9 +163,13 @@ const SPORT_LIMITS = {
 // ─── Pitch SVG-like component rendered with Views ──────────────────────────
 const PITCH_ASPECT = 1.45; // height / width ratio
 
-function FootballPitch({ selectedIds, onToggle }) {
+function FootballPitch({ selectedIds, onToggle, maxPlayers }) {
   const pitchWidth = SCREEN_WIDTH - 48;
   const pitchHeight = pitchWidth * PITCH_ASPECT;
+
+  const formatInfo = FOOTBALL_FORMATS[22];
+  const allowedIds = [...formatInfo.team1Ids, ...formatInfo.team2Ids];
+  const visiblePositions = ALL_POSITIONS.filter((pos) => allowedIds.includes(pos.id));
 
   return (
     <View style={[pitchStyles.pitch, { width: pitchWidth, height: pitchHeight }]}>
@@ -206,17 +251,17 @@ function FootballPitch({ selectedIds, onToggle }) {
 
       {/* Team labels */}
       <View style={[pitchStyles.teamLabel, { top: 8, left: 8 }]}>
-        <Text style={pitchStyles.teamLabelText}>ĐỘI 1</Text>
+        <Text style={pitchStyles.teamLabelText}>ĐỘI 1 ({formatInfo.playerCountPerTeam})</Text>
       </View>
       <View style={[pitchStyles.teamLabel, { bottom: 8, left: 8 }]}>
-        <Text style={pitchStyles.teamLabelText}>ĐỘI 2</Text>
+        <Text style={pitchStyles.teamLabelText}>ĐỘI 2 ({formatInfo.playerCountPerTeam})</Text>
       </View>
 
       {/* Player positions */}
-      {ALL_POSITIONS.map((pos) => {
+      {visiblePositions.map((pos) => {
         const isSelected = selectedIds.includes(pos.id);
         const color = ROLE_COLORS[pos.role];
-        const dotSize = 36;
+        const dotSize = isSelected ? 36 : 18;
         const left = pos.x * pitchWidth - dotSize / 2;
         const top = pos.y * pitchHeight - dotSize / 2;
 
@@ -231,22 +276,33 @@ function FootballPitch({ selectedIds, onToggle }) {
                 width: dotSize,
                 height: dotSize,
                 borderRadius: dotSize / 2,
-                backgroundColor: isSelected ? color : "rgba(255,255,255,0.25)",
-                borderColor: isSelected ? color : "rgba(255,255,255,0.6)",
-                borderWidth: isSelected ? 0 : 2,
+                backgroundColor: isSelected ? color : "rgba(255,255,255,0.2)",
+                borderColor: isSelected ? color : "rgba(255,255,255,0.5)",
+                borderWidth: isSelected ? 0 : 1,
               },
             ]}
             onPress={() => onToggle(pos.id)}
             activeOpacity={0.7}
           >
-            <Text
-              style={[
-                pitchStyles.playerDotText,
-                { color: isSelected ? "#fff" : "rgba(255,255,255,0.85)" },
-              ]}
-            >
-              {ROLE_ICONS[pos.role]}
-            </Text>
+            {isSelected ? (
+              <Text
+                style={[
+                  pitchStyles.playerDotText,
+                  { color: "#fff", fontSize: 10, fontWeight: "bold" },
+                ]}
+              >
+                {ROLE_ICONS[pos.role]}
+              </Text>
+            ) : (
+              <Text
+                style={[
+                  pitchStyles.playerDotText,
+                  { color: "rgba(255,255,255,0.7)", fontSize: 7, fontWeight: "600" },
+                ]}
+              >
+                {ROLE_ICONS[pos.role]}
+              </Text>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -379,6 +435,189 @@ const legendStyles = StyleSheet.create({
   },
 });
 
+// ─── Racket Court (Badminton / Pickleball) ──────────────────────────────────
+const COURT_ASPECT = 1.8; // height/width ratio (portrait court)
+
+function RacketCourt({ maxPlayers, sport }) {
+  const courtWidth = SCREEN_WIDTH - 80;
+  const courtHeight = courtWidth * COURT_ASPECT;
+  const fmt = RACKET_FORMATS[maxPlayers] || RACKET_FORMATS[4];
+  const perSide = fmt.playerCountPerSide;
+
+  const sportColor = sport === "pickleball" ? "#f59e0b" : "#3b82f6";
+  const sportLabel = sport === "pickleball" ? "Pickleball" : "Cầu lông";
+
+  // Generate player dot positions for each side
+  const generateDots = (side) => {
+    // side: "top" or "bottom"
+    const dots = [];
+    if (perSide === 1) {
+      dots.push({ x: 0.5, y: side === "top" ? 0.22 : 0.78 });
+    } else {
+      dots.push({ x: 0.3, y: side === "top" ? 0.22 : 0.78 });
+      dots.push({ x: 0.7, y: side === "top" ? 0.22 : 0.78 });
+    }
+    return dots;
+  };
+
+  const topDots = generateDots("top");
+  const bottomDots = generateDots("bottom");
+
+  return (
+    <View style={[courtStyles.court, { width: courtWidth, height: courtHeight }]}>
+      {/* Outer border */}
+      <View style={courtStyles.outerBorder} />
+      {/* Center net */}
+      <View style={[courtStyles.net, { top: courtHeight * 0.5 - 1 }]} />
+      {/* Net posts */}
+      <View style={[courtStyles.netPost, { top: courtHeight * 0.5 - 6, left: 0 }]} />
+      <View style={[courtStyles.netPost, { top: courtHeight * 0.5 - 6, right: 0 }]} />
+      {/* Service lines top */}
+      <View style={[courtStyles.serviceLine, { top: courtHeight * 0.25 }]} />
+      {/* Service lines bottom */}
+      <View style={[courtStyles.serviceLine, { top: courtHeight * 0.75 }]} />
+      {/* Center service line */}
+      <View style={[courtStyles.centerServiceLine, { top: courtHeight * 0.25, height: courtHeight * 0.25 }]} />
+      <View style={[courtStyles.centerServiceLine, { top: courtHeight * 0.5, height: courtHeight * 0.25 }]} />
+
+      {/* Side label top */}
+      <View style={[courtStyles.sideLabel, { top: 8, alignSelf: "center", left: 8 }]}>
+        <Text style={courtStyles.sideLabelText}>BÊN A ({perSide})</Text>
+      </View>
+      {/* Side label bottom */}
+      <View style={[courtStyles.sideLabel, { bottom: 8, left: 8 }]}>
+        <Text style={courtStyles.sideLabelText}>BÊN B ({perSide})</Text>
+      </View>
+
+      {/* Sport label center */}
+      <View style={[courtStyles.sportBadge, { top: courtHeight * 0.5 - 10 }]}>
+        <Text style={[courtStyles.sportBadgeText, { color: sportColor }]}>{sportLabel}</Text>
+      </View>
+
+      {/* Player dots top */}
+      {topDots.map((dot, idx) => (
+        <View
+          key={`top_${idx}`}
+          style={[
+            courtStyles.playerDot,
+            {
+              left: dot.x * courtWidth - 18,
+              top: dot.y * courtHeight - 18,
+              backgroundColor: sportColor,
+            },
+          ]}
+        >
+          <Text style={courtStyles.playerDotText}>P{idx + 1}</Text>
+        </View>
+      ))}
+
+      {/* Player dots bottom */}
+      {bottomDots.map((dot, idx) => (
+        <View
+          key={`bot_${idx}`}
+          style={[
+            courtStyles.playerDot,
+            {
+              left: dot.x * courtWidth - 18,
+              top: dot.y * courtHeight - 18,
+              backgroundColor: sportColor + "cc",
+            },
+          ]}
+        >
+          <Text style={courtStyles.playerDotText}>P{idx + 1}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const courtStyles = StyleSheet.create({
+  court: {
+    backgroundColor: "#1565c0",
+    borderRadius: 8,
+    overflow: "hidden",
+    alignSelf: "center",
+    position: "relative",
+  },
+  outerBorder: {
+    position: "absolute",
+    top: 8, left: 8, right: 8, bottom: 8,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.7)",
+    borderRadius: 4,
+  },
+  net: {
+    position: "absolute",
+    left: 0, right: 0,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  netPost: {
+    position: "absolute",
+    width: 8,
+    height: 12,
+    backgroundColor: "#fff",
+    borderRadius: 2,
+  },
+  serviceLine: {
+    position: "absolute",
+    left: 8, right: 8,
+    height: 1.5,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  centerServiceLine: {
+    position: "absolute",
+    left: "50%",
+    width: 1.5,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  sideLabel: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sideLabelText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  sportBadge: {
+    position: "absolute",
+    alignSelf: "center",
+    left: 0, right: 0,
+    alignItems: "center",
+  },
+  sportBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  playerDot: {
+    position: "absolute",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  playerDotText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+});
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
@@ -466,6 +705,22 @@ export default function CreateMatchScreen({ navigation, route }) {
     editMatch?.maxPlayers ? String(editMatch.maxPlayers) : "2"
   );
 
+  const [footballMaxPlayers, setFootballMaxPlayers] = useState(() => {
+    if (editMatch?.sport === "football" && editMatch?.maxPlayers) {
+      return editMatch.maxPlayers;
+    }
+    return 22; // default is 11 vs 11 (22 players)
+  });
+
+
+
+  const [racketMaxPlayers, setRacketMaxPlayers] = useState(() => {
+    if ((editMatch?.sport === "badminton" || editMatch?.sport === "pickleball") && editMatch?.maxPlayers) {
+      return editMatch.maxPlayers;
+    }
+    return 4; // default is 2 vs 2
+  });
+
   // Format helpers
   const formatDate = (d) => {
     const day = String(d.getDate()).padStart(2, "0");
@@ -522,6 +777,8 @@ export default function CreateMatchScreen({ navigation, route }) {
       selectedDate: selectedDate.toISOString(),
       selectedTimeSlot,
       maxPlayersOther,
+      footballMaxPlayers,
+      racketMaxPlayers,
       costPerPerson,
       note,
       selectedPositionIds,
@@ -536,6 +793,8 @@ export default function CreateMatchScreen({ navigation, route }) {
       selectedDate,
       selectedTimeSlot,
       maxPlayersOther,
+      footballMaxPlayers,
+      racketMaxPlayers,
       costPerPerson,
       note,
       selectedPositionIds,
@@ -553,6 +812,8 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (draft.selectedDate) setSelectedDate(new Date(draft.selectedDate));
     if (draft.selectedTimeSlot) setSelectedTimeSlot(draft.selectedTimeSlot);
     if (draft.maxPlayersOther != null) setMaxPlayersOther(String(draft.maxPlayersOther));
+    if (draft.footballMaxPlayers != null) setFootballMaxPlayers(Number(draft.footballMaxPlayers));
+    if (draft.racketMaxPlayers != null) setRacketMaxPlayers(Number(draft.racketMaxPlayers));
     if (draft.costPerPerson != null) setCostPerPerson(String(draft.costPerPerson));
     if (draft.note != null) setNote(draft.note);
     if (draft.selectedPositionIds != null) setSelectedPositionIds(draft.selectedPositionIds);
@@ -590,6 +851,69 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (selectedSport !== "football") {
       setMaxPlayersOther("2");
       setSelectedPositionIds([]);
+      if (selectedSport === "badminton" || selectedSport === "pickleball") {
+        setRacketMaxPlayers(4);
+      }
+    } else {
+      setFootballMaxPlayers(22);
+      setSelectedPositionIds([]);
+    }
+  };
+
+  const handleSelectFootballMaxPlayers = (maxP) => {
+    setFootballMaxPlayers(maxP);
+    const limit = (FOOTBALL_FORMATS[maxP] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
+    setSelectedPositionIds((prev) => {
+      const t1 = prev.filter((id) => id.startsWith("t1_"));
+      const t2 = prev.filter((id) => id.startsWith("t2_"));
+      return [...t1.slice(0, limit), ...t2.slice(0, limit)];
+    });
+  };
+
+  const handleIncreaseRole = (role) => {
+    const limit = (FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
+
+    // Count current selections for Team 1 and Team 2
+    const t1Count = selectedPositionIds.filter((id) => id.startsWith("t1_")).length;
+    const t2Count = selectedPositionIds.filter((id) => id.startsWith("t2_")).length;
+
+    const formatInfo = FOOTBALL_FORMATS[22];
+    const allowedIds = [...formatInfo.team1Ids, ...formatInfo.team2Ids];
+
+    let candidate = null;
+
+    // Try Team 1 first if it has slots remaining
+    if (t1Count < limit) {
+      candidate = TEAM1_POSITIONS.find(
+        (pos) => allowedIds.includes(pos.id) && pos.role === role && !selectedPositionIds.includes(pos.id)
+      );
+    }
+
+    // Try Team 2 if Team 1 didn't have candidates or was full
+    if (!candidate && t2Count < limit) {
+      candidate = TEAM2_POSITIONS.find(
+        (pos) => allowedIds.includes(pos.id) && pos.role === role && !selectedPositionIds.includes(pos.id)
+      );
+    }
+
+    if (candidate) {
+      setSelectedPositionIds((prev) => [...prev, candidate.id]);
+    } else {
+      Alert.alert(
+        "Giới hạn đội hình",
+        `Cả hai đội đã chọn tối đa số vị trí (${limit} người/đội) hoặc không còn vị trí ${roleLabels[role]} trống trên sơ đồ.`
+      );
+    }
+  };
+
+  const handleDecreaseRole = (role) => {
+    // Find a selected position on the pitch of this role to remove
+    const candidate = ALL_POSITIONS.find(
+      (pos) => pos.role === role && selectedPositionIds.includes(pos.id)
+    );
+    
+    if (candidate) {
+      setSelectedPositionIds((prev) => prev.filter((id) => id !== candidate.id));
     }
   };
 
@@ -635,9 +959,22 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const togglePosition = (id) => {
-    setSelectedPositionIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    const isTeam1 = id.startsWith("t1_");
+    const limit = (FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
+
+    if (selectedPositionIds.includes(id)) {
+      setSelectedPositionIds((prev) => prev.filter((x) => x !== id));
+    } else {
+      const teamCount = selectedPositionIds.filter((x) => x.startsWith(isTeam1 ? "t1_" : "t2_")).length;
+      if (teamCount >= limit) {
+        Alert.alert(
+          "Giới hạn đội hình",
+          `Mỗi đội chỉ được chọn tối đa ${limit} vị trí cần tìm cho sơ đồ ${(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).label}.`
+        );
+        return;
+      }
+      setSelectedPositionIds((prev) => [...prev, id]);
+    }
   };
 
   // Build role summary from selected positions
@@ -657,7 +994,11 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const buildPayload = () => {
-    const maxPlayers = sport === "football" ? totalNeeded : Number(maxPlayersOther);
+    const maxPlayers = sport === "football"
+      ? footballMaxPlayers
+      : (sport === "badminton" || sport === "pickleball")
+        ? racketMaxPlayers
+        : Number(maxPlayersOther);
     // Build positionsNeeded from selected positions for backward-compat
     const positionsNeeded = Object.entries(selectedRoleSummary).map(([role, qty]) => ({
       key: role,
@@ -817,7 +1158,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           >
             <Text style={pitchModal.closeBtnText}>✕</Text>
           </TouchableOpacity>
-          <Text style={pitchModal.title}>Chọn vị trí cần tìm (11 vs 11)</Text>
+          <Text style={pitchModal.title}>Chọn vị trí cần tìm ({(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).label})</Text>
           <TouchableOpacity
             style={pitchModal.doneBtn}
             onPress={() => setShowPitchModal(false)}
@@ -851,32 +1192,65 @@ export default function CreateMatchScreen({ navigation, route }) {
           <FootballPitch
             selectedIds={selectedPositionIds}
             onToggle={togglePosition}
+            maxPlayers={footballMaxPlayers}
           />
 
-          {/* Role breakdown */}
-          {Object.keys(selectedRoleSummary).length > 0 && (
-            <View style={pitchModal.breakdownBox}>
-              <Text style={pitchModal.breakdownTitle}>Vị trí đã chọn:</Text>
-              <View style={pitchModal.breakdownRow}>
-                {Object.entries(selectedRoleSummary).map(([role, qty]) => (
-                  <View
-                    key={role}
-                    style={[
-                      pitchModal.breakdownChip,
-                      { backgroundColor: ROLE_COLORS[role] + "22", borderColor: ROLE_COLORS[role] },
-                    ]}
-                  >
-                    <View
-                      style={[pitchModal.breakdownDot, { backgroundColor: ROLE_COLORS[role] }]}
-                    />
-                    <Text style={[pitchModal.breakdownText, { color: ROLE_COLORS[role] }]}>
-                      {roleLabels[role]} × {qty}
-                    </Text>
+          {/* Role adjustment */}
+          <View style={pitchModal.breakdownBox}>
+            <Text style={pitchModal.breakdownTitle}>Vị trí cần tìm:</Text>
+            <View style={pitchModal.adjustableRolesContainer}>
+              {Object.entries(roleLabels).map(([role, label]) => {
+                const qty = selectedRoleSummary[role] || 0;
+                
+                // Total dots on the entire field for this role
+                const totalAvailable = ALL_POSITIONS.filter((pos) => pos.role === role).length;
+                
+                const limit = (FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
+                const t1Count = selectedPositionIds.filter((id) => id.startsWith("t1_")).length;
+                const t2Count = selectedPositionIds.filter((id) => id.startsWith("t2_")).length;
+                
+                const isMaxReached = (t1Count >= limit && t2Count >= limit) || qty >= totalAvailable;
+
+                return (
+                  <View key={role} style={pitchModal.adjustableRoleRow}>
+                    <View style={pitchModal.adjustableRoleLeft}>
+                      <View style={[pitchModal.breakdownDot, { backgroundColor: ROLE_COLORS[role], marginRight: 8 }]} />
+                      <Text style={[pitchModal.adjustableRoleLabel, { color: ROLE_COLORS[role] || "#333", fontWeight: "700" }]}>
+                        {label}
+                      </Text>
+                      <Text style={pitchModal.adjustableRoleLimit}>
+                        {"  "}(đã chọn {qty})
+                      </Text>
+                    </View>
+                    <View style={pitchModal.counterRow}>
+                      <TouchableOpacity
+                        style={[pitchModal.counterBtn, qty === 0 && pitchModal.counterBtnDisabled]}
+                        onPress={() => handleDecreaseRole(role)}
+                        disabled={qty === 0}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={pitchModal.counterBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={pitchModal.counterVal}>{qty}</Text>
+                      <TouchableOpacity
+                        style={[pitchModal.counterBtn, isMaxReached && pitchModal.counterBtnDisabled]}
+                        onPress={() => handleIncreaseRole(role)}
+                        disabled={isMaxReached}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={pitchModal.counterBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                ))}
-              </View>
+                );
+              })}
             </View>
-          )}
+
+            {/* Status summary */}
+            <Text style={{ fontSize: 11, color: "#666", marginTop: 10, fontStyle: "italic", textAlign: "center" }}>
+              Đội 1: {selectedPositionIds.filter(id => id.startsWith("t1_")).length}/{(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam} vị trí • Đội 2: {selectedPositionIds.filter(id => id.startsWith("t2_")).length}/{(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam} vị trí
+            </Text>
+          </View>
 
           {/* Bench */}
           <View style={pitchModal.benchSection}>
@@ -973,6 +1347,48 @@ export default function CreateMatchScreen({ navigation, route }) {
             </TouchableOpacity>
           ))}
         </View>
+
+        {sport === "football" && (
+          <>
+            <Text style={styles.sectionLabel}>SỐ NGƯỜI TỐI ĐA (LOẠI SÂN)</Text>
+            <View style={styles.footballMaxPlayersRow}>
+              {[
+                { maxPlayers: 10, label: "5 vs 5", count: "10 người" },
+                { maxPlayers: 14, label: "7 vs 7", count: "14 người" },
+                { maxPlayers: 22, label: "11 vs 11", count: "22 người" },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.maxPlayers}
+                  style={[
+                    styles.footballMaxPlayersButton,
+                    footballMaxPlayers === item.maxPlayers && styles.footballMaxPlayersButtonActive,
+                  ]}
+                  onPress={() => handleSelectFootballMaxPlayers(item.maxPlayers)}
+                >
+                  <Text
+                    style={[
+                      styles.footballMaxPlayersLabel,
+                      footballMaxPlayers === item.maxPlayers && styles.footballMaxPlayersLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.footballMaxPlayersSubLabel,
+                      footballMaxPlayers === item.maxPlayers && styles.footballMaxPlayersSubLabelActive,
+                    ]}
+                  >
+                    {item.count}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.helperText}>
+              Tổng số người tối đa cả 2 đội • Số người cần tìm sẽ được chọn trên sơ đồ bên dưới
+            </Text>
+          </>
+        )}
 
         {/* NGƯỜI CHƠI ĐANG TÌM ĐỘI */}
         <Text style={styles.sectionLabel}>NGƯỜI CHƠI ĐANG TÌM ĐỘI ({SPORT_MAP[sport]?.toUpperCase()})</Text>
@@ -1161,7 +1577,7 @@ export default function CreateMatchScreen({ navigation, route }) {
               <View style={styles.pitchTriggerLeft}>
                 <Text style={styles.pitchTriggerIcon}>🗺️</Text>
                 <View>
-                  <Text style={styles.pitchTriggerTitle}>Sơ đồ vị trí (11 vs 11)</Text>
+                  <Text style={styles.pitchTriggerTitle}>Sơ đồ vị trí ({(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).label})</Text>
                   <Text style={styles.pitchTriggerSub}>
                     {selectedPositionIds.length > 0 || Number(benchMembersTeam1 || 0) > 0 || Number(benchMembersTeam2 || 0) > 0
                       ? `Đã chọn ${selectedPositionIds.length} vị trí${(Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)) > 0 ? ` + ${Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)} dự bị` : ""}`
@@ -1204,24 +1620,54 @@ export default function CreateMatchScreen({ navigation, route }) {
               />
             </View>
             <Text style={styles.helperText}>
-              Tự động tính theo số vị trí đã chọn trên sơ đồ
+              Số vị trí cần tìm • Tự động tính theo số vị trí đã chọn trên sơ đồ
             </Text>
           </>
         ) : (
           <>
-            <Text style={styles.sectionLabel}>SỐ NGƯỜI THAM GIA</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={maxPlayersOther}
-                onChangeText={handleMaxPlayersOtherChange}
-                keyboardType="numeric"
-                placeholder="2"
-                placeholderTextColor="#bbb"
-              />
+            {/* SỐ NGƯỜI TỐI ĐA (1vs1 / 2vs2) */}
+            <Text style={styles.sectionLabel}>SỐ NGƯỜI TỐI ĐA (LOẠI SÂN)</Text>
+            <View style={styles.footballMaxPlayersRow}>
+              {[
+                { maxPlayers: 2, label: "1 vs 1", count: "2 người" },
+                { maxPlayers: 4, label: "2 vs 2", count: "4 người" },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.maxPlayers}
+                  style={[
+                    styles.footballMaxPlayersButton,
+                    racketMaxPlayers === item.maxPlayers && styles.footballMaxPlayersButtonActive,
+                  ]}
+                  onPress={() => setRacketMaxPlayers(item.maxPlayers)}
+                >
+                  <Text
+                    style={[
+                      styles.footballMaxPlayersLabel,
+                      racketMaxPlayers === item.maxPlayers && styles.footballMaxPlayersLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.footballMaxPlayersSubLabel,
+                      racketMaxPlayers === item.maxPlayers && styles.footballMaxPlayersSubLabelActive,
+                    ]}
+                  >
+                    {item.count}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
             <Text style={styles.helperText}>
-              {SPORT_LIMITS[sport]?.maxPlayersHint}
+              Tổng số người tối đa cả 2 bên
+            </Text>
+
+            {/* Court diagram */}
+            <Text style={styles.sectionLabel}>SƠ ĐỒ SÂN</Text>
+            <RacketCourt maxPlayers={racketMaxPlayers} sport={sport} />
+            <Text style={[styles.helperText, { textAlign: "center", marginTop: 8 }]}>
+              Bên A ({RACKET_FORMATS[racketMaxPlayers]?.playerCountPerSide || 1} người) vs Bên B ({RACKET_FORMATS[racketMaxPlayers]?.playerCountPerSide || 1} người) • Tối đa {racketMaxPlayers} người
             </Text>
           </>
         )}
@@ -1421,6 +1867,45 @@ const styles = StyleSheet.create({
   sportLabelActive: {
     color: "#ff5722",
     fontWeight: "700",
+  },
+
+  // Football Max Players Selector
+  footballMaxPlayersRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  footballMaxPlayersButton: {
+    flex: 1,
+    minWidth: "22%",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    backgroundColor: "#f5f5f5",
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  footballMaxPlayersButtonActive: {
+    backgroundColor: "#fff5f2",
+    borderColor: "#ff5722",
+  },
+  footballMaxPlayersLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#555",
+  },
+  footballMaxPlayersLabelActive: {
+    color: "#ff5722",
+  },
+  footballMaxPlayersSubLabel: {
+    fontSize: 10,
+    color: "#aaa",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  footballMaxPlayersSubLabelActive: {
+    color: "#ff8a65",
   },
 
   // Input
@@ -1895,28 +2380,65 @@ const pitchModal = StyleSheet.create({
     marginBottom: 8,
     letterSpacing: 0.4,
   },
-  breakdownRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  adjustableRolesContainer: {
+    gap: 10,
   },
-  breakdownChip: {
+  adjustableRoleRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#f0f0f0",
+  },
+  adjustableRoleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  adjustableRoleLabel: {
+    fontSize: 14,
+  },
+  adjustableRoleLimit: {
+    fontSize: 11,
+    color: "#999",
+  },
+  counterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  counterBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#fff",
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 5,
+    borderColor: "#e0e0e0",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
   },
-  breakdownDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  counterBtnDisabled: {
+    backgroundColor: "#f5f5f5",
+    borderColor: "#e8e8e8",
+    opacity: 0.5,
   },
-  breakdownText: {
-    fontSize: 12,
+  counterBtnText: {
+    fontSize: 16,
     fontWeight: "700",
+    color: "#ff5722",
+  },
+  counterVal: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#333",
+    minWidth: 18,
+    textAlign: "center",
   },
   benchSection: {
     marginTop: 20,
