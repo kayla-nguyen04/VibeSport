@@ -73,15 +73,21 @@ export function NotificationScreen({ navigation }) {
       return;
     }
 
+    const matchId = item.matchId?._id || item.matchId;
+    if (item.type === 'match' && matchId) {
+      navigation.navigate('MatchDetail', { matchId });
+      return;
+    }
+
     const conversationId = item.conversationId?._id || item.conversationId;
-if (item.type === 'group' && conversationId) {
-  const found = conversations.find((c) => String(c._id) === String(conversationId));
-  if (found) {
-    navigation.navigate('GroupManagement', { conversationId });
-  } else {
-    enqueue(conversationId, 'group');
-  }
-}
+    if (item.type === 'group' && conversationId) {
+      const found = conversations.find((c) => String(c._id) === String(conversationId));
+      if (found) {
+        navigation.navigate('GroupManagement', { conversationId });
+      } else {
+        enqueue(conversationId, 'group');
+      }
+    }
   };
 
   const formatTime = (dateString) => {

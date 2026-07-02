@@ -137,6 +137,13 @@ const matchSchema = new Schema(
       },
     ],
 
+    invitedMembers: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
     status: {
       type: String,
       enum: ["open", "full", "cancelled", "completed"],
