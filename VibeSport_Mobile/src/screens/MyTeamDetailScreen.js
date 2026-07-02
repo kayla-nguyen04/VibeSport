@@ -116,17 +116,51 @@ export default function MyTeamDetailScreen({ route, navigation }) {
     loadMatchDetails();
   }, [matchId]);
 
-  const handleStatusChange = async (newStatus) => {
-    try {
-      setActionLoading(true);
-      const data = await updateTeamStatus(matchId, newStatus);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã cập nhật trạng thái đội");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể cập nhật trạng thái");
-    } finally {
-      setActionLoading(false);
+  const handleStatusChange = (newStatus) => {
+    let title = "Xác nhận";
+    let message = "Bạn có chắc chắn muốn thay đổi trạng thái không?";
+
+    if (newStatus === "ongoing") {
+      if (match?.teamStatus === "paused") {
+        title = "Tiếp tục trận đấu";
+        message = "Bạn có chắc chắn muốn tiếp tục trận đấu này không?";
+      } else {
+        title = "Bắt đầu trận đấu";
+        message = "Bạn có chắc chắn muốn bắt đầu trận đấu này không?";
+      }
+    } else if (newStatus === "paused") {
+      title = "Tạm dừng trận đấu";
+      message = "Bạn có chắc chắn muốn tạm dừng trận đấu này không?";
+    } else if (newStatus === "ended") {
+      title = "Kết thúc trận đấu";
+      message = "Bạn có chắc chắn muốn kết thúc trận đấu này không? Hành động này sẽ đóng trận đấu và không thể thay đổi lại.";
     }
+
+    Alert.alert(
+      title,
+      message,
+      [
+        {
+          text: "Hủy",
+          style: "cancel"
+        },
+        {
+          text: "Đồng ý",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const data = await updateTeamStatus(matchId, newStatus);
+              setMatch(data);
+              Alert.alert("Thành công", "Đã cập nhật trạng thái đội");
+            } catch (err) {
+              Alert.alert("Lỗi", err.message || "Không thể cập nhật trạng thái");
+            } finally {
+              setActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Load following users to invite
@@ -870,11 +904,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    marginRight: 10,
   },
   btnInviteText: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 13,
+   
   },
   // ─── Link Share Section (Nhóm chat style) ───────────────────
   linkShareSection: {

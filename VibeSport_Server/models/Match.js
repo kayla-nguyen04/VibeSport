@@ -104,6 +104,11 @@ const matchSchema = new Schema(
       default: [],
     },
 
+    footballFormation: {
+      type: String,
+      default: "",
+    },
+
     benchMembersTeam1: {
       type: Number,
       default: 0,

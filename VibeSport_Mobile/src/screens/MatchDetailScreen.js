@@ -65,6 +65,37 @@ const TEAM2_POSITIONS = [
 
 const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
 
+const FOOTBALL_FORMATS = {
+  10: { label: "5 vs 5", playerCountPerTeam: 5 },
+  14: { label: "7 vs 7", playerCountPerTeam: 7 },
+  22: { label: "11 vs 11", playerCountPerTeam: 11 },
+};
+
+const RACKET_FORMATS = {
+  2: { label: "1 vs 1", playerCountPerSide: 1 },
+  4: { label: "2 vs 2", playerCountPerSide: 2 },
+};
+
+const getFormatLabel = (sport, maxPlayers) => {
+  if (!maxPlayers) return "";
+  if (sport === "football") {
+    return FOOTBALL_FORMATS[maxPlayers]?.label || "";
+  }
+  return RACKET_FORMATS[maxPlayers]?.label || "";
+};
+
+const getFootballFormatLabel = (maxPlayers) => {
+  if (!maxPlayers) return "";
+  const fmt = FOOTBALL_FORMATS[maxPlayers];
+  return fmt ? fmt.label : "";
+};
+
+const getFootballPlayerCountPerTeam = (maxPlayers) => {
+  if (!maxPlayers) return null;
+  const fmt = FOOTBALL_FORMATS[maxPlayers];
+  return fmt ? fmt.playerCountPerTeam : null;
+};
+
 const ROLE_LABELS = {
   goalkeeper: "Thủ môn",
   defender: "Hậu vệ",
@@ -531,7 +562,7 @@ export default function MatchDetailScreen({ navigation, route }) {
             <View style={styles.infoRow}>
               <Text style={styles.infoIcon}>{icon}</Text>
               <Text style={styles.infoText}>
-                {match.sport === "football" ? "11 vs 11" : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}
+                {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}
               </Text>
             </View>
             <View style={styles.infoRow}>
@@ -557,13 +588,21 @@ export default function MatchDetailScreen({ navigation, route }) {
                 <Text style={styles.totalNeededText}>{totalNeeded} người</Text>
               </View>
             </View>
+            {match.maxPlayers && getFootballFormatLabel(match.maxPlayers) ? (
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoIcon, { fontSize: 12 }]}>🏟️</Text>
+                <Text style={styles.helperInfoText}>
+                  Loại sân: {getFootballFormatLabel(match.maxPlayers)} • Tối đa {match.maxPlayers} người
+                </Text>
+              </View>
+            ) : null}
 
             {/* Team 1 */}
             {(teamBreakdown.teamA.count > 0 || teamBreakdown.teamA.bench > 0) && (
               <View style={styles.teamBlock}>
                 <View style={styles.teamLabelRow}>
                   <View style={[styles.teamDot, { backgroundColor: "#3b82f6" }]} />
-                  <Text style={styles.teamLabel}>Đội 1</Text>
+                  <Text style={styles.teamLabel}>Đội 1{getFootballPlayerCountPerTeam(match.maxPlayers) ? ` (tối đa ${getFootballPlayerCountPerTeam(match.maxPlayers)})` : ""}</Text>
                   <Text style={styles.teamCount}>
                     {teamBreakdown.teamA.count + teamBreakdown.teamA.bench} người
                   </Text>
@@ -595,7 +634,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               <View style={styles.teamBlock}>
                 <View style={styles.teamLabelRow}>
                   <View style={[styles.teamDot, { backgroundColor: "#ef4444" }]} />
-                  <Text style={styles.teamLabel}>Đội 2</Text>
+                  <Text style={styles.teamLabel}>Đội 2{getFootballPlayerCountPerTeam(match.maxPlayers) ? ` (tối đa ${getFootballPlayerCountPerTeam(match.maxPlayers)})` : ""}</Text>
                   <Text style={styles.teamCount}>
                     {teamBreakdown.teamB.count + teamBreakdown.teamB.bench} người
                   </Text>
@@ -1088,6 +1127,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: { fontSize: 14, fontWeight: "800", color: "#333", marginBottom: 12 },
+  helperInfoText: { fontSize: 12, color: "#888", fontStyle: "italic", marginLeft: 4, flex: 1 },
   emptyText: { fontSize: 13, color: "#999" },
   userRowWrap: { marginBottom: 10 },
   userRowContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
