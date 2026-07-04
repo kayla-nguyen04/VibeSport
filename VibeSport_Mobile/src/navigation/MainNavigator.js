@@ -1,12 +1,8 @@
-import { useCallback, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { Screen } from '../components/Screen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useDispatch, useSelector } from 'react-redux';
 
-import { logoutUser, updateProfile } from '../redux/authSlice';
-import { MainTabsScreen } from '../screens/MainTabsScreen';
+import { MainTabsNavigator } from './MainTabsNavigator';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
 import MatchDetailScreen from '../screens/MatchDetailScreen';
@@ -34,35 +30,6 @@ export const linking = {
 
 const Stack = createNativeStackNavigator();
 
-function HomeScreen({ navigation, route }) {
-  const dispatch = useDispatch();
-  const user = useSelector((state) => state.auth.user);
-  const [activeTab, setActiveTab] = useState('posts');
-
-  useFocusEffect(
-    useCallback(() => {
-      const tab = route.params?.activeTab;
-      if (tab) {
-        setActiveTab(tab);
-        navigation.setParams({ activeTab: undefined });
-      }
-    }, [navigation, route.params?.activeTab])
-  );
-
-  return (
-    <View style={styles.homeWrapper}>
-      <MainTabsScreen
-        activeTab={activeTab}
-        onChangeTab={setActiveTab}
-        onLogout={() => dispatch(logoutUser())}
-        onUpdateProfile={(payload) => dispatch(updateProfile(payload)).unwrap()}
-        user={user}
-        navigation={navigation}
-      />
-    </View>
-  );
-}
-
 export function LoadingScreen() {
   return (
     <Screen style={styles.centered}>
@@ -83,7 +50,7 @@ export function MainNavigator() {
       }}
       initialRouteName="Home"
     >
-      <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="Home" component={MainTabsNavigator} />
       <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />
       <Stack.Screen name="CreateMatch" component={CreateMatchScreen} />
       <Stack.Screen name="MatchDetail" component={MatchDetailScreen} />
@@ -114,8 +81,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 13,
     color: '#3d3d3d',
-  },
-  homeWrapper: {
-    flex: 1,
   },
 });
