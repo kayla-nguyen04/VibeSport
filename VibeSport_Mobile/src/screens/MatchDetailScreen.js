@@ -280,7 +280,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const openProfile = (profileUser) => {
     const profileUserId = getUserId(profileUser);
     if (!profileUserId || profileUserId === userId) {
-      navigation.navigate("ProfileTab");
+      navigation.navigate("Home", { screen: "ProfileTab" });
       return;
     }
     navigation.navigate("UserProfile", { userId: profileUserId });
@@ -430,7 +430,7 @@ export default function MatchDetailScreen({ navigation, route }) {
             try {
               await deleteMatch(match._id);
               Alert.alert("Thành công", "Đã xóa trận đấu");
-              navigation.navigate("MatchesTab");
+              navigation.navigate("Home", { screen: "MatchesTab" });
             } catch (err) {
               Alert.alert("Lỗi", err.message);
             }

@@ -94,7 +94,7 @@ export default function PostDetailScreen({ route, navigation }) {
     const myId = currentUser?._id || currentUser?.id;
     if (userId === myId) {
       // Chuyển về tab Profile của bản thân
-      navigation.navigate('MainTabs', { screen: 'Profile' });
+      navigation.navigate('Home', { screen: 'ProfileTab' });
     } else {
       navigation.navigate('UserProfile', { userId });
     }

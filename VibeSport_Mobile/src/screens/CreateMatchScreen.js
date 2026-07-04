@@ -1091,7 +1091,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             text: "OK",
             onPress: () => {
               if (navigation) {
-                navigation.navigate("MatchesTab");
+                navigation.navigate("Home", { screen: "MatchesTab" });
               }
             }
           }
@@ -1106,7 +1106,7 @@ export default function CreateMatchScreen({ navigation, route }) {
               text: "OK",
               onPress: () => {
                 if (navigation) {
-                  navigation.navigate("TeamsTab");
+                  navigation.navigate("Home", { screen: "TeamsTab" });
                 }
               }
             }
@@ -1131,7 +1131,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             try {
               await deleteMatch(editMatch._id);
               Alert.alert("Thành công", "Đã xóa trận đấu");
-              navigation.navigate("MatchesTab");
+              navigation.navigate("Home", { screen: "MatchesTab" });
             } catch (error) {
               Alert.alert("Lỗi", error.message);
             }
