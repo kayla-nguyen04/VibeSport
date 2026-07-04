@@ -39,7 +39,7 @@ export function LoadingScreen() {
   );
 }
 
-export function MainNavigator() {
+export function MainNavigator({ initialRouteName = 'Home' }) {
   return (
     <Stack.Navigator
       screenOptions={{
@@ -48,7 +48,7 @@ export function MainNavigator() {
         animationDuration: 280,
         gestureEnabled: true,
       }}
-      initialRouteName="Home"
+      initialRouteName={initialRouteName}
     >
       <Stack.Screen name="Home" component={MainTabsNavigator} />
       <Stack.Screen name="CompleteProfile" component={ProfileSetupScreen} />

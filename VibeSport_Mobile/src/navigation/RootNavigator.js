@@ -40,7 +40,7 @@ export function RootNavigator() {
   return (
     <NavigationContainer key={navigatorKey} linking={linking}>
       {isAuthenticated ? (
-        <MainNavigator />
+        <MainNavigator initialRouteName={initialRouteName} />
       ) : (
         <AuthNavigator />
       )}
