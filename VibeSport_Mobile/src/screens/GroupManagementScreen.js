@@ -696,7 +696,7 @@ useEffect(() => {
             try {
               await dispatch(leaveGroup(conversationId)).unwrap();
               Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm.');
-              navigation.navigate('Home', { activeTab: 'social' });
+              navigation.navigate('SocialTab');
             } catch (err) {
               Alert.alert('Lỗi', err || 'Không thể rời khỏi nhóm');
             }
