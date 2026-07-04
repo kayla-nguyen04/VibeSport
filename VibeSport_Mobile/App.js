@@ -2,7 +2,7 @@ import { Provider } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AuthNavigator } from './src/navigation/AuthNavigator';
+import { RootNavigator } from './src/navigation/RootNavigator';
 import { store } from './src/redux/store';
 import { initCustomAlert } from './src/utils/CustomAlertService';
 import CustomAlertModal from './src/components/CustomAlertModal';
@@ -15,7 +15,7 @@ export default function App() {
     <Provider store={store}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <AuthNavigator />
+        <RootNavigator />
         <CustomAlertModal />
       </SafeAreaProvider>
     </Provider>
