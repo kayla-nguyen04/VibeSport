@@ -1,25 +1,47 @@
+import React from 'react';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { icon } from '../theme';
 
-export function BackButton({ onPress, style }) {
+const ICON_NAME = 'chevron-back';
+const MIN_TOUCH_SIZE = 44;
+
+const BackButton = ({
+  onPress,
+  size = 22,
+  color = icon.dark,
+}) => {
+  const hitSlop = {
+    top: (MIN_TOUCH_SIZE - size) / 2,
+    bottom: (MIN_TOUCH_SIZE - size) / 2,
+    left: (MIN_TOUCH_SIZE - size) / 2,
+    right: (MIN_TOUCH_SIZE - size) / 2,
+  };
+
   return (
     <TouchableOpacity
-      activeOpacity={0.7}
+      style={styles.container}
       onPress={onPress}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      style={[styles.button, style]}
+      hitSlop={hitSlop}
+      accessibilityRole="button"
+      accessibilityLabel="Quay lại"
     >
-      <Ionicons name="chevron-back" size={24} color="#111111" />
+      <Ionicons
+        name={ICON_NAME}
+        size={size}
+        color={color}
+      />
     </TouchableOpacity>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  button: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  container: {
+    width: MIN_TOUCH_SIZE,
+    height: MIN_TOUCH_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
   },
 });
+
+export default BackButton;
