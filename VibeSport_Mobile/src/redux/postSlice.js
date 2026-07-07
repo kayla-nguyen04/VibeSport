@@ -11,6 +11,7 @@ import {
   unsavePostRequest,
   getSavedPostsRequest,
 } from '../services/postApi';
+import { logoutUser } from './authSlice';
 
 const normalizePost = (post) => ({
   isLiked: false,
@@ -471,6 +472,22 @@ const postSlice = createSlice({
       })
       .addCase(updatePost.rejected, (state) => {
         state.creating = false;
+      })
+      .addCase(logoutUser.fulfilled, (state) => {
+        state.posts = [];
+        state.savedPosts = [];
+        state.page = 1;
+        state.loading = false;
+        state.refreshing = false;
+        state.savedPostsLoading = false;
+        state.savedPostsRefreshing = false;
+        state.creating = false;
+        state.hasMore = true;
+        state.error = null;
+        state.savedPostsError = null;
+        state.activeTag = null;
+        state.pendingReactions = {};
+        state.pendingSaves = {};
       });
   },
 });

@@ -20,6 +20,8 @@ const Avatar = ({
   showOnline = false,
   borderColor,
   onPress,
+  customInitials,
+  customBgColor,
 }) => {
   const avatarSize = AVATAR_SIZES[size];
   const indicatorSize = avatarSize * ONLINE_INDICATOR_RATIO;
@@ -34,8 +36,8 @@ const Avatar = ({
     return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
   };
 
-  const initials = getInitials(name);
-  const backgroundColor = getAvatarColor(name);
+  const initials = customInitials || getInitials(name);
+  const backgroundColor = customBgColor || getAvatarColor(name);
 
   const Container = onPress ? TouchableOpacity : View;
 
