@@ -7,7 +7,6 @@ import {
   Alert,
   RefreshControl,
   ScrollView,
-  Share,
   StatusBar,
   Text,
   TouchableOpacity,
@@ -41,19 +40,15 @@ function getUserId(user) {
   return user?.id || user?._id;
 }
 
-
 function canNavigateToRoute(navigation, routeName) {
   let currentNavigation = navigation;
-
   while (currentNavigation) {
     const state = currentNavigation.getState?.();
     if (state?.routeNames?.includes(routeName)) return true;
     currentNavigation = currentNavigation.getParent?.();
   }
-
   return false;
 }
-
 
 export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const dispatch = useDispatch();
@@ -95,18 +90,11 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       setProfileLoading(false);
       return null;
     }
-
     if (!force && profileLoadedRef.current && !profileRequestRef.current) {
       return profile;
     }
-
-    if (!silent) {
-      setProfileLoading(true);
-    }
-
-    if (profileRequestRef.current) {
-      return profileRequestRef.current;
-    }
+    if (!silent) setProfileLoading(true);
+    if (profileRequestRef.current) return profileRequestRef.current;
 
     profileRequestRef.current = (async () => {
       const profileResponse = await getUserProfileRequest(userId, token);
@@ -130,16 +118,12 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   useFocusEffect(
     useCallback(() => {
       loadProfile({ silent: true, force: true });
-
-      if (token) {
-        dispatch(fetchUnreadCount());
-      }
+      if (token) dispatch(fetchUnreadCount());
     }, [dispatch, loadProfile, token])
   );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-
     try {
       await loadProfile({ force: true, silent: true });
     } finally {
@@ -178,14 +162,12 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const processImagePick = async (mode) => {
     try {
       let result;
-
       if (mode === 'camera') {
         const { status: permissionStatus } = await ImagePicker.requestCameraPermissionsAsync();
         if (permissionStatus !== 'granted') {
           Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập máy ảnh để chụp ảnh.');
           return;
         }
-
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
           allowsEditing: true,
@@ -199,7 +181,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
           Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện để chọn ảnh.');
           return;
         }
-
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           allowsEditing: true,
@@ -210,13 +191,11 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       }
 
       if (result.canceled || !result.assets?.length) return;
-
       const selectedAsset = result.assets[0];
       if (!selectedAsset.base64) {
         Alert.alert('Lỗi', 'Không đọc được dữ liệu ảnh. Vui lòng thử lại.');
         return;
       }
-
       if (!userId) {
         Alert.alert('Lỗi', 'Không xác định được tài khoản. Vui lòng đăng nhập lại.');
         return;
@@ -226,10 +205,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       const base64Image = `data:${mimeType};base64,${selectedAsset.base64}`;
 
       setIsSaving(true);
-      const updatedUser = await onUpdateProfile({
-        userId,
-        picture: base64Image,
-      });
+      const updatedUser = await onUpdateProfile({ userId, picture: base64Image });
       setProfile((current) => ({ ...(current || {}), ...(updatedUser || {}), picture: base64Image }));
       Alert.alert('Thành công', 'Cập nhật ảnh đại diện thành công.');
     } catch (error) {
@@ -244,7 +220,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       Alert.alert('Lỗi', 'Tên hiển thị không được bỏ trống.');
       return;
     }
-
     if (!userId) {
       Alert.alert('Lỗi', 'Không xác định được tài khoản. Vui lòng đăng nhập lại.');
       return;
@@ -262,10 +237,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
         bio: editBio.trim(),
       });
 
-      setProfile((current) => ({
-        ...(current || {}),
-        ...(updatedUser || {}),
-      }));
+      setProfile((current) => ({ ...(current || {}), ...(updatedUser || {}) }));
       syncEditFormFromProfile({ ...(displayProfile || {}), ...(updatedUser || {}) });
       Alert.alert('Thành công', 'Cập nhật hồ sơ thành công.');
       setIsEditModalVisible(false);
@@ -278,9 +250,13 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 
   const closeOptionsSheet = () => setIsOptionsSheetVisible(false);
 
-  const handleOpenManagement = (screenName) => {
+  const handleOpenManagement = (routeName, title) => {
     closeOptionsSheet();
-    navigation?.navigate(screenName);
+    if (!canNavigateToRoute(navigation, routeName)) {
+      Alert.alert('Chức năng đang cập nhật', `Màn hình "${title}" đang được phát triển và cấu hình.`);
+      return;
+    }
+    navigation.navigate(routeName);
   };
 
   const handleEditProfile = () => {
@@ -289,7 +265,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       navigation.navigate('EditProfile');
       return;
     }
-
     syncEditFormFromProfile(displayProfile);
     setIsEditModalVisible(true);
   };
@@ -300,7 +275,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       navigation.navigate('SavedPosts');
       return;
     }
-
     Alert.alert('Lưu bài viết', 'Màn bài viết đã lưu chưa được cấu hình.');
   };
 
@@ -310,8 +284,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       navigation.navigate('Settings');
       return;
     }
-
-    // TODO: Navigate to Settings when the route is added to MainNavigator.
     Alert.alert('Cài đặt', 'Màn Cài đặt chưa được cấu hình.');
   };
 
@@ -341,22 +313,25 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
     {
       key: 'profile-management',
       title: 'Quản lý trang cá nhân',
+      subtitle: 'Xem, chỉnh sửa thông tin chi tiết cá nhân',
       iconName: 'person-outline',
-      onPress: () => handleOpenManagement('ProfileManagementScreen'),
+      routeName: 'ProfileManagementScreen',
     },
     {
       key: 'club-management',
       title: 'Quản lý FC',
+      subtitle: 'Quản lý câu lạc bộ thể thao của bạn',
       iconName: 'people-outline',
-      onPress: () => handleOpenManagement('ClubManagementScreen'),
+      routeName: 'ClubManagementScreen',
     },
     {
       key: 'match-history',
       title: 'Lịch sử trận đấu',
+      subtitle: 'Thống kê kết quả các trận đấu đã chơi',
       iconName: 'time-outline',
-      onPress: () => handleOpenManagement('MatchHistoryScreen'),
+      routeName: 'MatchHistoryScreen',
     },
-  ], [handleOpenManagement]);
+  ], []);
 
   const renderMainContent = useCallback(() => {
     if (profileLoading && !profile && !user) {
@@ -374,6 +349,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={primary.DEFAULT} />}
       >
         <ProfileHeaderCard profile={displayProfile} onPickAvatar={handlePickAvatar} />
         <StatsCard profile={displayProfile} onOpenFollowList={openFollowList} />
@@ -383,33 +359,35 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
           <TouchableOpacity
             key={card.key}
             activeOpacity={0.8}
-            onPress={card.onPress}
+            onPress={() => handleOpenManagement(card.routeName, card.title)}
             style={styles.managementCard}
           >
             <View style={styles.managementCardLeft}>
-              <Ionicons name={card.iconName} size={20} color={primary.DEFAULT} />
-              <Text style={styles.managementCardTitle}>{card.title}</Text>
+              <View style={styles.managementCardIconWrap}>
+                <Ionicons name={card.iconName} size={spacing.xl} color={primary.DEFAULT} />
+              </View>
+              <View style={styles.managementCardTextBlock}>
+                <Text style={styles.managementCardTitle}>{card.title}</Text>
+                <Text style={styles.managementCardSubtitle}>{card.subtitle}</Text>
+              </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color={icon.dark} />
           </TouchableOpacity>
         ))}
       </ScrollView>
     );
-  }, [displayProfile, handlePickAvatar, managementCards, profile, profileLoading, user]);
+  }, [displayProfile, handlePickAvatar, managementCards, profile, profileLoading, user, refreshing, handleRefresh]);
 
   return (
     <Screen edges={['top', 'left', 'right']} style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor={background.primary} />
-
       <ScreenHeader style={styles.headerBar}>
         <View style={styles.headerSide}>
           <HeaderIconButton onPress={handleBack}>
             <Ionicons name="arrow-back" size={spacing.xl} color={icon.dark} />
           </HeaderIconButton>
         </View>
-
         <Text style={styles.headerTitle}>Hồ Sơ</Text>
-
         <View style={[styles.headerSide, styles.headerRightSide]}>
           <HeaderIconButton onPress={() => setIsOptionsSheetVisible(true)}>
             <Ionicons name="ellipsis-vertical" size={spacing.xl} color={icon.dark} />
@@ -417,9 +395,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
           <HeaderIconButton onPress={() => navigation?.navigate('Notification')}>
             <View style={styles.notificationIconWrap}>
               <Ionicons name="notifications-outline" size={spacing.xl} color={icon.dark} />
-              {unreadCount > 0 ? (
-                <View style={styles.notificationBadge} />
-              ) : null}
+              {unreadCount > 0 ? <View style={styles.notificationBadge} /> : null}
             </View>
           </HeaderIconButton>
         </View>

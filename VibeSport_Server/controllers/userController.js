@@ -143,7 +143,6 @@ exports.toggleFollow = async (req, res) => {
 exports.getUserTeams = async (req, res) => {
   try {
     const { id } = req.params;
-
     const teams = await Team.find({ 'members.userId': id }).sort({ updatedAt: -1 });
 
     const active = [];
@@ -170,10 +169,7 @@ exports.getUserTeams = async (req, res) => {
       }
     });
 
-    res.json({
-      success: true,
-      data: { active, past },
-    });
+    res.json({ success: true, data: { active, past } });
   } catch (error) {
     console.error('getUserTeams error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi tải đội bóng' });
@@ -184,10 +180,7 @@ exports.updatePresence = async (req, res) => {
   try {
     const now = new Date();
     await User.findByIdAndUpdate(req.userId, { lastSeenAt: now });
-    res.json({
-      success: true,
-      data: getPresenceFromLastSeen(now),
-    });
+    res.json({ success: true, data: getPresenceFromLastSeen(now) });
   } catch (error) {
     console.error('updatePresence error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật trạng thái hoạt động' });
@@ -200,7 +193,6 @@ exports.getNotifications = async (req, res) => {
       .populate('fromUserId', 'name picture')
       .sort({ createdAt: -1 })
       .limit(30);
-
     res.json({ success: true, data: notifications });
   } catch (error) {
     console.error('getNotifications error:', error);
@@ -220,12 +212,9 @@ exports.markNotificationsRead = async (req, res) => {
 exports.searchUsers = async (req, res) => {
   try {
     const keyword = String(req.query.keyword || '').trim();
-    if (!keyword) {
-      return res.json({ success: true, data: [] });
-    }
-    const users = await User.find({
-      name: { $regex: keyword, $options: 'i' },
-    })
+    if (!keyword) return res.json({ success: true, data: [] });
+
+    const users = await User.find({ name: { $regex: keyword, $options: 'i' } })
       .select('_id name picture favoriteSport')
       .limit(8)
       .lean();
@@ -247,22 +236,14 @@ exports.searchUsers = async (req, res) => {
 
 exports.getMutualFriends = async (req, res) => {
   try {
-    // Find all users the current user is following
     const following = await Follow.find({ followerId: req.userId }).distinct('followingId');
-    // Find all mutual follows (where following is also following the current user)
     const mutualFollowers = await Follow.find({
       followerId: { $in: following },
       followingId: req.userId,
     }).populate('followerId', '_id name picture favoriteSport position area lastSeenAt');
 
-    const friends = mutualFollowers
-      .map((f) => f.followerId)
-      .filter(Boolean);
-
-    res.status(200).json({
-      success: true,
-      data: friends,
-    });
+    const friends = mutualFollowers.map((f) => f.followerId).filter(Boolean);
+    res.status(200).json({ success: true, data: friends });
   } catch (error) {
     console.error('getMutualFriends error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách bạn bè' });
@@ -272,35 +253,33 @@ exports.getMutualFriends = async (req, res) => {
 exports.getFollowingList = async (req, res) => {
   try {
     const targetUserId = req.params.id || req.userId;
+    const viewerId = req.userId;
+
     const followDocs = await Follow.find({ followerId: targetUserId })
       .populate('followingId', '_id name picture favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followingId).filter(Boolean);
     const userIds = users.map((u) => u._id);
 
-    const [followedByTarget, followedByViewer] = await Promise.all([
-      Follow.find({ followerId: { $in: userIds }, followingId: targetUserId }).distinct('followerId'),
-      req.userId
-        ? Follow.find({ followerId: req.userId, followingId: { $in: userIds } }).distinct('followingId')
-        : [],
+    const [viewerFollowing, targetFollowers] = await Promise.all([
+      viewerId ? Follow.find({ followerId: viewerId, followingId: { $in: userIds } }).distinct('followingId') : [],
+      Follow.find({ followerId: { $in: userIds }, followingId: targetUserId }).distinct('followerId')
     ]);
 
-    const followedByTargetSet = new Set(followedByTarget.map(String));
-    const followedByViewerSet = new Set(followedByViewer.map(String));
-    const isSelf = String(req.userId) === String(targetUserId);
+    const viewerFollowingSet = new Set(viewerFollowing.map(String));
+    const targetFollowersSet = new Set(targetFollowers.map(String));
 
-    const data = users.map((user) => ({
-      ...formatUserPublic(user),
-      _id: user._id,
-      isFollowing: isSelf ? true : followedByViewerSet.has(String(user._id)),
-      isFollowedBy: followedByTargetSet.has(String(user._id)),
-    }));
-
-    res.status(200).json({
-      success: true,
-      data,
-      total: data.length,
+    const data = users.map((user) => {
+      const uIdStr = String(user._id);
+      return {
+        ...formatUserPublic(user),
+        _id: user._id,
+        isFollowing: String(viewerId) === uIdStr ? false : viewerFollowingSet.has(uIdStr),
+        isFollowedBy: targetFollowersSet.has(uIdStr),
+      };
     });
+
+    res.status(200).json({ success: true, data, total: data.length });
   } catch (error) {
     console.error('getFollowingList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách đang follow' });
@@ -310,33 +289,35 @@ exports.getFollowingList = async (req, res) => {
 exports.getFollowersList = async (req, res) => {
   try {
     const targetUserId = req.params.id || req.userId;
+    const viewerId = req.userId;
+
     const followDocs = await Follow.find({ followingId: targetUserId })
       .populate('followerId', '_id name picture favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followerId).filter(Boolean);
     const userIds = users.map((u) => u._id);
 
-    const followedByViewer = req.userId
-      ? await Follow.find({ followerId: req.userId, followingId: { $in: userIds } }).distinct('followingId')
-      : [];
+    const [viewerFollowing, viewerFollowers] = await Promise.all([
+      viewerId ? Follow.find({ followerId: viewerId, followingId: { $in: userIds } }).distinct('followingId') : [],
+      viewerId ? Follow.find({ followerId: { $in: userIds }, followingId: viewerId }).distinct('followerId') : []
+    ]);
 
-    const followedByViewerSet = new Set(followedByViewer.map(String));
+    const viewerFollowingSet = new Set(viewerFollowing.map(String));
+    const viewerFollowersSet = new Set(viewerFollowers.map(String));
 
-    const data = users.map((user) => ({
-      ...formatUserPublic(user),
-      _id: user._id,
-      isFollowing: followedByViewerSet.has(String(user._id)),
-      isFollowedBy: true,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data,
-      total: data.length,
+    const data = users.map((user) => {
+      const uIdStr = String(user._id);
+      return {
+        ...formatUserPublic(user),
+        _id: user._id,
+        isFollowing: String(viewerId) === uIdStr ? false : viewerFollowingSet.has(uIdStr),
+        isFollowedBy: viewerFollowersSet.has(uIdStr),
+      };
     });
+
+    res.status(200).json({ success: true, data, total: data.length });
   } catch (error) {
     console.error('getFollowersList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách người theo dõi' });
   }
 };
-
