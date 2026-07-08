@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -20,6 +21,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   acceptConversation,
   blockConversation,
@@ -39,6 +41,8 @@ import {
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -76,10 +80,11 @@ export default function ChatDetailScreen({ route, navigation }) {
   const [input, setInput] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [pendingImage, setPendingImage] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [showPinnedList, setShowPinnedList] = useState(false);
+  const [viewingImages, setViewingImages] = useState([]);
+  const [viewingImageIndex, setViewingImageIndex] = useState(0);
 
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
@@ -93,6 +98,51 @@ export default function ChatDetailScreen({ route, navigation }) {
     const accepted = rawAccepted || [];
     return [...pendingMessages, ...accepted];
   }, [pendingMessages, rawAccepted]);
+
+  const groupedMessages = useMemo(() => {
+    const result = [];
+    let currentImageGroup = null;
+
+    for (let i = 0; i < allMessages.length; i++) {
+      const msg = allMessages[i];
+      const senderId = msg.senderId?._id || msg.senderId;
+
+      if (msg.type === 'image' && msg.mediaUrl && !msg.isRecalled) {
+        if (
+          currentImageGroup &&
+          String(currentImageGroup.senderId) === String(senderId) &&
+          Math.abs(new Date(msg.createdAt) - new Date(currentImageGroup.createdAt)) < 120000
+        ) {
+          currentImageGroup.images.push(msg);
+        } else {
+          if (currentImageGroup) {
+            result.push(currentImageGroup);
+          }
+          currentImageGroup = {
+            _id: `image-group-${msg._id}`,
+            isGroupedImages: true,
+            senderId,
+            senderIdRaw: msg.senderId,
+            createdAt: msg.createdAt,
+            images: [msg],
+            isPending: msg.isPending,
+          };
+        }
+      } else {
+        if (currentImageGroup) {
+          result.push(currentImageGroup);
+          currentImageGroup = null;
+        }
+        result.push(msg);
+      }
+    }
+
+    if (currentImageGroup) {
+      result.push(currentImageGroup);
+    }
+
+    return result;
+  }, [allMessages]);
 
   const {
     status = 'pending',
@@ -188,31 +238,30 @@ export default function ChatDetailScreen({ route, navigation }) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: true,
       quality: 0.7,
     });
     if (!result.canceled && result.assets?.length > 0) {
-      setPendingImage(result.assets[0]);
-    }
-  };
-
-  const handleSendImage = async () => {
-    if (!pendingImage || sending) return;
-    const uri = pendingImage.uri;
-    const uriParts = uri.split('.');
-    const fileType = uriParts[uriParts.length - 1];
-    const formData = new FormData();
-    formData.append('image', {
-      uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
-      name: uri.split('/').pop() || `chat-image.${fileType}`,
-      type: `image/${fileType}`,
-    });
-    setPendingImage(null);
-    try {
-      await dispatch(sendImageMessage({ conversationId, formData })).unwrap();
-      requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
-    } catch (error) {
-      Alert.alert('Lỗi', error || 'Không thể gửi ảnh');
+      for (const img of result.assets) {
+        const uri = img.uri;
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        const formData = new FormData();
+        formData.append('image', {
+          uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+          name: uri.split('/').pop() || `chat-image.${fileType}`,
+          type: `image/${fileType}`,
+        });
+        
+        try {
+          await dispatch(sendImageMessage({ conversationId, formData })).unwrap();
+        } catch (error) {
+          Alert.alert('Lỗi', `Không thể gửi ảnh: ${img.uri.split('/').pop()}`);
+        }
+      }
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      });
     }
   };
 
@@ -391,7 +440,274 @@ export default function ChatDetailScreen({ route, navigation }) {
     return hasMatch ? parts : content;
   };
 
+  const renderGroupedImages = (item, isMine) => {
+    const images = item.images;
+    const count = images.length;
+
+    const renderTimestamp = () => (
+      <View style={styles.imageTimeBadge}>
+        <Text style={styles.imageTimeText}>{formatMessageTime(item.createdAt)}</Text>
+      </View>
+    );
+
+    if (count === 1) {
+      const img = images[0];
+      return (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            setViewingImages(images);
+            setViewingImageIndex(0);
+          }}
+          onLongPress={() => {
+            setSelectedMessage(img);
+            setShowMessageMenu(true);
+          }}
+          delayLongPress={500}
+        >
+          <View style={styles.imageMessageContainer}>
+            <Image
+              source={{ uri: fixMediaUrl(img.mediaUrl) }}
+              style={styles.messageImage}
+              resizeMode="cover"
+            />
+            {renderTimestamp()}
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    if (count === 2) {
+      return (
+        <View style={styles.imageGridContainer}>
+          <View style={styles.imageGridRow}>
+            {images.map((img, index) => (
+              <TouchableOpacity
+                key={img._id || index}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setViewingImages(images);
+                  setViewingImageIndex(index);
+                }}
+                onLongPress={() => {
+                  setSelectedMessage(img);
+                  setShowMessageMenu(true);
+                }}
+                delayLongPress={500}
+                style={styles.imageGridCellWrapper}
+              >
+                <Image
+                  source={{ uri: fixMediaUrl(img.mediaUrl) }}
+                  style={{ width: 110, height: 110 }}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+          {renderTimestamp()}
+        </View>
+      );
+    }
+
+    if (count === 3) {
+      const img0 = images[0];
+      const img1 = images[1];
+      const img2 = images[2];
+      return (
+        <View style={styles.imageGridContainer}>
+          {/* Top wide image */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setViewingImages(images);
+              setViewingImageIndex(0);
+            }}
+            onLongPress={() => {
+              setSelectedMessage(img0);
+              setShowMessageMenu(true);
+            }}
+            delayLongPress={500}
+            style={[styles.imageGridCellWrapper, { width: 224, height: 110, marginBottom: 4 }]}
+          >
+            <Image
+              source={{ uri: fixMediaUrl(img0.mediaUrl) }}
+              style={{ width: 224, height: 110 }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+          {/* Bottom two side-by-side images */}
+          <View style={styles.imageGridRow}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                setViewingImages(images);
+                setViewingImageIndex(1);
+              }}
+              onLongPress={() => {
+                setSelectedMessage(img1);
+                setShowMessageMenu(true);
+              }}
+              delayLongPress={500}
+              style={styles.imageGridCellWrapper}
+            >
+              <Image
+                source={{ uri: fixMediaUrl(img1.mediaUrl) }}
+                style={{ width: 110, height: 110 }}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                setViewingImages(images);
+                setViewingImageIndex(2);
+              }}
+              onLongPress={() => {
+                setSelectedMessage(img2);
+                setShowMessageMenu(true);
+              }}
+              delayLongPress={500}
+              style={styles.imageGridCellWrapper}
+            >
+              <Image
+                source={{ uri: fixMediaUrl(img2.mediaUrl) }}
+                style={{ width: 110, height: 110 }}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+          </View>
+          {renderTimestamp()}
+        </View>
+      );
+    }
+
+    // 4 or more images: 2x2 grid
+    const img0 = images[0];
+    const img1 = images[1];
+    const img2 = images[2];
+    const img3 = images[3];
+    const hasMore = count > 4;
+    const remaining = count - 4;
+
+    return (
+      <View style={styles.imageGridContainer}>
+        {/* Row 1 */}
+        <View style={[styles.imageGridRow, { marginBottom: 4 }]}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setViewingImages(images);
+              setViewingImageIndex(0);
+            }}
+            onLongPress={() => {
+              setSelectedMessage(img0);
+              setShowMessageMenu(true);
+            }}
+            delayLongPress={500}
+            style={styles.imageGridCellWrapper}
+          >
+            <Image
+              source={{ uri: fixMediaUrl(img0.mediaUrl) }}
+              style={{ width: 110, height: 110 }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setViewingImages(images);
+              setViewingImageIndex(1);
+            }}
+            onLongPress={() => {
+              setSelectedMessage(img1);
+              setShowMessageMenu(true);
+            }}
+            delayLongPress={500}
+            style={styles.imageGridCellWrapper}
+          >
+            <Image
+              source={{ uri: fixMediaUrl(img1.mediaUrl) }}
+              style={{ width: 110, height: 110 }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+        </View>
+        {/* Row 2 */}
+        <View style={styles.imageGridRow}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setViewingImages(images);
+              setViewingImageIndex(2);
+            }}
+            onLongPress={() => {
+              setSelectedMessage(img2);
+              setShowMessageMenu(true);
+            }}
+            delayLongPress={500}
+            style={styles.imageGridCellWrapper}
+          >
+            <Image
+              source={{ uri: fixMediaUrl(img2.mediaUrl) }}
+              style={{ width: 110, height: 110 }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setViewingImages(images);
+              setViewingImageIndex(3);
+            }}
+            onLongPress={() => {
+              setSelectedMessage(img3);
+              setShowMessageMenu(true);
+            }}
+            delayLongPress={500}
+            style={styles.imageGridCellWrapper}
+          >
+            <Image
+              source={{ uri: fixMediaUrl(img3.mediaUrl) }}
+              style={{ width: 110, height: 110 }}
+              resizeMode="cover"
+            />
+            {hasMore && (
+              <View style={styles.imageGridOverlay}>
+                <Text style={styles.imageGridOverlayText}>+{remaining + 1}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+        {renderTimestamp()}
+      </View>
+    );
+  };
+
   const renderMessage = ({ item }) => {
+    // Grouped images path
+    if (item.isGroupedImages) {
+      const isMine = String(item.senderId) === String(currentUserId);
+      const rowStyle = isMine ? styles.messageRowMine : styles.messageRowPeer;
+      const getSenderName = () => {
+        const sId = String(item.senderId);
+        const nickname = conversationMeta?.nicknames?.[sId];
+        if (nickname) return nickname;
+        return item.senderIdRaw?.name || 'Thành viên';
+      };
+
+      return (
+        <View style={[styles.messageRow, rowStyle]}>
+          <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
+            {!isMine && isGroup && (
+              <Text style={styles.senderName}>{getSenderName()}</Text>
+            )}
+            {renderGroupedImages(item, isMine)}
+          </View>
+        </View>
+      );
+    }
+
+    // Normal message path (text, recalled, etc.)
     const senderId = item.senderId?._id || item.senderId;
     const isMine = String(senderId) === String(currentUserId);
     const isPending = !!item.isPending;
@@ -433,12 +749,6 @@ export default function ChatDetailScreen({ route, navigation }) {
                 <Text style={[textStyle, isMine ? styles.recalledTextMine : styles.recalledText]}>
                   Tin nhắn đã bị thu hồi
                 </Text>
-              ) : item.type === 'image' && item.mediaUrl ? (
-                <Image
-                  source={{ uri: fixMediaUrl(item.mediaUrl) }}
-                  style={styles.messageImage}
-                  resizeMode="cover"
-                />
               ) : (
                 <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
               )}
@@ -630,31 +940,7 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     if (canChat) {
       return (
-        <View>
-          {/* Preview ảnh chờ gửi */}
-          {pendingImage && (
-            <View style={styles.imagePreviewBar}>
-              <Image source={{ uri: pendingImage.uri }} style={styles.imagePreviewThumb} />
-              <Text style={styles.imagePreviewText} numberOfLines={1}>
-                {pendingImage.uri.split('/').pop()}
-              </Text>
-              <TouchableOpacity onPress={() => setPendingImage(null)} style={styles.imagePreviewRemove}>
-                <Ionicons name="close-circle" size={20} color="#EF4444" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSendImage}
-                disabled={sending}
-                style={[styles.sendButton, sending && styles.sendButtonDisabled]}
-              >
-                {sending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="send" size={18} color="#FFFFFF" />
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-          <View style={styles.inputBar}>
+        <View style={styles.inputBar}>
             {/* Icon chọn ảnh */}
             <TouchableOpacity
               onPress={handlePickImage}
@@ -685,7 +971,6 @@ export default function ChatDetailScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
           </View>
-        </View>
       );
     }
 
@@ -725,19 +1010,151 @@ export default function ChatDetailScreen({ route, navigation }) {
     );
   };
 
+  const renderHeaderAvatar = () => {
+    if (!isGroup || peer?.picture) {
+      return peer?.picture ? (
+        <Image source={{ uri: fixMediaUrl(peer.picture) }} style={styles.headerAvatar} />
+      ) : (
+        <View style={[styles.headerAvatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
+          <Text style={styles.headerAvatarText}>{getInitials(peerName)}</Text>
+        </View>
+      );
+    }
+    
+    // Layered group avatar (Zalo style) inside header (40x40)
+    const otherMembers = (conversationMeta?.participants || []).filter(
+      (p) => String(p._id || p) !== String(currentUserId)
+    );
+    const totalCount = otherMembers.length;
+    
+    if (totalCount === 0) {
+      return (
+        <View style={[styles.headerAvatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
+          <Text style={styles.headerAvatarText}>{getInitials(peerName)}</Text>
+        </View>
+      );
+    }
+    
+    if (totalCount === 1) {
+      const singleMember = otherMembers[0];
+      const displayName = singleMember.name || 'User';
+      return singleMember.picture ? (
+        <Image source={{ uri: fixMediaUrl(singleMember.picture) }} style={styles.headerAvatar} />
+      ) : (
+        <View style={[styles.headerAvatarFallback, { backgroundColor: getAvatarColor(displayName) }]}>
+          <Text style={styles.headerAvatarText}>{getInitials(displayName)}</Text>
+        </View>
+      );
+    }
+    
+    if (totalCount === 2) {
+      const m0 = otherMembers[0];
+      const m1 = otherMembers[1];
+      return (
+        <View style={styles.headerGroupAvatarGrid}>
+          <View style={[styles.headerGroupAvatarItem, { width: 24, height: 24, borderRadius: 12, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+            {m0.picture ? (
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 21, height: 21, borderRadius: 10.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.headerGroupAvatarItemText, { fontSize: 8 }]}>{getInitials(m0.name)}</Text>
+            )}
+          </View>
+          <View style={[styles.headerGroupAvatarItem, { width: 24, height: 24, borderRadius: 12, bottom: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+            {m1.picture ? (
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 21, height: 21, borderRadius: 10.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.headerGroupAvatarItemText, { fontSize: 8 }]}>{getInitials(m1.name)}</Text>
+            )}
+          </View>
+        </View>
+      );
+    }
+    
+    if (totalCount === 3) {
+      const m0 = otherMembers[0];
+      const m1 = otherMembers[1];
+      const m2 = otherMembers[2];
+      return (
+        <View style={styles.headerGroupAvatarGrid}>
+          <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, top: 0.5, left: 0.5, backgroundColor: getAvatarColor(m0.name) }]}>
+            {m0.picture ? (
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.headerGroupAvatarItemText}>{getInitials(m0.name)}</Text>
+            )}
+          </View>
+          <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, top: 0.5, right: 0.5, backgroundColor: getAvatarColor(m1.name) }]}>
+            {m1.picture ? (
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.headerGroupAvatarItemText}>{getInitials(m1.name)}</Text>
+            )}
+          </View>
+          <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, bottom: 0.5, left: 10, backgroundColor: getAvatarColor(m2.name) }]}>
+            {m2.picture ? (
+              <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.headerGroupAvatarItemText}>{getInitials(m2.name)}</Text>
+            )}
+          </View>
+        </View>
+      );
+    }
+    
+    const m0 = otherMembers[0];
+    const m1 = otherMembers[1];
+    const m2 = otherMembers[2];
+    const m3 = otherMembers[3];
+    const hasMore = totalCount > 4;
+    const remainingText = (totalCount - 3) > 9 ? '9+' : `+${totalCount - 3}`;
+    
+    return (
+      <View style={styles.headerGroupAvatarGrid}>
+        <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, top: 0.5, left: 0.5, backgroundColor: getAvatarColor(m0.name) }]}>
+          {m0.picture ? (
+            <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+          ) : (
+            <Text style={styles.headerGroupAvatarItemText}>{getInitials(m0.name)}</Text>
+          )}
+        </View>
+        <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, top: 0.5, right: 0.5, backgroundColor: getAvatarColor(m1.name) }]}>
+          {m1.picture ? (
+            <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+          ) : (
+            <Text style={styles.headerGroupAvatarItemText}>{getInitials(m1.name)}</Text>
+          )}
+        </View>
+        <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, bottom: 0.5, left: 0.5, backgroundColor: getAvatarColor(m2.name) }]}>
+          {m2.picture ? (
+            <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+          ) : (
+            <Text style={styles.headerGroupAvatarItemText}>{getInitials(m2.name)}</Text>
+          )}
+        </View>
+        {hasMore ? (
+          <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, bottom: 0.5, right: 0.5, backgroundColor: '#07823b' }]}>
+            <Text style={styles.headerGroupAvatarItemText}>{remainingText}</Text>
+          </View>
+        ) : (
+          <View style={[styles.headerGroupAvatarItem, { width: 20, height: 20, borderRadius: 10, bottom: 0.5, right: 0.5, backgroundColor: getAvatarColor(m3.name) }]}>
+            {m3.picture ? (
+              <Image source={{ uri: fixMediaUrl(m3.picture) }} style={{ width: 17, height: 17, borderRadius: 8.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.headerGroupAvatarItemText}>{getInitials(m3.name)}</Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <Screen style={styles.screen}>
       <ScreenHeader style={styles.header}>
-        <BackButton onPress={() => navigation.goBack()} />
+        <BackButton name="arrow-back" onPress={() => navigation.goBack()} />
 
         <View style={styles.headerAvatarContainer}>
-          {peer?.picture ? (
-            <Image source={{ uri: fixMediaUrl(peer.picture) }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
-              <Text style={styles.headerAvatarText}>{getInitials(peerName)}</Text>
-            </View>
-          )}
+          {renderHeaderAvatar()}
           {!isGroup && presence?.isOnline && (
             <View style={styles.headerOnlineDot} />
           )}
@@ -747,7 +1164,11 @@ export default function ChatDetailScreen({ route, navigation }) {
           <Text style={styles.headerName} numberOfLines={1}>
             {peerName}
           </Text>
-          {!isGroup ? (
+          {isGroup ? (
+            <Text style={styles.headerMeta} numberOfLines={1}>
+              {`${conversationMeta?.participants?.length || 0} thành viên`}
+            </Text>
+          ) : (
             <Text 
               style={[
                 styles.headerMeta, 
@@ -757,8 +1178,24 @@ export default function ChatDetailScreen({ route, navigation }) {
             >
               {presence ? presence.label : (isFriend ? 'Bạn bè' : (peer?.area || ''))}
             </Text>
-          ) : null}
+          )}
         </View>
+
+        {isMuted && (
+          <View style={styles.headerMutedIcon}>
+            <Ionicons name="notifications-off" size={16} color="#DC2626" />
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={styles.headerSearchBtn}
+          onPress={() => {
+            Alert.alert('Tìm kiếm', 'Chức năng tìm kiếm tin nhắn đang được phát triển.');
+          }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="search-outline" size={22} color="#374151" />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.headerMenuBtn}
@@ -767,12 +1204,6 @@ export default function ChatDetailScreen({ route, navigation }) {
         >
           <Ionicons name="ellipsis-vertical" size={22} color="#374151" />
         </TouchableOpacity>
-
-        {isMuted && (
-          <View style={styles.headerMutedIcon}>
-            <Ionicons name="notifications-off" size={16} color="#DC2626" />
-          </View>
-        )}
       </ScreenHeader>
 
       {renderStatusBanner()}
@@ -780,17 +1211,17 @@ export default function ChatDetailScreen({ route, navigation }) {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
       >
-        {loadingMessages && allMessages.length === 0 ? (
+        {loadingMessages && groupedMessages.length === 0 ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color="#0b74ff" />
           </View>
         ) : (
           <FlatList
             ref={flatListRef}
-            data={allMessages}
+            data={groupedMessages}
             keyExtractor={(item) => item._id}
             renderItem={renderMessage}
             contentContainerStyle={styles.messagesContent}
@@ -1017,6 +1448,60 @@ export default function ChatDetailScreen({ route, navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <Modal
+        visible={viewingImages.length > 0}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setViewingImages([])}
+      >
+        <View style={styles.imageModalOverlay}>
+          {/* Header indicator & Close button */}
+          <View style={styles.imageModalHeader}>
+            <Text style={styles.imageModalIndicator}>
+              {viewingImageIndex + 1} / {viewingImages.length}
+            </Text>
+            <TouchableOpacity
+              style={styles.imageModalCloseBtn}
+              onPress={() => setViewingImages([])}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            >
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Swipeable FlatList */}
+          <FlatList
+            data={viewingImages}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={viewingImageIndex}
+            getItemLayout={(data, index) => ({
+              length: SCREEN_WIDTH,
+              offset: SCREEN_WIDTH * index,
+              index,
+            })}
+            onMomentumScrollEnd={(e) => {
+              const contentOffset = e.nativeEvent.contentOffset.x;
+              const index = Math.round(contentOffset / SCREEN_WIDTH);
+              setViewingImageIndex(index);
+            }}
+            keyExtractor={(item, index) => item._id || `${index}`}
+            renderItem={({ item }) => (
+              <TouchableWithoutFeedback onPress={() => setViewingImages([])}>
+                <View style={{ width: SCREEN_WIDTH, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                  <Image
+                    source={{ uri: fixMediaUrl(item.mediaUrl) }}
+                    style={styles.imageModalFull}
+                    resizeMode="contain"
+                  />
+                </View>
+              </TouchableWithoutFeedback>
+            )}
+          />
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -1070,6 +1555,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+  },
+  headerGroupAvatarGrid: {
+    width: 40,
+    height: 40,
+    position: 'relative',
+  },
+  headerGroupAvatarItem: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  headerGroupAvatarItemText: {
+    color: '#FFFFFF',
+    fontSize: 7,
+    fontWeight: '700',
+  },
+  headerSearchBtn: {
+    padding: 8,
+    marginRight: 4,
   },
   headerInfo: {
     flex: 1,
@@ -1219,19 +1726,17 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '92%',
-    borderRadius: 20,
+    maxWidth: SCREEN_WIDTH * 0.7,
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
     minWidth: 60,
   },
   messageBubbleMine: {
     backgroundColor: '#0b74ff',
-    borderBottomRightRadius: 6,
   },
   messageBubblePeer: {
     backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 6,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
@@ -1257,7 +1762,7 @@ const styles = StyleSheet.create({
   },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: '#FFFFFF',
@@ -1285,7 +1790,9 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     borderRadius: 22,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingTop: Platform.OS === 'ios' ? 14 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 6 : 10,
+    textAlignVertical: 'center',
     fontSize: 15,
     color: '#1F2937',
     backgroundColor: '#F3F4F6',
@@ -1307,37 +1814,104 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   // Bubble hiển thị ảnh trong tin nhắn
+  imageMessageContainer: {
+    position: 'relative',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   messageImage: {
-    width: 200,
-    height: 200,
+    width: 220,
+    height: 220,
+  },
+  imageTimeBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderRadius: 10,
-    marginBottom: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
-  // Preview bar khi ảnh đang chờ gửi
-  imagePreviewBar: {
+  imageTimeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+  },
+  imageGridContainer: {
+    position: 'relative',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 4,
+    backgroundColor: '#FFFFFF',
+    width: 232,
+  },
+  imageGridRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    borderTopWidth: 1,
-    borderTopColor: '#BFDBFE',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
+    gap: 4,
   },
-  imagePreviewThumb: {
-    width: 44,
-    height: 44,
+  imageGridCellWrapper: {
     borderRadius: 8,
-    backgroundColor: '#E5E7EB',
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#F3F4F6',
+    width: 110,
+    height: 110,
   },
-  imagePreviewText: {
+  imageGridOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageGridOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  imageModalOverlay: {
     flex: 1,
-    fontSize: 13,
-    color: '#374151',
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
   },
-  imagePreviewRemove: {
-    padding: 2,
+  imageModalHeader: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 30,
+    left: 0,
+    right: 0,
+    height: 50,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 100,
   },
+  imageModalIndicator: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  imageModalCloseBtn: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageModalFull: {
+    width: '100%',
+    height: '100%',
+  },
+
 
   headerMenuBtn: {
     padding: 8,

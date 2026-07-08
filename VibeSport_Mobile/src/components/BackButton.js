@@ -10,6 +10,7 @@ export function BackButton({
   onPress,
   size = 22,
   color = icon.dark,
+  name,
 }) {
   const hitSlop = {
     top: (MIN_TOUCH_SIZE - size) / 2,
@@ -27,7 +28,7 @@ export function BackButton({
       accessibilityLabel="Quay lại"
     >
       <Ionicons
-        name={ICON_NAME}
+        name={name || ICON_NAME}
         size={size}
         color={color}
       />
