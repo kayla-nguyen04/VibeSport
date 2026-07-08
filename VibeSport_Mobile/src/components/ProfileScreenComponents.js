@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
@@ -41,11 +41,6 @@ export const POSITION_OPTIONS = {
   Pickleball: ['Forehand', 'Backhand', 'Đôi'],
 };
 
-const PROFILE_TABS = [
-  { key: 'posts', label: 'Bài viết' },
-  { key: 'fc', label: 'FC' },
-  { key: 'teams', label: 'Đội' },
-];
 
 const HEADER_HEIGHT = Platform.OS === 'ios'
   ? spacing['4xl'] - spacing.xs
@@ -208,7 +203,7 @@ export function ProfileOptionsSheet({
   );
 }
 
-export function ProfileHeaderCard({ profile, onPickAvatar }) {
+export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPickAvatar }) {
   const displayName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
   const bio = profile?.bio || 'Chưa cập nhật tiểu sử';
   const isLongNguyen = displayName === 'Long Nguyen';
@@ -245,7 +240,7 @@ export function ProfileHeaderCard({ profile, onPickAvatar }) {
       </View>
     </View>
   );
-}
+});
 
 function StatColumn({ value, label, onPress }) {
   const content = (
@@ -278,7 +273,7 @@ function StatColumn({ value, label, onPress }) {
   );
 }
 
-export function StatsCard({ profile, onOpenFollowList }) {
+export const StatsCard = memo(function StatsCard({ profile, onOpenFollowList }) {
   const stats = profile?.stats || {};
   const rating = Number(profile?.rating ?? stats.rating ?? 0) || 0;
   const ratingDisplay = rating > 0 ? `${rating.toFixed(0)}/5` : '5/5';
@@ -327,7 +322,7 @@ export function StatsCard({ profile, onOpenFollowList }) {
       </View>
     </View>
   );
-}
+});
 
 function InfoRow({ iconNode, label, value }) {
   return (
@@ -343,7 +338,7 @@ function InfoRow({ iconNode, label, value }) {
   );
 }
 
-export function InfoCard({ profile }) {
+export const InfoCard = memo(function InfoCard({ profile }) {
   return (
     <View style={styles.infoSection}>
       <InfoRow
@@ -363,33 +358,8 @@ export function InfoCard({ profile }) {
       />
     </View>
   );
-}
+});
 
-export function ProfileTabs({ activeTab, onChangeTab }) {
-  return (
-    <View style={styles.tabsContainer}>
-      {PROFILE_TABS.map((tab, index) => (
-        <View key={tab.key} style={styles.tabWrapper}>
-          <TouchableOpacity
-            activeOpacity={0.78}
-            onPress={() => onChangeTab(tab.key)}
-            style={styles.tabButton}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === tab.key && styles.tabTextActive,
-              ]}
-            >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-          {index < PROFILE_TABS.length - 1 ? <View style={styles.tabDivider} /> : null}
-        </View>
-      ))}
-    </View>
-  );
-}
 
 export function EmptyState({ iconName, title, loading }) {
   if (loading) {
@@ -418,7 +388,7 @@ function formatCount(num) {
   return String(num);
 }
 
-export function ProfilePostCard({ post, profile, onOpenPost, onToggleLike, onShare }) {
+export const ProfilePostCard = memo(function ProfilePostCard({ post, profile, onOpenPost, onToggleLike, onShare, onOpenMenu }) {
   const author = post.userId || {};
   const authorName = author.name || profile?.name || 'Thành viên VibeSport';
   const authorPicture = author.picture || profile?.picture;
@@ -440,7 +410,7 @@ export function ProfilePostCard({ post, profile, onOpenPost, onToggleLike, onSha
           </Text>
           <Text style={styles.postTime}>{formatTime(post.createdAt)}</Text>
         </View>
-        <TouchableOpacity style={styles.postMenuButton} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.postMenuButton} activeOpacity={0.7} onPress={() => onOpenMenu?.(post)}>
           <Ionicons name="ellipsis-horizontal" size={20} color={icon.dark} />
         </TouchableOpacity>
       </View>
@@ -499,9 +469,9 @@ export function ProfilePostCard({ post, profile, onOpenPost, onToggleLike, onSha
       </View>
     </View>
   );
-}
+});
 
-export function TeamCard({ team }) {
+export const TeamCard = memo(function TeamCard({ team }) {
   const logoUrl = team.logo ? fixMediaUrl(team.logo) : null;
 
   return (
@@ -528,7 +498,70 @@ export function TeamCard({ team }) {
       </View>
     </View>
   );
+});
+
+function getMatchStatusMeta(status) {
+  switch (status) {
+    case 'completed':
+      return { label: 'Đã kết thúc', color: '#0f766e', backgroundColor: '#ccfbf1' };
+    case 'full':
+      return { label: 'Đủ người', color: '#b45309', backgroundColor: '#ffedd5' };
+    case 'cancelled':
+      return { label: 'Đã hủy', color: '#b91c1c', backgroundColor: '#fee2e2' };
+    case 'open':
+    default:
+      return { label: 'Đang mở', color: '#1d4ed8', backgroundColor: '#dbeafe' };
+  }
 }
+
+function formatMatchDateTime(match) {
+  const parts = [match.date, match.startTime].filter(Boolean);
+  return parts.length ? parts.join(' • ') : 'Chưa cập nhật thời gian';
+}
+
+export const MatchHistoryCard = memo(function MatchHistoryCard({ match, userId }) {
+  const creatorId = match.createdBy?._id || match.createdBy;
+  const participantIds = (match.participants || []).map((participant) => String(participant?._id || participant));
+  const isCreator = String(creatorId || '') === String(userId || '');
+  const isParticipant = participantIds.includes(String(userId || ''));
+  const statusMeta = getMatchStatusMeta(match.status);
+
+  return (
+    <View style={styles.matchCard}>
+      <View style={styles.matchHeaderRow}>
+        <View style={styles.matchTitleBlock}>
+          <Text style={styles.matchTitle} numberOfLines={2}>
+            {match.title || 'Trận đấu'}
+          </Text>
+          <Text style={styles.matchMeta} numberOfLines={1}>
+            {match.sport === 'football' ? 'Bóng đá' : match.sport === 'badminton' ? 'Cầu lông' : match.sport === 'pickleball' ? 'Pickleball' : match.sport || 'Thể thao'}
+          </Text>
+        </View>
+        <View style={[styles.matchStatusBadge, { backgroundColor: statusMeta.backgroundColor }]}> 
+          <Text style={[styles.matchStatusText, { color: statusMeta.color }]}>
+            {statusMeta.label}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.matchMeta} numberOfLines={1}>
+        {match.locationName || 'Chưa cập nhật địa điểm'}
+      </Text>
+      <Text style={styles.matchMeta} numberOfLines={1}>
+        {formatMatchDateTime(match)}
+      </Text>
+
+      <View style={styles.matchFooterRow}>
+        <Text style={styles.matchMeta} numberOfLines={1}>
+          {match.currentPlayers ?? match.participants?.length ?? 0}/{match.maxPlayers ?? 0} người
+        </Text>
+        <Text style={styles.matchMeta} numberOfLines={1}>
+          {isCreator ? 'Bạn là chủ trận' : isParticipant ? 'Bạn đã tham gia' : 'Đã liên quan'}
+        </Text>
+      </View>
+    </View>
+  );
+});
 
 export function EditProfileModal({
   visible,

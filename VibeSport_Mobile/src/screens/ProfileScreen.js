@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   RefreshControl,
+  ScrollView,
   Share,
   StatusBar,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,24 +18,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { fetchUnreadCount } from '../redux/notificationSlice';
-import { likePost, unlikePost } from '../redux/postSlice';
-import { getPostsRequest } from '../services/postApi';
-import { getUserProfileRequest, getUserTeamsRequest } from '../services/userApi';
+import { getUserProfileRequest } from '../services/userApi';
 import { background, icon, primary, spacing } from '../theme';
 import {
   EditProfileModal,
-  EmptyState,
   HeaderIconButton,
   InfoCard,
   POSITION_OPTIONS,
   ProfileHeaderCard,
   ProfileOptionsSheet,
-  ProfilePostCard,
-  ProfileTabs,
   SPORTS,
   StatsCard,
-  TeamCard,
-  fixMediaUrl,
 } from '../components/ProfileScreenComponents';
 import { styles } from './ProfileScreen.styles';
 
@@ -42,8 +36,6 @@ function getProfileErrorMessage(error, fallback) {
   if (typeof error === 'string') return error;
   return error?.message || fallback;
 }
-
-const POST_PAGE_SIZE = 20;
 
 function getUserId(user) {
   return user?.id || user?._id;
@@ -69,15 +61,11 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const unreadCount = useSelector((state) => state.notifications.unreadCount);
 
   const [profile, setProfile] = useState(null);
-  const [teams, setTeams] = useState({ active: [], past: [] });
-  const [posts, setPosts] = useState([]);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [postsLoading, setPostsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isOptionsSheetVisible, setIsOptionsSheetVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('posts');
 
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
@@ -86,75 +74,78 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const [editArea, setEditArea] = useState(user?.area ?? '');
   const [editBio, setEditBio] = useState(user?.bio ?? '');
 
-  const displayProfile = profile || user || {};
+  const profileLoadedRef = useRef(false);
+  const profileRequestRef = useRef(null);
+
+  const displayProfile = useMemo(() => profile || user || {}, [profile, user]);
   const userId = getUserId(user);
 
-  useEffect(() => {
-    const nextProfile = profile || user;
-    if (!nextProfile) return;
-
+  const syncEditFormFromProfile = useCallback((source) => {
+    const nextProfile = source || user || {};
     setEditName(nextProfile.name ?? '');
     setEditPhone(nextProfile.phone ?? '');
     setEditFavoriteSport(nextProfile.favoriteSport ?? SPORTS[0].key);
     setEditPosition(nextProfile.position ?? POSITION_OPTIONS[nextProfile.favoriteSport || SPORTS[0].key]?.[0] ?? '');
     setEditArea(nextProfile.area ?? '');
     setEditBio(nextProfile.bio ?? '');
-  }, [profile, user]);
+  }, [user]);
 
-  const loadProfile = useCallback(async () => {
-    if (!userId || !token) return;
-
-    const [profileResponse, teamsResponse] = await Promise.all([
-      getUserProfileRequest(userId, token),
-      getUserTeamsRequest(userId, token),
-    ]);
-
-    setProfile(profileResponse.data);
-    setTeams(teamsResponse.data || { active: [], past: [] });
-  }, [token, userId]);
-
-  const loadPosts = useCallback(async () => {
-    if (!userId || !token) return;
-
-    const response = await getPostsRequest(1, POST_PAGE_SIZE, token, null, userId);
-    setPosts(response.data || []);
-  }, [token, userId]);
-
-  const loadAll = useCallback(async ({ showLoading = false } = {}) => {
+  const loadProfile = useCallback(async ({ silent = false, force = false } = {}) => {
     if (!userId || !token) {
       setProfileLoading(false);
-      setPostsLoading(false);
-      setRefreshing(false);
-      return;
+      return null;
     }
 
-    if (showLoading) setProfileLoading(true);
-    setPostsLoading(true);
-
-    try {
-      await Promise.all([loadProfile(), loadPosts()]);
-    } catch (error) {
-      Alert.alert('Lỗi', getProfileErrorMessage(error, 'Không thể tải hồ sơ.'));
-    } finally {
-      setProfileLoading(false);
-      setPostsLoading(false);
-      setRefreshing(false);
+    if (!force && profileLoadedRef.current && !profileRequestRef.current) {
+      return profile;
     }
-  }, [loadPosts, loadProfile, token, userId]);
+
+    if (!silent) {
+      setProfileLoading(true);
+    }
+
+    if (profileRequestRef.current) {
+      return profileRequestRef.current;
+    }
+
+    profileRequestRef.current = (async () => {
+      const profileResponse = await getUserProfileRequest(userId, token);
+      const nextProfile = profileResponse?.data || profileResponse?.user || profileResponse;
+      setProfile(nextProfile);
+      profileLoadedRef.current = true;
+      return nextProfile;
+    })()
+      .catch((error) => {
+        Alert.alert('Lỗi', getProfileErrorMessage(error, 'Không thể tải hồ sơ.'));
+        throw error;
+      })
+      .finally(() => {
+        setProfileLoading(false);
+        profileRequestRef.current = null;
+      });
+
+    return profileRequestRef.current;
+  }, [profile, token, userId]);
 
   useFocusEffect(
     useCallback(() => {
-      loadAll({ showLoading: !profile });
+      loadProfile({ silent: true, force: true });
+
       if (token) {
         dispatch(fetchUnreadCount());
       }
-    }, [dispatch, loadAll, profile, token])
+    }, [dispatch, loadProfile, token])
   );
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    loadAll();
-  }, [loadAll]);
+
+    try {
+      await loadProfile({ force: true, silent: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadProfile]);
 
   const handleBack = () => {
     if (navigation?.canGoBack?.()) {
@@ -165,7 +156,11 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   };
 
   const openFollowList = (initialTab) => {
-    navigation?.navigate('FollowList', { initialTab });
+    navigation?.navigate('FollowList', {
+      initialTab,
+      userId,
+      ownerName: displayProfile?.name || user?.name,
+    });
   };
 
   const handlePickAvatar = () => {
@@ -271,9 +266,9 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
         ...(current || {}),
         ...(updatedUser || {}),
       }));
+      syncEditFormFromProfile({ ...(displayProfile || {}), ...(updatedUser || {}) });
       Alert.alert('Thành công', 'Cập nhật hồ sơ thành công.');
       setIsEditModalVisible(false);
-      loadProfile();
     } catch (error) {
       Alert.alert('Lỗi', getProfileErrorMessage(error, 'Cập nhật thông tin hồ sơ thất bại.'));
     } finally {
@@ -283,6 +278,11 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 
   const closeOptionsSheet = () => setIsOptionsSheetVisible(false);
 
+  const handleOpenManagement = (screenName) => {
+    closeOptionsSheet();
+    navigation?.navigate(screenName);
+  };
+
   const handleEditProfile = () => {
     closeOptionsSheet();
     if (canNavigateToRoute(navigation, 'EditProfile')) {
@@ -290,7 +290,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       return;
     }
 
-    // TODO: Navigate to EditProfile when the route is added to MainNavigator.
+    syncEditFormFromProfile(displayProfile);
     setIsEditModalVisible(true);
   };
 
@@ -337,105 +337,28 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
     );
   };
 
-  const handleToggleLike = async (post) => {
-    try {
-      const action = post.isLiked
-        ? unlikePost(post._id)
-        : likePost({ postId: post._id, reactionType: 'vibe' });
-      const result = await dispatch(action).unwrap();
+  const managementCards = useMemo(() => [
+    {
+      key: 'profile-management',
+      title: 'Quản lý trang cá nhân',
+      iconName: 'person-outline',
+      onPress: () => handleOpenManagement('ProfileManagementScreen'),
+    },
+    {
+      key: 'club-management',
+      title: 'Quản lý FC',
+      iconName: 'people-outline',
+      onPress: () => handleOpenManagement('ClubManagementScreen'),
+    },
+    {
+      key: 'match-history',
+      title: 'Lịch sử trận đấu',
+      iconName: 'time-outline',
+      onPress: () => handleOpenManagement('MatchHistoryScreen'),
+    },
+  ], [handleOpenManagement]);
 
-      setPosts((currentPosts) =>
-        currentPosts.map((item) =>
-          item._id === result.postId
-            ? {
-                ...item,
-                isLiked: result.isLiked,
-                reactionType: result.reactionType,
-                likesCount: result.likesCount,
-                topReactions: result.topReactions,
-              }
-            : item
-        )
-      );
-    } catch (error) {
-      Alert.alert('Lỗi', error?.error || error?.message || 'Không thể cập nhật Like.');
-    }
-  };
-
-  const handleOpenPost = (post) => {
-    navigation?.navigate('PostDetail', { postId: post._id });
-  };
-
-  const handleShare = async (post) => {
-    try {
-      const authorName = post.userId?.name || displayProfile.name || 'Thành viên VibeSport';
-      const content = post.content?.trim() || '';
-      const mediaLine = post.mediaUrls?.length ? `\n\nXem ảnh: ${fixMediaUrl(post.mediaUrls[0])}` : '';
-      const message = content
-        ? `${authorName} chia sẻ trên VibeSport: "${content}"${mediaLine}`
-        : `${authorName} đã chia sẻ một bài viết trên VibeSport.${mediaLine}`;
-
-      await Share.share(
-        { title: 'VibeSport', message },
-        { dialogTitle: 'Chia sẻ bài viết' }
-      );
-    } catch (error) {
-      if (error?.message !== 'User did not share') {
-        Alert.alert('Lỗi', 'Không thể chia sẻ bài viết.');
-      }
-    }
-  };
-
-  const listData = activeTab === 'posts'
-    ? posts
-    : activeTab === 'fc'
-    ? teams.active || []
-    : teams.past || [];
-
-  const renderHeader = () => (
-    <View>
-      <ProfileHeaderCard profile={displayProfile} onPickAvatar={handlePickAvatar} />
-      <StatsCard profile={displayProfile} onOpenFollowList={openFollowList} />
-      <InfoCard profile={displayProfile} />
-      <ProfileTabs activeTab={activeTab} onChangeTab={setActiveTab} />
-    </View>
-  );
-
-  const renderItem = ({ item }) => {
-    if (activeTab === 'posts') {
-      return (
-        <ProfilePostCard
-          post={item}
-          profile={displayProfile}
-          onOpenPost={handleOpenPost}
-          onToggleLike={handleToggleLike}
-          onShare={handleShare}
-        />
-      );
-    }
-
-    return <TeamCard team={item} />;
-  };
-
-  const renderEmpty = () => {
-    if (activeTab === 'posts') {
-      return (
-        <EmptyState
-          iconName="document-text-outline"
-          title="Chưa có bài viết"
-          loading={postsLoading && !refreshing}
-        />
-      );
-    }
-
-    if (activeTab === 'fc') {
-      return <EmptyState iconName="shield-outline" title="Chưa có FC" />;
-    }
-
-    return <EmptyState iconName="people-outline" title="Chưa có đội" />;
-  };
-
-  const renderMainContent = () => {
+  const renderMainContent = useCallback(() => {
     if (profileLoading && !profile && !user) {
       return (
         <View style={styles.centerState}>
@@ -446,25 +369,33 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
     }
 
     return (
-      <FlatList
-        data={listData}
-        keyExtractor={(item) => activeTab === 'posts' ? item._id : String(item.teamId || item.name)}
-        renderItem={renderItem}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmpty}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[primary.DEFAULT]}
-            tintColor={primary.DEFAULT}
-          />
-        }
+      <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-      />
+        keyboardShouldPersistTaps="handled"
+      >
+        <ProfileHeaderCard profile={displayProfile} onPickAvatar={handlePickAvatar} />
+        <StatsCard profile={displayProfile} onOpenFollowList={openFollowList} />
+        <InfoCard profile={displayProfile} />
+
+        {managementCards.map((card) => (
+          <TouchableOpacity
+            key={card.key}
+            activeOpacity={0.8}
+            onPress={card.onPress}
+            style={styles.managementCard}
+          >
+            <View style={styles.managementCardLeft}>
+              <Ionicons name={card.iconName} size={20} color={primary.DEFAULT} />
+              <Text style={styles.managementCardTitle}>{card.title}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={icon.dark} />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     );
-  };
+  }, [displayProfile, handlePickAvatar, managementCards, profile, profileLoading, user]);
 
   return (
     <Screen edges={['top', 'left', 'right']} style={styles.screen}>

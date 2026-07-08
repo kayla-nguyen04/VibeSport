@@ -6,11 +6,11 @@ import { icon } from '../theme';
 const ICON_NAME = 'chevron-back';
 const MIN_TOUCH_SIZE = 44;
 
-const BackButton = ({
+export function BackButton({
   onPress,
   size = 22,
   color = icon.dark,
-}) => {
+}) {
   const hitSlop = {
     top: (MIN_TOUCH_SIZE - size) / 2,
     bottom: (MIN_TOUCH_SIZE - size) / 2,
@@ -33,7 +33,7 @@ const BackButton = ({
       />
     </TouchableOpacity>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {

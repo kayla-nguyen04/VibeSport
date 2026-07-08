@@ -227,6 +227,7 @@ const postSlice = createSlice({
     activeTag: null,
     pendingReactions: {},
     pendingSaves: {},
+    latestFeedRequestId: null,
   },
   reducers: {
     setActiveTag: (state, action) => {
@@ -266,6 +267,7 @@ const postSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchPosts.pending, (state, action) => {
+        state.latestFeedRequestId = action.meta.requestId;
         if (action.meta.arg.page === 1) {
           state.refreshing = true;
         } else {
@@ -274,6 +276,9 @@ const postSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchPosts.fulfilled, (state, action) => {
+        if (state.latestFeedRequestId && action.meta.requestId !== state.latestFeedRequestId) {
+          return;
+        }
         const { data, page, tag } = action.payload;
         const normalizedPosts = (data || []).map(normalizePost);
 
@@ -293,6 +298,9 @@ const postSlice = createSlice({
         state.hasMore = normalizedPosts.length > 0;
       })
       .addCase(fetchPosts.rejected, (state, action) => {
+        if (state.latestFeedRequestId && action.meta.requestId !== state.latestFeedRequestId) {
+          return;
+        }
         state.loading = false;
         state.refreshing = false;
         state.error = action.payload;
@@ -488,6 +496,7 @@ const postSlice = createSlice({
         state.activeTag = null;
         state.pendingReactions = {};
         state.pendingSaves = {};
+        state.latestFeedRequestId = null;
       });
   },
 });
