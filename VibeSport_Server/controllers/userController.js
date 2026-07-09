@@ -43,11 +43,19 @@ exports.getUserProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
 
-    const followingByTarget = await Follow.find({ followerId: id }).distinct('followingId');
+    // Lấy danh sách thô kết hợp xác thực sự tồn tại thực thể qua populate để loại trừ user ảo/rác
+    const [followersRaw, followingRaw] = await Promise.all([
+      Follow.find({ followingId: id }).populate('followerId', '_id'),
+      Follow.find({ followerId: id }).populate('followingId', '_id')
+    ]);
 
-    const [followerCount, followingCount, isFollowing, isFollowedBy, mutualFriends] = await Promise.all([
-      Follow.countDocuments({ followingId: id }),
-      Follow.countDocuments({ followerId: id }),
+    // Chỉ tính các bản ghi mà tài khoản đối phương thực tế vẫn còn tồn tại trong cơ sở dữ liệu
+    const followerCount = followersRaw.filter(f => f.followerId).length;
+    const followingCount = followingRaw.filter(f => f.followingId).length;
+
+    const followingByTarget = followingRaw.filter(f => f.followingId).map(f => f.followingId._id);
+
+    const [isFollowing, isFollowedBy, mutualFriends] = await Promise.all([
       viewerId ? Follow.exists({ followerId: viewerId, followingId: id }) : false,
       viewerId ? Follow.exists({ followerId: id, followingId: viewerId }) : false,
       viewerId && String(viewerId) !== String(id)
@@ -143,6 +151,7 @@ exports.toggleFollow = async (req, res) => {
 exports.getUserTeams = async (req, res) => {
   try {
     const { id } = req.params;
+
     const teams = await Team.find({ 'members.userId': id }).sort({ updatedAt: -1 });
 
     const active = [];
@@ -169,7 +178,10 @@ exports.getUserTeams = async (req, res) => {
       }
     });
 
-    res.json({ success: true, data: { active, past } });
+    res.json({
+      success: true,
+      data: { active, past },
+    });
   } catch (error) {
     console.error('getUserTeams error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi tải đội bóng' });
@@ -180,7 +192,10 @@ exports.updatePresence = async (req, res) => {
   try {
     const now = new Date();
     await User.findByIdAndUpdate(req.userId, { lastSeenAt: now });
-    res.json({ success: true, data: getPresenceFromLastSeen(now) });
+    res.json({
+      success: true,
+      data: getPresenceFromLastSeen(now),
+    });
   } catch (error) {
     console.error('updatePresence error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi cập nhật trạng thái hoạt động' });
@@ -193,6 +208,7 @@ exports.getNotifications = async (req, res) => {
       .populate('fromUserId', 'name picture')
       .sort({ createdAt: -1 })
       .limit(30);
+
     res.json({ success: true, data: notifications });
   } catch (error) {
     console.error('getNotifications error:', error);
@@ -212,9 +228,12 @@ exports.markNotificationsRead = async (req, res) => {
 exports.searchUsers = async (req, res) => {
   try {
     const keyword = String(req.query.keyword || '').trim();
-    if (!keyword) return res.json({ success: true, data: [] });
-
-    const users = await User.find({ name: { $regex: keyword, $options: 'i' } })
+    if (!keyword) {
+      return res.json({ success: true, data: [] });
+    }
+    const users = await User.find({
+      name: { $regex: keyword, $options: 'i' },
+    })
       .select('_id name picture favoriteSport')
       .limit(8)
       .lean();
@@ -242,8 +261,14 @@ exports.getMutualFriends = async (req, res) => {
       followingId: req.userId,
     }).populate('followerId', '_id name picture favoriteSport position area lastSeenAt');
 
-    const friends = mutualFollowers.map((f) => f.followerId).filter(Boolean);
-    res.status(200).json({ success: true, data: friends });
+    const friends = mutualFollowers
+      .map((f) => f.followerId)
+      .filter(Boolean);
+
+    res.status(200).json({
+      success: true,
+      data: friends,
+    });
   } catch (error) {
     console.error('getMutualFriends error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách bạn bè' });
@@ -274,12 +299,16 @@ exports.getFollowingList = async (req, res) => {
       return {
         ...formatUserPublic(user),
         _id: user._id,
-        isFollowing: String(viewerId) === uIdStr ? false : viewerFollowingSet.has(uIdStr),
+        isFollowing: viewerFollowingSet.has(uIdStr),
         isFollowedBy: targetFollowersSet.has(uIdStr),
       };
     });
 
-    res.status(200).json({ success: true, data, total: data.length });
+    res.status(200).json({
+      success: true,
+      data,
+      total: data.length,
+    });
   } catch (error) {
     console.error('getFollowingList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách đang follow' });
@@ -310,12 +339,16 @@ exports.getFollowersList = async (req, res) => {
       return {
         ...formatUserPublic(user),
         _id: user._id,
-        isFollowing: String(viewerId) === uIdStr ? false : viewerFollowingSet.has(uIdStr),
+        isFollowing: viewerFollowingSet.has(uIdStr),
         isFollowedBy: viewerFollowersSet.has(uIdStr),
       };
     });
 
-    res.status(200).json({ success: true, data, total: data.length });
+    res.status(200).json({
+      success: true,
+      data,
+      total: data.length,
+    });
   } catch (error) {
     console.error('getFollowersList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách người theo dõi' });

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -69,9 +69,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const [editArea, setEditArea] = useState(user?.area ?? '');
   const [editBio, setEditBio] = useState(user?.bio ?? '');
 
-  const profileLoadedRef = useRef(false);
-  const profileRequestRef = useRef(null);
-
   const displayProfile = useMemo(() => profile || user || {}, [profile, user]);
   const userId = getUserId(user);
 
@@ -85,50 +82,36 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
     setEditBio(nextProfile.bio ?? '');
   }, [user]);
 
-  const loadProfile = useCallback(async ({ silent = false, force = false } = {}) => {
+  const loadProfile = useCallback(async ({ silent = false } = {}) => {
     if (!userId || !token) {
       setProfileLoading(false);
-      return null;
-    }
-    if (!force && profileLoadedRef.current && !profileRequestRef.current) {
-      return profile;
+      return;
     }
     if (!silent) setProfileLoading(true);
-    if (profileRequestRef.current) return profileRequestRef.current;
-
-    profileRequestRef.current = (async () => {
+    try {
       const profileResponse = await getUserProfileRequest(userId, token);
       const nextProfile = profileResponse?.data || profileResponse?.user || profileResponse;
       setProfile(nextProfile);
-      profileLoadedRef.current = true;
-      return nextProfile;
-    })()
-      .catch((error) => {
+    } catch (error) {
+      if (!silent) {
         Alert.alert('Lỗi', getProfileErrorMessage(error, 'Không thể tải hồ sơ.'));
-        throw error;
-      })
-      .finally(() => {
-        setProfileLoading(false);
-        profileRequestRef.current = null;
-      });
-
-    return profileRequestRef.current;
-  }, [profile, token, userId]);
+      }
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [token, userId]);
 
   useFocusEffect(
     useCallback(() => {
-      loadProfile({ silent: true, force: true });
+      loadProfile({ silent: true });
       if (token) dispatch(fetchUnreadCount());
     }, [dispatch, loadProfile, token])
   );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await loadProfile({ force: true, silent: true });
-    } finally {
-      setRefreshing(false);
-    }
+    await loadProfile({ silent: true });
+    setRefreshing(false);
   }, [loadProfile]);
 
   const handleBack = () => {
@@ -196,10 +179,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
         Alert.alert('Lỗi', 'Không đọc được dữ liệu ảnh. Vui lòng thử lại.');
         return;
       }
-      if (!userId) {
-        Alert.alert('Lỗi', 'Không xác định được tài khoản. Vui lòng đăng nhập lại.');
-        return;
-      }
 
       const mimeType = selectedAsset.mimeType || 'image/jpeg';
       const base64Image = `data:${mimeType};base64,${selectedAsset.base64}`;
@@ -218,10 +197,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const handleSaveProfile = async () => {
     if (!editName.trim()) {
       Alert.alert('Lỗi', 'Tên hiển thị không được bỏ trống.');
-      return;
-    }
-    if (!userId) {
-      Alert.alert('Lỗi', 'Không xác định được tài khoản. Vui lòng đăng nhập lại.');
       return;
     }
 
@@ -253,7 +228,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const handleOpenManagement = (routeName, title) => {
     closeOptionsSheet();
     if (!canNavigateToRoute(navigation, routeName)) {
-      Alert.alert('Chức năng đang cập nhật', `Màn hình "${title}" đang được phát triển và cấu hình.`);
+      Alert.alert('Chức năng đang cập nhật', `Màn hình "${title}" đang được cấu hình và phát triển.`);
       return;
     }
     navigation.navigate(routeName);
@@ -261,10 +236,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 
   const handleEditProfile = () => {
     closeOptionsSheet();
-    if (canNavigateToRoute(navigation, 'EditProfile')) {
-      navigation.navigate('EditProfile');
-      return;
-    }
     syncEditFormFromProfile(displayProfile);
     setIsEditModalVisible(true);
   };
@@ -280,10 +251,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
 
   const handleOpenSettings = () => {
     closeOptionsSheet();
-    if (canNavigateToRoute(navigation, 'Settings')) {
-      navigation.navigate('Settings');
-      return;
-    }
     Alert.alert('Cài đặt', 'Màn Cài đặt chưa được cấu hình.');
   };
 
@@ -333,51 +300,6 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
     },
   ], []);
 
-  const renderMainContent = useCallback(() => {
-    if (profileLoading && !profile && !user) {
-      return (
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color={primary.DEFAULT} />
-          <Text style={styles.emptyText}>Đang tải hồ sơ...</Text>
-        </View>
-      );
-    }
-
-    return (
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={primary.DEFAULT} />}
-      >
-        <ProfileHeaderCard profile={displayProfile} onPickAvatar={handlePickAvatar} />
-        <StatsCard profile={displayProfile} onOpenFollowList={openFollowList} />
-        <InfoCard profile={displayProfile} />
-
-        {managementCards.map((card) => (
-          <TouchableOpacity
-            key={card.key}
-            activeOpacity={0.8}
-            onPress={() => handleOpenManagement(card.routeName, card.title)}
-            style={styles.managementCard}
-          >
-            <View style={styles.managementCardLeft}>
-              <View style={styles.managementCardIconWrap}>
-                <Ionicons name={card.iconName} size={spacing.xl} color={primary.DEFAULT} />
-              </View>
-              <View style={styles.managementCardTextBlock}>
-                <Text style={styles.managementCardTitle}>{card.title}</Text>
-                <Text style={styles.managementCardSubtitle}>{card.subtitle}</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={icon.dark} />
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    );
-  }, [displayProfile, handlePickAvatar, managementCards, profile, profileLoading, user, refreshing, handleRefresh]);
-
   return (
     <Screen edges={['top', 'left', 'right']} style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor={background.primary} />
@@ -401,7 +323,43 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
         </View>
       </ScreenHeader>
 
-      {renderMainContent()}
+      {profileLoading && !profile ? (
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={primary.DEFAULT} />
+          <Text style={styles.emptyText}>Đang tải hồ sơ...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={primary.DEFAULT} />}
+        >
+          <ProfileHeaderCard profile={displayProfile} onPickAvatar={handlePickAvatar} />
+          <StatsCard profile={displayProfile} onOpenFollowList={openFollowList} />
+          <InfoCard profile={displayProfile} />
+
+          {managementCards.map((card) => (
+            <TouchableOpacity
+              key={card.key}
+              activeOpacity={0.8}
+              onPress={() => handleOpenManagement(card.routeName, card.title)}
+              style={styles.managementCard}
+            >
+              <View style={styles.managementCardLeft}>
+                <View style={styles.managementCardIconWrap}>
+                  <Ionicons name={card.iconName} size={spacing.xl} color={primary.DEFAULT} />
+                </View>
+                <View style={styles.managementCardTextBlock}>
+                  <Text style={styles.managementCardTitle}>{card.title}</Text>
+                  <Text style={styles.managementCardSubtitle}>{card.subtitle}</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={icon.dark} />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       <ProfileOptionsSheet
         visible={isOptionsSheetVisible}

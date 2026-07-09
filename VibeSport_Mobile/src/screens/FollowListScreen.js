@@ -21,7 +21,7 @@ import {
   toggleFollowRequest,
 } from '../services/userApi';
 import { updatePostFollowStatus } from '../redux/postSlice';
-import { updateUserFollowCounts } from '../redux/authSlice'; // Import thêm action đồng bộ số lượng
+import { updateUserFollowCounts } from '../redux/authSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { safeApiCall, APIError } from '../services/apiHelper';
 
@@ -125,7 +125,6 @@ export default function FollowListScreen({ route, navigation }) {
         isFollowedBy: res.isFollowedBy ?? item.isFollowedBy,
       });
 
-      // Nếu đang ở màn hình của chính mình, cập nhật đồng bộ trực tiếp vào Store
       if (isSelf) {
         dispatch(updateUserFollowCounts({ followingIncrement: nextFollowing ? 1 : -1 }));
       }
@@ -178,6 +177,7 @@ export default function FollowListScreen({ route, navigation }) {
         }}
       >
         <View style={styles.userCard}>
+          {/* Avatar Section */}
           <View style={styles.avatarContainer}>
             {item.picture ? (
               <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.avatar} />
@@ -189,6 +189,7 @@ export default function FollowListScreen({ route, navigation }) {
             {isMutual && <View style={styles.mutualBadge} />}
           </View>
 
+          {/* User Info Section */}
           <View style={styles.userInfoContainer}>
             <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
               {name}
@@ -203,11 +204,13 @@ export default function FollowListScreen({ route, navigation }) {
             )}
           </View>
 
+          {/* Follow Button Section */}
           {!isMe && (
             <TouchableOpacity
               style={[
                 styles.followBtn,
                 item.isFollowing && styles.followBtnActive,
+                (!item.isFollowing && item.isFollowedBy) && styles.followBtnBack,
               ]}
               onPress={() => handleToggleFollow(item)}
               disabled={actionUserId === userId}
@@ -229,7 +232,7 @@ export default function FollowListScreen({ route, navigation }) {
                   </Text>
                   {!item.isFollowing && (
                     <Ionicons 
-                      name="add" 
+                      name={item.isFollowedBy ? "arrow-back-outline" : "add"} 
                       size={16} 
                       color="#FFFFFF" 
                       style={{ marginLeft: 4 }} 
@@ -317,37 +320,193 @@ export default function FollowListScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f4f6fb' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EEF2F7' },
-  backButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F3F4F6', alignItems: 'center', justifyCenter: 'center' },
-  headerTextWrap: { flex: 1, marginHorizontal: 12 },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: '#111827' },
-  headerSubtitle: { marginTop: 2, fontSize: 12, color: '#64748B' },
-  headerSpacer: { width: 36 },
-  tabRow: { flexDirection: 'row', backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-  tabItem: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: '#F8FAFC', alignItems: 'center' },
-  tabItemActive: { backgroundColor: '#EFF6FF' },
-  tabLabel: { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  tabLabelActive: { color: '#0b74ff' },
-  listContent: { paddingBottom: 24 },
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5E7EB' },
-  avatarFallback: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  userInfoContainer: { flex: 1, marginLeft: 12, marginRight: 8 },
-  userName: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  userMeta: { marginTop: 3, fontSize: 12, color: '#64748B' },
-  mutualLabel: { marginTop: 4, fontSize: 11, fontWeight: '700', color: '#0b74ff' },
-  followBtn: { minWidth: 96, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: '#0b74ff', alignItems: 'center', justifyContent: 'center' },
-  followBtnActive: { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
-  followBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-  followBtnTextActive: { color: '#64748B' },
-  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 48 },
-  emptyList: { flexGrow: 1 },
-  emptyTitle: { marginTop: 12, fontSize: 17, fontWeight: '700', color: '#111827' },
-  emptySubtitle: { marginTop: 8, fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20 },
-  userCardWrapper: { paddingHorizontal: 16, paddingVertical: 8 },
-  userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 12, borderRadius: 16 },
-  avatarContainer: { position: 'relative' },
-  mutualBadge: { position: 'absolute', right: 0, bottom: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFFFFF' },
-  mutualLabelContainer: { marginTop: 4 }
+  screen: {
+    flex: 1,
+    backgroundColor: '#f4f6fb',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF2F7',
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTextWrap: {
+    marginHorizontal: 12,
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#64748B',
+  },
+  headerSpacer: {
+    width: 36,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+  },
+  tabItemActive: {
+    backgroundColor: '#EFF6FF',
+  },
+  tabLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  tabLabelActive: {
+    color: '#0b74ff',
+  },
+  listContent: {
+    paddingBottom: 24,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E5E7EB',
+  },
+  avatarFallback: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  userName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  userMeta: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#64748B',
+  },
+  mutualLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0b74ff',
+  },
+  followBtn: {
+    minWidth: 96,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#0b74ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followBtnActive: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  followBtnBack: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
+  },
+  followBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  followBtnTextActive: {
+    color: '#64748B',
+  },
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+  },
+  emptyList: {
+    flexGrow: 1,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  emptySubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  userCardWrapper: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  mutualBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  userInfoContainer: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  mutualLabelContainer: {
+    marginTop: 2,
+  },
 });
