@@ -18,7 +18,7 @@ import {
   Dimensions,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
 import { getPostsRequest } from "../services/postApi";
@@ -34,6 +34,174 @@ const parseDateString = (dateStr) => {
   const [day, month, year] = parts.map(Number);
   return new Date(year, month - 1, day);
 };
+
+const formatNumberWithDots = (val) => {
+  if (!val) return "";
+  const digits = val.replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+function PickleballIcon({ color, size = 32 }) {
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{
+        width: size * 0.75,
+        height: size * 0.75,
+        position: 'relative',
+        transform: [{ rotate: '-35deg' }],
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}>
+        {/* Racket Head */}
+        <View style={{
+          width: size * 0.46,
+          height: size * 0.53,
+          borderRadius: size * 0.12,
+          borderWidth: 2,
+          borderColor: color,
+          position: 'absolute',
+          top: 0,
+          left: size * 0.03,
+          backgroundColor: 'transparent',
+        }} />
+        {/* Handle */}
+        <View style={{
+          width: size * 0.09,
+          height: size * 0.28,
+          backgroundColor: color,
+          position: 'absolute',
+          bottom: 0,
+          left: size * 0.22,
+          borderRadius: size * 0.03,
+        }} />
+      </View>
+      {/* Two balls on top right */}
+      <View style={{
+        width: size * 0.12,
+        height: size * 0.12,
+        borderRadius: size * 0.06,
+        borderWidth: 1.5,
+        borderColor: color,
+        position: 'absolute',
+        top: size * 0.18,
+        right: size * 0.12,
+      }} />
+      <View style={{
+        width: size * 0.09,
+        height: size * 0.09,
+        borderRadius: size * 0.045,
+        borderWidth: 1.5,
+        borderColor: color,
+        position: 'absolute',
+        top: size * 0.38,
+        right: size * 0.06,
+      }} />
+    </View>
+  );
+}
+
+function SoccerFieldIcon({ color = '#1A1A1A' }) {
+  return (
+    <View style={{
+      width: 40,
+      height: 28,
+      borderWidth: 1.5,
+      borderColor: color,
+      borderRadius: 3,
+      position: 'relative',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+    }}>
+      <View style={{
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: '50%',
+        width: 1.2,
+        backgroundColor: color,
+      }} />
+      <View style={{
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        borderWidth: 1.2,
+        borderColor: color,
+        position: 'absolute',
+      }} />
+      <View style={{
+        width: 2,
+        height: 2,
+        borderRadius: 1,
+        backgroundColor: color,
+        position: 'absolute',
+      }} />
+      <View style={{
+        position: 'absolute',
+        left: 0,
+        top: 5,
+        bottom: 5,
+        width: 7,
+        borderWidth: 1.2,
+        borderColor: color,
+        borderLeftWidth: 0,
+      }} />
+      <View style={{
+        position: 'absolute',
+        right: 0,
+        top: 5,
+        bottom: 5,
+        width: 7,
+        borderWidth: 1.2,
+        borderColor: color,
+        borderRightWidth: 0,
+      }} />
+    </View>
+  );
+}
+
+function NeoButton({ isSelected, onPress, children }) {
+  const themeColor = isSelected ? "#FF6B35" : "#CCCCCC";
+  return (
+    <View style={styles.neoContainer}>
+      {isSelected && (
+        <View style={[styles.neoShadow, { backgroundColor: '#FF6B35' }]} />
+      )}
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.9}
+        style={[styles.neoContent, { borderColor: themeColor, backgroundColor: '#FFFFFF' }]}
+      >
+        {children}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function CourtTypeButton({ label, subLabel, isSelected, onPress }) {
+  return (
+    <View style={styles.courtTypeContainer}>
+      {isSelected && (
+        <View style={[styles.courtTypeShadow, { backgroundColor: '#FF6B35' }]} />
+      )}
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.9}
+        style={[
+          styles.courtTypeContent,
+          {
+            borderColor: isSelected ? '#FF6B35' : '#CCCCCC',
+            backgroundColor: '#FFFFFF',
+          },
+        ]}
+      >
+        <Text style={[styles.courtTypeLabel, { color: isSelected ? '#FF6B35' : '#1A1A1A' }]}>{label}</Text>
+        <Text style={[styles.courtTypeSubLabel, { color: isSelected ? '#FF6B35' : '#999' }]}>{subLabel}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 // ─── Football formations ────────────────────────────────────────────────────
 // Each position: { id, label, role, x, y } – x/y in 0..1 relative to pitch
@@ -712,8 +880,6 @@ export default function CreateMatchScreen({ navigation, route }) {
     return 22; // default is 11 vs 11 (22 players)
   });
 
-
-
   const [racketMaxPlayers, setRacketMaxPlayers] = useState(() => {
     if ((editMatch?.sport === "badminton" || editMatch?.sport === "pickleball") && editMatch?.maxPlayers) {
       return editMatch.maxPlayers;
@@ -736,10 +902,9 @@ export default function CreateMatchScreen({ navigation, route }) {
     const h = parseInt(parts[0], 10);
     const m = parseInt(parts[1], 10);
     if (isNaN(h) || isNaN(m)) return val;
-    const period = h >= 12 ? "CH" : "SA";
-    const dh = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    const hh = String(h).padStart(2, "0");
     const mm = String(m).padStart(2, "0");
-    return `${dh}:${mm} ${period}`;
+    return `${hh}g ${mm}p`;
   };
 
   // Picker handlers
@@ -841,9 +1006,9 @@ export default function CreateMatchScreen({ navigation, route }) {
   );
 
   const sports = [
-    { key: "football", label: "Bóng đá", icon: "⚽" },
-    { key: "badminton", label: "Cầu lông", icon: "🏸" },
-    { key: "pickleball", label: "Pickleball", icon: "🏓" },
+    { key: "badminton", label: "Cầu lông" },
+    { key: "football", label: "Bóng đá" },
+    { key: "pickleball", label: "Pickleball" },
   ];
 
   const handleSelectSport = (selectedSport) => {
@@ -1320,149 +1485,93 @@ export default function CreateMatchScreen({ navigation, route }) {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        {/* MÔN THỂ THAO */}
-        <Text style={styles.sectionLabel}>MÔN THỂ THAO</Text>
+        {/* Chọn môn thể thao */}
+        <Text style={styles.sectionLabel}>Chọn môn thể thao</Text>
         <View style={styles.sportRow}>
           {sports.map((item) => (
-            <TouchableOpacity
+            <NeoButton
               key={item.key}
-              style={[
-                styles.sportButton,
-                sport === item.key && styles.sportButtonActive,
-              ]}
+              isSelected={sport === item.key}
               onPress={() => handleSelectSport(item.key)}
             >
-              <View style={[
-                styles.sportIconContainer,
-                sport === item.key && styles.sportIconContainerActive,
-              ]}>
-                <Text style={styles.sportIcon}>{item.icon}</Text>
-              </View>
-              <Text style={[
-                styles.sportLabel,
-                sport === item.key && styles.sportLabelActive,
-              ]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
+              {item.key === "badminton" && (
+                <MaterialCommunityIcons
+                  name="badminton"
+                  size={32}
+                  color={sport === "badminton" ? "#FF6B35" : "#333"}
+                />
+              )}
+              {item.key === "football" && (
+                <MaterialCommunityIcons
+                  name="soccer"
+                  size={32}
+                  color={sport === "football" ? "#FF6B35" : "#333"}
+                />
+              )}
+              {item.key === "pickleball" && (
+                <MaterialCommunityIcons
+                  name="tennis-ball"
+                  size={32}
+                  color={sport === "pickleball" ? "#FF6B35" : "#333"}
+                />
+              )}
+            </NeoButton>
           ))}
         </View>
 
-        {sport === "football" && (
-          <>
-            <Text style={styles.sectionLabel}>SỐ NGƯỜI TỐI ĐA (LOẠI SÂN)</Text>
-            <View style={styles.footballMaxPlayersRow}>
+        {/* Chọn loại sân */}
+        <Text style={styles.sectionLabel}>Chọn loại sân</Text>
+        <View style={styles.footballMaxPlayersRow}>
+          {sport === "football" ? (
+            <>
               {[
                 { maxPlayers: 10, label: "5 vs 5", count: "10 người" },
                 { maxPlayers: 14, label: "7 vs 7", count: "14 người" },
                 { maxPlayers: 22, label: "11 vs 11", count: "22 người" },
               ].map((item) => (
-                <TouchableOpacity
+                <CourtTypeButton
                   key={item.maxPlayers}
-                  style={[
-                    styles.footballMaxPlayersButton,
-                    footballMaxPlayers === item.maxPlayers && styles.footballMaxPlayersButtonActive,
-                  ]}
+                  label={item.label}
+                  subLabel={item.count}
+                  isSelected={footballMaxPlayers === item.maxPlayers}
                   onPress={() => handleSelectFootballMaxPlayers(item.maxPlayers)}
-                >
-                  <Text
-                    style={[
-                      styles.footballMaxPlayersLabel,
-                      footballMaxPlayers === item.maxPlayers && styles.footballMaxPlayersLabelActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.footballMaxPlayersSubLabel,
-                      footballMaxPlayers === item.maxPlayers && styles.footballMaxPlayersSubLabelActive,
-                    ]}
-                  >
-                    {item.count}
-                  </Text>
-                </TouchableOpacity>
+                />
               ))}
-            </View>
-            <Text style={styles.helperText}>
-              Tổng số người tối đa cả 2 đội • Số người cần tìm sẽ được chọn trên sơ đồ bên dưới
-            </Text>
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              {[
+                { maxPlayers: 2, label: "1 vs 1", count: "2 người" },
+                { maxPlayers: 4, label: "2 vs 2", count: "4 người" },
+              ].map((item) => (
+                <CourtTypeButton
+                  key={item.maxPlayers}
+                  label={item.label}
+                  subLabel={item.count}
+                  isSelected={racketMaxPlayers === item.maxPlayers}
+                  onPress={() => setRacketMaxPlayers(item.maxPlayers)}
+                />
+              ))}
+            </>
+          )}
+        </View>
 
-        {/* NGƯỜI CHƠI ĐANG TÌM ĐỘI */}
-        <Text style={styles.sectionLabel}>NGƯỜI CHƠI ĐANG TÌM ĐỘI ({SPORT_MAP[sport]?.toUpperCase()})</Text>
-        {loadingPosts ? (
-          <View style={styles.loadingPostsContainer}>
-            <ActivityIndicator size="small" color="#ff5722" />
-            <Text style={styles.loadingPostsText}>Đang tải danh sách tìm đội...</Text>
-          </View>
-        ) : filteredPosts.length === 0 ? (
-          <View style={styles.emptyPostsBox}>
-            <Text style={styles.emptyPostsText}>Chưa có bài đăng tìm đội nào cho môn này.</Text>
-          </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.findTeamScroll}
-          >
-            {filteredPosts.map((item) => {
-              const author = item.userId;
-              const authorName = author?.name || "Người dùng";
-              const authorInitial = authorName.charAt(0).toUpperCase();
-              const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString("vi-VN") : "";
-
-              return (
-                <TouchableOpacity
-                  key={item._id}
-                  style={styles.findTeamCard}
-                  activeOpacity={0.9}
-                  onPress={() => navigation?.navigate?.("PostDetail", { postId: item._id, post: item })}
-                >
-                  <View style={styles.cardHeaderRow}>
-                    {author?.picture ? (
-                      <Image source={{ uri: author.picture }} style={styles.cardAvatar} />
-                    ) : (
-                      <View style={styles.cardAvatarPlaceholder}>
-                        <Text style={styles.cardAvatarText}>{authorInitial}</Text>
-                      </View>
-                    )}
-                    <View style={styles.cardMeta}>
-                      <Text style={styles.cardAuthorName} numberOfLines={1}>
-                        {authorName}
-                      </Text>
-                      <Text style={styles.cardDate}>{dateStr}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.cardContent} numberOfLines={3}>
-                    {item.content}
-                  </Text>
-                  <View style={styles.cardFooter}>
-                    <Text style={styles.cardDetailLink}>Xem chi tiết ›</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        )}
-
-        {/* TÊN TRẬN ĐẤU */}
-        <Text style={styles.sectionLabel}>TÊN TRẬN ĐẤU</Text>
+        {/* Tên trận đấu */}
+        <Text style={styles.sectionLabel}>Tên trận đấu</Text>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.input}
             value={title}
             onChangeText={setTitle}
-            placeholder="Giao lưu 5v5 tối nay"
+            placeholder="Anh em giao lưu vui vẻ"
             placeholderTextColor="#bbb"
           />
         </View>
 
-        {/* NGÀY & GIỜ BẮT ĐẦU */}
+        {/* Ngày & Giờ bắt đầu */}
         <View style={styles.dateTimeRow}>
           <View style={styles.dateTimeCol}>
-            <Text style={styles.sectionLabel}>NGÀY</Text>
+            <Text style={styles.sectionLabel}>Ngày/ tháng/ Năm</Text>
             <TouchableOpacity
               style={styles.pickerButton}
               onPress={() => setShowDatePicker(true)}
@@ -1471,12 +1580,11 @@ export default function CreateMatchScreen({ navigation, route }) {
               <Text style={styles.pickerButtonText}>
                 {formatDate(selectedDate)}
               </Text>
-              <Text style={styles.pickerButtonIcon}>📅</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.dateTimeCol}>
-            <Text style={styles.sectionLabel}>GIỜ BẮT ĐẦU</Text>
+            <Text style={styles.sectionLabel}>Giờ bắt đầu</Text>
             <TouchableOpacity
               style={styles.pickerButton}
               onPress={() => setShowTimePicker(true)}
@@ -1485,7 +1593,6 @@ export default function CreateMatchScreen({ navigation, route }) {
               <Text style={styles.pickerButtonText}>
                 {getTimeLabel(selectedTimeSlot)}
               </Text>
-              <Text style={styles.pickerButtonIcon}>🕐</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1558,35 +1665,29 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Modal>
         )}
 
-        {/* ── SỐ NGƯỜI CẦN TÌM (football: auto, other: manual) ── */}
+        {/* Sơ đồ & Số người cần tìm */}
         {sport === "football" ? (
           <>
-            {/* VỊ TRÍ CẦN TÌM – tap to open pitch modal */}
-            <View style={styles.positionSectionHeader}>
-              <Text style={styles.sectionLabel}>VỊ TRÍ CẦN TÌM (TÙY CHỌN)</Text>
-              <Text style={styles.infoIcon}>ⓘ</Text>
-            </View>
-
-            {/* Tap area to open map */}
-            <TouchableOpacity
-              style={styles.pitchTrigger}
-              onPress={() => setShowPitchModal(true)}
-              activeOpacity={0.8}
-            >
-              {/* Mini pitch preview */}
-              <View style={styles.pitchTriggerLeft}>
-                <Text style={styles.pitchTriggerIcon}>🗺️</Text>
-                <View>
-                  <Text style={styles.pitchTriggerTitle}>Sơ đồ vị trí ({(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).label})</Text>
-                  <Text style={styles.pitchTriggerSub}>
-                    {selectedPositionIds.length > 0 || Number(benchMembersTeam1 || 0) > 0 || Number(benchMembersTeam2 || 0) > 0
-                      ? `Đã chọn ${selectedPositionIds.length} vị trí${(Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)) > 0 ? ` + ${Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)} dự bị` : ""}`
-                      : "Nhấn để mở sơ đồ sân"}
-                  </Text>
+            <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
+            
+            <View style={styles.pitchTriggerContainer}>
+              <View style={styles.pitchTriggerShadow} />
+              <TouchableOpacity
+                style={styles.pitchTriggerContent}
+                onPress={() => setShowPitchModal(true)}
+                activeOpacity={0.9}
+              >
+                <View style={styles.pitchTriggerLeft}>
+                  <SoccerFieldIcon color="#1A1A1A" />
+                  <View style={styles.pitchTriggerTextContainer}>
+                    <Text style={styles.pitchTriggerTitle}>
+                      Sơ đồ vị trí ( {footballMaxPlayers === 10 ? "5vs 5" : footballMaxPlayers === 14 ? "7vs 7" : "11vs 11"} )
+                    </Text>
+                    <Text style={styles.pitchTriggerSub}>Nhấn để mở sơ đồ</Text>
+                  </View>
                 </View>
-              </View>
-              <Text style={styles.pitchTriggerArrow}>›</Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
 
             {/* Role chips summary */}
             {Object.keys(selectedRoleSummary).length > 0 && (
@@ -1594,77 +1695,30 @@ export default function CreateMatchScreen({ navigation, route }) {
                 {Object.entries(selectedRoleSummary).map(([role, qty]) => (
                   <View
                     key={role}
-                    style={[
-                      styles.roleChip,
-                      { backgroundColor: ROLE_COLORS[role] + "18", borderColor: ROLE_COLORS[role] + "66" },
-                    ]}
+                    style={styles.roleChip}
                   >
-                    <View style={[styles.roleChipDot, { backgroundColor: ROLE_COLORS[role] }]} />
-                    <Text style={[styles.roleChipText, { color: ROLE_COLORS[role] }]}>
-                      {roleLabels[role]} ×{qty}
+                    <Text style={styles.roleChipText}>
+                      {roleLabels[role]} x{qty}
                     </Text>
                   </View>
                 ))}
               </View>
             )}
 
-            {/* SỐ NGƯỜI CẦN TÌM – auto */}
-            <Text style={styles.sectionLabel}>SỐ NGƯỜI CẦN TÌM</Text>
+            <Text style={styles.sectionLabel}>Số người cần tìm</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
                 value={totalNeeded > 0 ? `${totalNeeded} người` : ""}
-                placeholder="Chưa chọn vị trí"
+                placeholder="3 người"
                 placeholderTextColor="#bbb"
                 editable={false}
               />
             </View>
-            <Text style={styles.helperText}>
-              Số vị trí cần tìm • Tự động tính theo số vị trí đã chọn trên sơ đồ
-            </Text>
           </>
         ) : (
           <>
-            {/* SỐ NGƯỜI TỐI ĐA (1vs1 / 2vs2) */}
-            <Text style={styles.sectionLabel}>SỐ NGƯỜI TỐI ĐA (LOẠI SÂN)</Text>
-            <View style={styles.footballMaxPlayersRow}>
-              {[
-                { maxPlayers: 2, label: "1 vs 1", count: "2 người" },
-                { maxPlayers: 4, label: "2 vs 2", count: "4 người" },
-              ].map((item) => (
-                <TouchableOpacity
-                  key={item.maxPlayers}
-                  style={[
-                    styles.footballMaxPlayersButton,
-                    racketMaxPlayers === item.maxPlayers && styles.footballMaxPlayersButtonActive,
-                  ]}
-                  onPress={() => setRacketMaxPlayers(item.maxPlayers)}
-                >
-                  <Text
-                    style={[
-                      styles.footballMaxPlayersLabel,
-                      racketMaxPlayers === item.maxPlayers && styles.footballMaxPlayersLabelActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.footballMaxPlayersSubLabel,
-                      racketMaxPlayers === item.maxPlayers && styles.footballMaxPlayersSubLabelActive,
-                    ]}
-                  >
-                    {item.count}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.helperText}>
-              Tổng số người tối đa cả 2 bên
-            </Text>
-
-            {/* Court diagram */}
-            <Text style={styles.sectionLabel}>SƠ ĐỒ SÂN</Text>
+            <Text style={styles.sectionLabel}>Sơ đồ sân</Text>
             <RacketCourt maxPlayers={racketMaxPlayers} sport={sport} />
             <Text style={[styles.helperText, { textAlign: "center", marginTop: 8 }]}>
               Bên A ({RACKET_FORMATS[racketMaxPlayers]?.playerCountPerSide || 1} người) vs Bên B ({RACKET_FORMATS[racketMaxPlayers]?.playerCountPerSide || 1} người) • Tối đa {racketMaxPlayers} người
@@ -1672,33 +1726,27 @@ export default function CreateMatchScreen({ navigation, route }) {
           </>
         )}
 
-        {/* CHI PHÍ / NGƯỜI */}
-        <View style={styles.costLabelRow}>
-          <Text style={styles.costEmoji}>💰</Text>
-          <Text style={styles.sectionLabel}>CHI PHÍ / NGƯỜI</Text>
-        </View>
+        {/* Tiền cọc sân / người */}
+        <Text style={styles.sectionLabel}>Tiền cọc sân / người</Text>
         <View style={styles.inputWrapper}>
           <TextInput
             style={[styles.input, styles.costInput]}
-            value={costPerPerson}
+            value={formatNumberWithDots(costPerPerson)}
             onChangeText={handleCostChange}
             keyboardType="numeric"
-            placeholder="30000"
+            placeholder="100.000"
             placeholderTextColor="#bbb"
           />
           <Text style={styles.currencySuffix}>VND</Text>
         </View>
-        <Text style={styles.helperText}>
-          Nhập 0 nếu miễn phí • Người chơi sẽ thấy thông tin này
-        </Text>
 
-        {/* ĐỊA ĐIỂM SÂN */}
-        <Text style={styles.sectionLabel}>ĐỊA ĐIỂM SÂN</Text>
+        {/* Địa điểm sân */}
+        <Text style={styles.sectionLabel}>Địa điểm sân</Text>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.input}
             value={locationName}
-            placeholder="Sân cỏ nhân tạo Đống Đa"
+            placeholder="Sân bóng Mỹ Đình."
             placeholderTextColor="#bbb"
             editable={false}
           />
@@ -1713,9 +1761,8 @@ export default function CreateMatchScreen({ navigation, route }) {
             })
           }
         >
-          <Text style={styles.mapLinkIcon}>📍</Text>
+          <Ionicons name="location-outline" size={16} color="#FF6B35" style={styles.mapLinkIcon} />
           <Text style={styles.mapLinkText}>Chọn vị trí trên bản đồ</Text>
-          <Text style={styles.mapLinkArrow}>›</Text>
         </TouchableOpacity>
         {locationCoords && (
           <View style={styles.coordBadge}>
@@ -1725,8 +1772,8 @@ export default function CreateMatchScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* GHI CHÚ (TÙY CHỌN) */}
-        <Text style={styles.sectionLabel}>GHI CHÚ (TÙY CHỌN)</Text>
+        {/* Ghi chú mô tả */}
+        <Text style={styles.sectionLabel}>Ghi chú mô tả</Text>
         <View style={styles.inputWrapper}>
           <TextInput
             style={[styles.input, styles.noteInput]}
@@ -1734,7 +1781,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             onChangeText={(text) => {
               if (text.length <= 200) setNote(text);
             }}
-            placeholder={`Mặc quần áo thể thao, mang giày đinh ngắn.\nTiền sân thanh toán tại chỗ.`}
+            placeholder={`Team mình đang thiếu 2 Hậu vệ, 1 Trung vệ.\nAnh em nào muốn đá thì tham gia nhé!`}
             placeholderTextColor="#bbb"
             multiline
             textAlignVertical="top"
@@ -1753,9 +1800,8 @@ export default function CreateMatchScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.createButton} onPress={handleSubmit}>
-          <Text style={styles.createButtonIcon}>{isEditMode ? "✓" : "⚽"}</Text>
           <Text style={styles.createButtonText}>
-            {isEditMode ? "Lưu thay đổi" : "Tạo trận ngay"}
+            {isEditMode ? "Lưu thay đổi" : "Tạo trận đấu"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1769,18 +1815,22 @@ export default function CreateMatchScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#F8F9FA",
   },
 
   // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "#fff",
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#e8e8e8",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
+    borderRadius: 30,
+    marginHorizontal: 16,
+    marginTop: Platform.OS === "ios" ? 8 : 12,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   backButton: {
     width: 36,
@@ -1796,10 +1846,10 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#1a1a1a",
-    marginLeft: 8,
+    marginLeft: 4,
   },
   headerSpacer: {
     width: 36,
@@ -1817,111 +1867,153 @@ const styles = StyleSheet.create({
 
   // Section label
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#888",
-    letterSpacing: 0.5,
-    marginTop: 20,
-    marginBottom: 10,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A1A",
+    marginTop: 18,
+    marginBottom: 8,
+  },
+
+  // Neo-brutalist button wrapper
+  neoContainer: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+  },
+  neoShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+  },
+  neoContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    borderWidth: 1.5,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Court Type Button wrapper
+  courtTypeContainer: {
+    position: 'relative',
+    flex: 1,
+    height: 55,
+    marginRight: 5,
+  },
+  courtTypeShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+  },
+  courtTypeContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  courtTypeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  courtTypeSubLabel: {
+    fontSize: 11,
+    marginTop: 2,
+    color: '#888',
+  },
+
+  // Pitch preview trigger Neo-brutalist wrapper
+  pitchTriggerContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 58,
+    marginBottom: 8,
+  },
+  pitchTriggerShadow: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    right: -3,
+    bottom: -3,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 14,
+  },
+  pitchTriggerContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#1A1A1A',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pitchTriggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pitchTriggerTextContainer: {
+    justifyContent: 'center',
+  },
+  pitchTriggerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  pitchTriggerSub: {
+    fontSize: 10,
+    color: '#888',
+    marginTop: 1,
   },
 
   // Sport Selector
   sportRow: {
     flexDirection: "row",
-    gap: 12,
-  },
-  sportButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    backgroundColor: "#f5f5f5",
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  sportButtonActive: {
-    backgroundColor: "#fff5f2",
-    borderColor: "#ff5722",
-  },
-  sportIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#e8e8e8",
-    alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
-  },
-  sportIconContainerActive: {
-    backgroundColor: "#ff5722",
-  },
-  sportIcon: {
-    fontSize: 20,
-  },
-  sportLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#666",
-  },
-  sportLabelActive: {
-    color: "#ff5722",
-    fontWeight: "700",
+    gap: 14,
+    marginBottom: 4,
   },
 
   // Football Max Players Selector
   footballMaxPlayersRow: {
     flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  footballMaxPlayersButton: {
-    flex: 1,
-    minWidth: "22%",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    backgroundColor: "#f5f5f5",
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  footballMaxPlayersButtonActive: {
-    backgroundColor: "#fff5f2",
-    borderColor: "#ff5722",
-  },
-  footballMaxPlayersLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#555",
-  },
-  footballMaxPlayersLabelActive: {
-    color: "#ff5722",
-  },
-  footballMaxPlayersSubLabel: {
-    fontSize: 10,
-    color: "#aaa",
-    marginTop: 2,
-    fontWeight: "500",
-  },
-  footballMaxPlayersSubLabelActive: {
-    color: "#ff8a65",
+    gap: 10,
+    marginBottom: 4,
   },
 
   // Input
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f7f7f7",
-    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#ebebeb",
+    borderColor: "#E8E8E8",
   },
   input: {
     flex: 1,
     paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 15,
+    paddingVertical: 11,
+    fontSize: 14,
     color: "#333",
   },
 
@@ -1936,22 +2028,20 @@ const styles = StyleSheet.create({
   pickerButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f7f7f7",
-    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#ebebeb",
+    borderColor: "#E8E8E8",
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingVertical: 11,
+    justifyContent: "center",
   },
   pickerButtonText: {
-    flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     color: "#333",
     fontWeight: "500",
-  },
-  pickerButtonIcon: {
-    fontSize: 16,
-    color: "#999",
+    textAlign: "center",
+    width: "100%",
   },
 
   // Modal (date/time pickers)
@@ -1990,7 +2080,7 @@ const styles = StyleSheet.create({
   modalDone: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#ff5722",
+    color: "#FF6B35",
   },
 
   // Helper text
@@ -2001,96 +2091,40 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Position section trigger
-  positionSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  infoIcon: {
-    fontSize: 14,
-    color: "#999",
-    marginTop: 18,
-  },
-  pitchTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f0f9f0",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#4ade80",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  pitchTriggerLeft: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  pitchTriggerIcon: {
-    fontSize: 28,
-  },
-  pitchTriggerTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#166534",
-  },
-  pitchTriggerSub: {
-    fontSize: 12,
-    color: "#4ade80",
-    marginTop: 2,
-    fontWeight: "500",
-  },
-  pitchTriggerArrow: {
-    fontSize: 24,
-    color: "#4ade80",
-    fontWeight: "300",
-  },
-
   // Role chips summary (below trigger)
   roleChipsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 8,
+    marginTop: 6,
+    marginBottom: 4,
   },
   roleChip: {
-    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: 20,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    gap: 5,
-  },
-  roleChipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    borderColor: "#E0E0E0",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    marginRight: 6,
+    marginBottom: 6,
   },
   roleChipText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
+    color: "#1A1A1A",
   },
 
   // Cost
-  costLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  costEmoji: {
-    fontSize: 14,
-    marginTop: 18,
-  },
   costInput: {
     paddingRight: 4,
   },
   currencySuffix: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#999",
+    color: "#1A1A1A",
     paddingRight: 14,
   },
 
@@ -2098,23 +2132,17 @@ const styles = StyleSheet.create({
   mapLink: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
-    paddingVertical: 4,
+    marginTop: 8,
+    paddingVertical: 3,
+    gap: 4,
   },
   mapLinkIcon: {
-    fontSize: 14,
-    marginRight: 6,
+    marginRight: 0,
   },
   mapLinkText: {
-    fontSize: 13,
-    color: "#ff5722",
+    fontSize: 12,
+    color: "#FF6B35",
     fontWeight: "600",
-    flex: 1,
-  },
-  mapLinkArrow: {
-    fontSize: 20,
-    color: "#ff5722",
-    fontWeight: "300",
   },
   coordBadge: {
     marginTop: 6,
@@ -2155,18 +2183,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ff4d2d",
-    paddingVertical: 16,
-    borderRadius: 14,
-    gap: 8,
-    shadowColor: "#ff4d2d",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  createButtonIcon: {
-    fontSize: 18,
+    backgroundColor: "#FF6B35",
+    paddingVertical: 15,
+    borderRadius: 30,
   },
   createButtonText: {
     color: "#fff",
@@ -2177,7 +2196,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: "#ef4444",
     backgroundColor: "#fff",
@@ -2230,7 +2249,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: "#ffdcd0",
-    shadowColor: "#ff5722",
+    shadowColor: "#FF6B35",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
@@ -2252,7 +2271,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#ff5722",
+    backgroundColor: "#FF6B35",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2286,7 +2305,7 @@ const styles = StyleSheet.create({
   },
   cardDetailLink: {
     fontSize: 11,
-    color: "#ff5722",
+    color: "#FF6B35",
     fontWeight: "600",
   },
 });
@@ -2332,7 +2351,7 @@ const pitchModal = StyleSheet.create({
   doneBtnText: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#ff5722",
+    color: "#FF6B35",
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -2357,7 +2376,7 @@ const pitchModal = StyleSheet.create({
   },
   countBadgeText: {
     fontSize: 13,
-    color: "#ff5722",
+    color: "#FF6B35",
     fontWeight: "600",
   },
   countBadgeNum: {
@@ -2431,7 +2450,7 @@ const pitchModal = StyleSheet.create({
   counterBtnText: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#ff5722",
+    color: "#FF6B35",
   },
   counterVal: {
     fontSize: 15,
