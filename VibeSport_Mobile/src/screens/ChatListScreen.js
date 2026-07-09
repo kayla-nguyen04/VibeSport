@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Linking,
   Platform,
   RefreshControl,
   StyleSheet,
@@ -34,6 +35,8 @@ import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
 import * as ImagePicker from 'expo-image-picker';
 import { isUserOnline } from '../utils/presence';
+import { color } from '../theme/colors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời'];
@@ -257,12 +260,47 @@ export default function ChatListScreen({ navigation }) {
   };
 
   const [searchText, setSearchText] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('inbox');
   const [activeFilter, setActiveFilter] = useState('Tất cả');
   const [showFilter, setShowFilter] = useState(false);
   const [unblockingId, setUnblockingId] = useState(null);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+
+  const unreadNotificationCount = useSelector((state) => state.notifications?.unreadCount || 0);
+
+  const [pinnedConversationIds, setPinnedConversationIds] = useState([]);
+
+  React.useEffect(() => {
+    const loadPinned = async () => {
+      try {
+        const value = await AsyncStorage.getItem('pinned_conversations');
+        if (value) {
+          setPinnedConversationIds(JSON.parse(value));
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadPinned();
+  }, []);
+
+  const handleTogglePin = async (conversationId) => {
+    let updated = [];
+    if (pinnedConversationIds.includes(conversationId)) {
+      updated = pinnedConversationIds.filter((id) => id !== conversationId);
+    } else {
+      updated = [...pinnedConversationIds, conversationId];
+    }
+    setPinnedConversationIds(updated);
+    try {
+      await AsyncStorage.setItem('pinned_conversations', JSON.stringify(updated));
+    } catch (e) {
+      // ignore
+    }
+  };
 
   // Group creation modal states
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -547,10 +585,17 @@ export default function ChatListScreen({ navigation }) {
   // DEBUG: Log all conversations removed to keep console clean
 
   const inboxConversations = React.useMemo(() => {
-    return applyFilter(
+    const filtered = applyFilter(
       allConversations.filter((item) => !item.isHidden && !item.hasOtherPendingRequest)
     );
-  }, [allConversations, applyFilter]);
+    return [...filtered].sort((a, b) => {
+      const aPinned = pinnedConversationIds.includes(a._id);
+      const bPinned = pinnedConversationIds.includes(b._id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+  }, [allConversations, applyFilter, pinnedConversationIds]);
 
   const pendingConversations = React.useMemo(() => {
     return applyFilter(
@@ -774,7 +819,12 @@ export default function ChatListScreen({ navigation }) {
               >
                 {peerName}
               </Text>
-              <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {pinnedConversationIds.includes(item._id) && (
+                  <Ionicons name="pin" size={12} color="#94A3B8" style={{ transform: [{ rotate: '45deg' }] }} />
+                )}
+                <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
+              </View>
             </View>
             <View style={styles.conversationBottomRow}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
@@ -922,96 +972,96 @@ export default function ChatListScreen({ navigation }) {
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerLeftBtn}
-          activeOpacity={0.7}
-          onPress={() => setShowFilter(true)}
-        >
-          <Ionicons name="options-outline" size={24} color="#262626" />
-        </TouchableOpacity>
-
-        <View style={styles.headerTabs}>
-          {['inbox', 'requests', 'blocked'].map((tab) => {
-            const count =
-              tab === 'requests'
-                ? pendingConversations.length
-                : tab === 'blocked'
-                  ? blockedConversations.length
-                  : 0;
-            const label =
-              tab === 'inbox'
-                ? 'Hộp thư'
-                : tab === 'requests'
-                  ? 'Yêu cầu'
-                  : 'Bị chặn';
-
-            return (
+      <View style={styles.logoHeaderCard}>
+        {isSearching ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setIsSearching(false);
+                setSearchText('');
+              }}
+              style={{ marginRight: 8, padding: 4 }}
+            >
+              <Ionicons name="arrow-back-outline" size={24} color="#000000" />
+            </TouchableOpacity>
+            <TextInput
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Tìm kiếm..."
+              placeholderTextColor="#8E8E8E"
+              autoFocus
+              style={{
+                flex: 1,
+                fontSize: 16,
+                color: '#000000',
+                paddingVertical: 4,
+              }}
+            />
+            {searchText.length > 0 && (
               <TouchableOpacity
-                key={tab}
-                style={[
-                  styles.headerTab,
-                  activeTab === tab && styles.headerTabActive,
-                ]}
-                onPress={() => setActiveTab(tab)}
-                activeOpacity={0.7}
+                onPress={() => setSearchText('')}
+                style={{ padding: 4 }}
               >
-                <View style={styles.headerTabInner}>
-                  <Text
-                    style={[
-                      styles.headerTabText,
-                      activeTab === tab && styles.headerTabTextActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                  {count > 0 && (
-                    <View
-                      style={[
-                        styles.tabBadge,
-                        tab === 'blocked' && styles.tabBadgeRed,
-                      ]}
-                    >
-                      <Text style={styles.tabBadgeText}>{count}</Text>
-                    </View>
+                <Ionicons name="close-circle" size={20} color="#8E8E8E" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : activeTab === 'inbox' ? (
+          <>
+            <View style={styles.logoHeaderLeft}>
+              <Image
+                source={require('../../assets/logosp.png')}
+                style={styles.logoHeaderImage}
+                resizeMode="contain"
+              />
+              <Text style={styles.logoHeaderText}>
+                Tin<Text style={{ color: color.FF6B3D }}>Nhắn</Text>
+              </Text>
+            </View>
+
+            <View style={styles.logoHeaderRight}>
+              <TouchableOpacity
+                style={styles.logoHeaderIconBtn}
+                onPress={() => setIsSearching(true)}
+              >
+                <Ionicons name="search-outline" size={20} color="#000000" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.logoHeaderIconBtn}
+                onPress={() => setShowHeaderMenu(true)}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color="#000000" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.logoHeaderIconBtn}
+                onPress={() => navigation.navigate('Notification')}
+              >
+                <View style={{ position: 'relative' }}>
+                  <Ionicons name="notifications-outline" size={20} color="#000000" />
+                  {unreadNotificationCount > 0 && (
+                    <View style={styles.bellRedDot} />
                   )}
                 </View>
               </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity
-            style={[styles.headerRightBtn, { marginRight: 8 }]}
-            activeOpacity={0.7}
-            onPress={() => setShowJoinGroupModal(true)}
-          >
-            <Ionicons name="link-outline" size={26} color="#262626" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerRightBtn}
-            activeOpacity={0.7}
-            onPress={handleOpenCreateGroup}
-          >
-            <Ionicons name="create-outline" size={26} color="#262626" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.searchWrap}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color="#8E8E8E" />
-          <TextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Tìm kiếm"
-            placeholderTextColor="#8E8E8E"
-            style={styles.searchInput}
-            returnKeyType="search"
-          />
-        </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.logoHeaderLeft}>
+              <TouchableOpacity
+                style={{ marginRight: 12, padding: 4 }}
+                onPress={() => setActiveTab('inbox')}
+              >
+                <Ionicons name="arrow-back-outline" size={24} color="#000000" />
+              </TouchableOpacity>
+              <Text style={styles.logoHeaderText}>
+                {activeTab === 'requests' ? 'Yêu cầu tin nhắn' : 'Tin nhắn bị chặn'}
+              </Text>
+            </View>
+          </>
+        )}
       </View>
 
       {loadingConversations && activeData.length === 0 ? (
@@ -1095,11 +1145,65 @@ export default function ChatListScreen({ navigation }) {
                 <View style={styles.menuHandle} />
 
                 <Text style={styles.menuTitle} numberOfLines={1}>
-                  {selectedConversation?.peer?.name || selectedConversation?.name || 'Tùy chọn cuộc trò chuyện'}
+                  Tùy chọn đoạn chat
                 </Text>
 
+                {selectedConversation && !selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      const peerId = selectedConversation.peer?._id || selectedConversation.peer?.id;
+                      if (peerId) {
+                        navigation.navigate('UserProfile', { userId: peerId });
+                      }
+                    }}
+                  >
+                    <Ionicons name="person-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Xem trang cá nhân</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[
+                    styles.menuItem,
+                    (!selectedConversation?.isGroup) && styles.menuItemBorder
+                  ]}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    handleTogglePin(selectedConversation?._id);
+                  }}
+                >
+                  <Ionicons
+                    name={pinnedConversationIds.includes(selectedConversation?._id) ? 'pin' : 'pin-outline'}
+                    size={22}
+                    color="#374151"
+                  />
+                  <Text style={styles.menuItemText}>
+                    {pinnedConversationIds.includes(selectedConversation?._id) ? 'Bỏ ghim' : 'Ghim'}
+                  </Text>
+                </TouchableOpacity>
+
+                {selectedConversation && !selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      const phone = selectedConversation.peer?.phone || selectedConversation.peer?.phoneNumber;
+                      if (phone) {
+                        Linking.openURL(`tel:${phone}`);
+                      } else {
+                        Alert.alert('Gọi điện', 'Người dùng này chưa cập nhật số điện thoại.');
+                      }
+                    }}
+                  >
+                    <Ionicons name="call-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Gọi điện</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
                   onPress={() => {
                     setShowOptionsModal(false);
                     handleToggleMute(selectedConversation);
@@ -1115,17 +1219,6 @@ export default function ChatListScreen({ navigation }) {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.menuItemBorder]}
-                  onPress={() => {
-                    setShowOptionsModal(false);
-                    handleDeleteConversation(selectedConversation);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
-                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa cuộc trò chuyện</Text>
-                </TouchableOpacity>
-
                 {selectedConversation && !selectedConversation.isGroup && (
                   <TouchableOpacity
                     style={[styles.menuItem, styles.menuItemBorder]}
@@ -1134,12 +1227,21 @@ export default function ChatListScreen({ navigation }) {
                       handleBlockConversation(selectedConversation);
                     }}
                   >
-                    <Ionicons name="ban-outline" size={22} color="#EF4444" />
-                    <Text style={[styles.menuItemText, styles.menuItemDanger]}>Chặn người dùng</Text>
+                    <Ionicons name="ban-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Chặn</Text>
                   </TouchableOpacity>
                 )}
 
-                {/* Cancel button removed since clicking outside closes the modal */}
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    handleDeleteConversation(selectedConversation);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa đoạn chat</Text>
+                </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -1334,6 +1436,69 @@ export default function ChatListScreen({ navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <Modal
+        visible={showHeaderMenu}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowHeaderMenu(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowHeaderMenu(false)}>
+          <View style={styles.menuOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.menuContainer}>
+                <View style={styles.menuHandle} />
+
+                <Text style={styles.menuTitle}>Tùy chọn tin nhắn</Text>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    setActiveTab('requests');
+                  }}
+                >
+                  <Ionicons name="chatbox-ellipses-outline" size={22} color="#374151" />
+                  <Text style={styles.menuItemText}>Yêu cầu</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    handleOpenCreateGroup();
+                  }}
+                >
+                  <Ionicons name="people-outline" size={22} color="#374151" />
+                  <Text style={styles.menuItemText}>Tạo nhóm</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    setShowJoinGroupModal(true);
+                  }}
+                >
+                  <Ionicons name="link-outline" size={22} color="#374151" />
+                  <Text style={styles.menuItemText}>Tham gia bằng mã</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    setActiveTab('blocked');
+                  }}
+                >
+                  <Ionicons name="ban-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Đã chặn</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </Screen>
   );
 }
@@ -1342,6 +1507,54 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#F5F6F8',
+  },
+  logoHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginHorizontal: 9,
+    marginTop: 12,
+    marginBottom: 6,
+    height: 74,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 94, 94, 0.19)',
+  },
+  logoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoHeaderImage: {
+    width: 44,
+    height: 44,
+    marginRight: -6,
+  },
+  logoHeaderText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  logoHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoHeaderIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellRedDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF0000',
   },
   header: {
     flexDirection: 'row',
@@ -1429,7 +1642,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   listContent: {
-    paddingTop: 12,
+    paddingTop: 0,
     paddingBottom: 24,
   },
   emptyList: {
@@ -1444,15 +1657,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginHorizontal: 16,
+    borderRadius: 15,
+    marginHorizontal: 9,
     marginVertical: 6,
-    paddingVertical: 12,
+    height: 78,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 0,
+    elevation: 4,
   },
   conversationItemTouchable: {
     flex: 1,
