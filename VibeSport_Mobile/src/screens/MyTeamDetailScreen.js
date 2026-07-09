@@ -23,7 +23,6 @@ import {
   updateTeamStatus,
   kickTeamMember,
   inviteTeamMember,
-  addTeamMember,
   updateMemberRole,
   updateMemberPosition,
   acceptJoinMatch,
@@ -170,11 +169,13 @@ export default function MyTeamDetailScreen({ route, navigation }) {
       setShowInviteModal(true);
       const res = await getFollowingListRequest(token);
       const list = res?.data || [];
-      // Filter out users already participating
+      // Filter out users already participating, requested, or invited
       const participantIds = (match?.participants || []).map(p => String(p._id || p.id));
+      const pendingIds = (match?.pendingJoinRequests || []).map(p => String(p._id || p.id));
+      const invitedIds = (match?.invitedMembers || []).map(p => String(p._id || p.id));
       const filtered = list.filter(u => {
         const uid = String(u._id || u.id);
-        return !participantIds.includes(uid) && uid !== String(userId);
+        return !participantIds.includes(uid) && !pendingIds.includes(uid) && !invitedIds.includes(uid) && uid !== String(userId);
       });
       setFollowingUsers(filtered);
     } catch (err) {
@@ -201,21 +202,7 @@ export default function MyTeamDetailScreen({ route, navigation }) {
     }
   };
 
-  const handleAddMemberDirect = async (targetUserId) => {
-    try {
-      setActionLoading(true);
-      const creatorId = typeof match.createdBy === "object" ? match.createdBy?._id || match.createdBy?.id : match.createdBy;
-      const data = await addTeamMember(matchId, String(creatorId), targetUserId);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã thêm thành viên vào đội.");
-      setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
-      setSearchResults(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể thêm thành viên");
-    } finally {
-      setActionLoading(false);
-    }
-  };
+
 
   const handleSearchUsers = async () => {
     if (!inviteSearchText.trim()) return;
@@ -223,10 +210,13 @@ export default function MyTeamDetailScreen({ route, navigation }) {
       setSearchLoading(true);
       const res = await searchUsersRequest(inviteSearchText.trim(), token);
       const list = res?.data || [];
+      // Filter out users already participating, requested, or invited
       const participantIds = (match?.participants || []).map(p => String(p._id || p.id));
+      const pendingIds = (match?.pendingJoinRequests || []).map(p => String(p._id || p.id));
+      const invitedIds = (match?.invitedMembers || []).map(p => String(p._id || p.id));
       const filtered = list.filter(u => {
         const uid = String(u._id || u.id);
-        return !participantIds.includes(uid) && uid !== String(userId);
+        return !participantIds.includes(uid) && !pendingIds.includes(uid) && !invitedIds.includes(uid) && uid !== String(userId);
       });
       setSearchResults(filtered);
     } catch (err) {
@@ -672,13 +662,6 @@ export default function MyTeamDetailScreen({ route, navigation }) {
                     </View>
                     <View style={styles.inviteActionBtns}>
                       <TouchableOpacity
-                        style={styles.btnAddDirectGreen}
-                        onPress={() => handleAddMemberDirect(String(item._id || item.id))}
-                        disabled={actionLoading}
-                      >
-                        <Text style={styles.btnAddDirectGreenText}>+ Thêm</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
                         style={styles.btnAddDirect}
                         onPress={() => handleInviteUser(String(item._id || item.id))}
                         disabled={actionLoading}
@@ -714,13 +697,6 @@ export default function MyTeamDetailScreen({ route, navigation }) {
                       <Text style={styles.searchResultSub}>{item.favoriteSport || "Thể thao"} {item.area ? `• ${item.area}` : ""}</Text>
                     </View>
                     <View style={styles.inviteActionBtns}>
-                      <TouchableOpacity
-                        style={styles.btnAddDirectGreen}
-                        onPress={() => handleAddMemberDirect(String(item._id || item.id))}
-                        disabled={actionLoading}
-                      >
-                        <Text style={styles.btnAddDirectGreenText}>+ Thêm</Text>
-                      </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.btnAddDirect}
                         onPress={() => handleInviteUser(String(item._id || item.id))}

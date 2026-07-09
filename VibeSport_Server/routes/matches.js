@@ -9,6 +9,7 @@ const populateFields = [
   { path: "createdBy", select: "name email picture area favoriteSport position" },
   { path: "participants", select: "name email picture area favoriteSport" },
   { path: "pendingJoinRequests", select: "name email picture area favoriteSport" },
+  { path: "invitedMembers", select: "name email picture area favoriteSport" },
 ];
 
 router.post("/", async (req, res) => {
@@ -380,6 +381,10 @@ router.post("/:id/request-join", async (req, res) => {
       return res.status(400).json({ success: false, message: "Bạn đã gửi yêu cầu tham gia rồi" });
     }
 
+    if (match.invitedMembers && match.invitedMembers.some((p) => String(p) === String(userId))) {
+      return res.status(400).json({ success: false, message: "Bạn đã được mời tham gia đội này rồi. Hãy chấp nhận lời mời." });
+    }
+
     if (match.participants.length >= match.maxPlayers) {
       return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
     }
@@ -402,6 +407,7 @@ router.post("/:id/request-join", async (req, res) => {
         userId: match.createdBy,
         type: "match",
         fromUserId: userId,
+        matchId: match._id,
         message: `${requesterName} muốn tham gia trận "${match.title}"`,
       });
     }
@@ -510,6 +516,7 @@ router.post("/:id/accept-join", async (req, res) => {
       userId,
       type: "match",
       fromUserId: ownerId,
+      matchId: match._id,
       message: `${owner?.name || "Chủ trận"} đã chấp nhận yêu cầu tham gia trận "${match.title}"`,
     });
 
@@ -629,6 +636,7 @@ router.post("/:id/kick-member", async (req, res) => {
       await Notification.create({
         userId,
         type: "match",
+        matchId: match._id,
         message: `Bạn đã bị kích khỏi đội "${match.title}"${reason ? `. Lý do: ${reason}` : ""}`,
       });
     } catch (notifErr) {
@@ -682,12 +690,19 @@ router.post("/:id/invite-member", async (req, res) => {
       invitedBy: inviter,
       requiresOwnerApproval: !isOwnerInvite,
     });
+
+    // Also add to invitedMembers for backward compatibility
+    if (!match.invitedMembers) match.invitedMembers = [];
+    if (!match.invitedMembers.some((p) => String(p) === String(userId))) {
+      match.invitedMembers.push(userId);
+    }
     await match.save();
 
     try {
       await Notification.create({
         userId,
         type: "match",
+        matchId: match._id,
         message: isOwnerInvite
           ? `Bạn được chủ đội mời tham gia đội "${match.title}". Vào Chi tiết trận đấu để chấp nhận.`
           : `Bạn được mời tham gia đội "${match.title}". Chủ đội sẽ duyệt lời mời của bạn.`,
@@ -836,9 +851,14 @@ router.post("/:id/add-member", async (req, res) => {
     if (!match.memberPositions) match.memberPositions = [];
     match.memberPositions.push({ userId, positionId: "" });
 
-    // Xoá khỏi pendingJoinRequests nếu có
+    // Xoá khỏi pendingJoinRequests hoặc invitedMembers nếu có
     if (match.pendingJoinRequests) {
       match.pendingJoinRequests = match.pendingJoinRequests.filter(
+        (p) => String(p) !== String(userId)
+      );
+    }
+    if (match.invitedMembers) {
+      match.invitedMembers = match.invitedMembers.filter(
         (p) => String(p) !== String(userId)
       );
     }
@@ -850,6 +870,7 @@ router.post("/:id/add-member", async (req, res) => {
       await Notification.create({
         userId,
         type: "match",
+        matchId: match._id,
         message: `Bạn đã được thêm vào đội "${match.title}"`,
       });
     } catch (notifErr) {
@@ -941,6 +962,125 @@ router.post("/:id/update-member-position", async (req, res) => {
     return res.json({ success: true, message: "Cập nhật vị trí thành công", data: updated });
   } catch (error) {
     console.error("Update position error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+});
+
+// Accept an invitation (invited user only)
+router.post("/:id/accept-invite", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "Thiếu userId" });
+    }
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (!match.invitedMembers) match.invitedMembers = [];
+    const inviteIndex = match.invitedMembers.findIndex((p) => String(p) === String(userId));
+    if (inviteIndex === -1) {
+      return res.status(400).json({ success: false, message: "Không tìm thấy lời mời tham gia" });
+    }
+
+    if (match.participants.some((p) => String(p) === String(userId))) {
+      match.invitedMembers.splice(inviteIndex, 1);
+      await match.save();
+      const updated = await Match.findById(match._id).populate(populateFields);
+      return res.status(400).json({ success: false, message: "Bạn đã tham gia trận đấu này rồi", data: updated });
+    }
+
+    if (match.participants.length >= match.maxPlayers) {
+      return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
+    }
+
+    // Move from invitedMembers to participants
+    match.invitedMembers.splice(inviteIndex, 1);
+    match.participants.push(userId);
+    match.currentPlayers = match.participants.length;
+    if (match.currentPlayers >= match.maxPlayers) {
+      match.status = "full";
+    }
+
+    if (!match.memberRoles) match.memberRoles = [];
+    if (!match.memberRoles.some((r) => String(r.userId) === String(userId))) {
+      match.memberRoles.push({ userId, role: "member" });
+    }
+    if (!match.memberPositions) match.memberPositions = [];
+    if (!match.memberPositions.some((p) => String(p.userId) === String(userId))) {
+      match.memberPositions.push({ userId, positionId: "" });
+    }
+
+    await match.save();
+
+    // Notify match owner
+    try {
+      const accepter = await User.findById(userId).select("name");
+      if (match.createdBy) {
+        await Notification.create({
+          userId: match.createdBy,
+          type: "match",
+          fromUserId: userId,
+          matchId: match._id,
+          message: `${accepter?.name || "Người dùng"} đã chấp nhận lời mời tham gia trận "${match.title}"`,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Create notification error:", notifErr);
+    }
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+    return res.json({ success: true, message: "Đã chấp nhận lời mời tham gia đội", data: updated });
+  } catch (error) {
+    console.error("Accept invite error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+});
+
+// Reject/Decline an invitation (invited user only)
+router.post("/:id/reject-invite", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "Thiếu userId" });
+    }
+
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (!match.invitedMembers) match.invitedMembers = [];
+    const inviteIndex = match.invitedMembers.findIndex((p) => String(p) === String(userId));
+    if (inviteIndex === -1) {
+      return res.status(400).json({ success: false, message: "Không tìm thấy lời mời tham gia" });
+    }
+
+    match.invitedMembers.splice(inviteIndex, 1);
+    await match.save();
+
+    // Notify match owner
+    try {
+      const rejecter = await User.findById(userId).select("name");
+      if (match.createdBy) {
+        await Notification.create({
+          userId: match.createdBy,
+          type: "match",
+          fromUserId: userId,
+          matchId: match._id,
+          message: `${rejecter?.name || "Người dùng"} đã từ chối lời mời tham gia trận "${match.title}"`,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Create notification error:", notifErr);
+    }
+
+    const updated = await Match.findById(match._id).populate(populateFields);
+    return res.json({ success: true, message: "Đã từ chối lời mời tham gia đội", data: updated });
+  } catch (error) {
+    console.error("Reject invite error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
   }
 });

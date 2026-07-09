@@ -26,6 +26,8 @@ import {
   inviteTeamMember,
   acceptInvite,
   approveInvite,
+  acceptTeamInvite,
+  rejectTeamInvite,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
 import { Screen } from "../components/Screen";
@@ -260,9 +262,11 @@ export default function MatchDetailScreen({ navigation, route }) {
   const participants = match.participants || [];
   const pendingRequests = match.pendingJoinRequests || [];
   const pendingRequestPositions = match.pendingJoinRequestPositions || [];
+  const invitedMembers = match.invitedMembers || [];
 
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
+  const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
@@ -447,12 +451,13 @@ export default function MatchDetailScreen({ navigation, route }) {
       setShowInviteModal(true);
       const res = await getFollowingListRequest(token);
       const list = res?.data || [];
-      // Filter out users already participating or with pending requests
+      // Filter out users already participating, requested, or invited
       const participantIds = participants.map((p) => getUserId(p));
       const pendingIds = pendingRequests.map((p) => getUserId(p));
+      const invitedIds = (match.invitedMembers || []).map((p) => getUserId(p));
       const filtered = list.filter((u) => {
         const uid = String(u._id || u.id);
-        return !participantIds.includes(uid) && !pendingIds.includes(uid) && uid !== ownerId;
+        return !participantIds.includes(uid) && !pendingIds.includes(uid) && !invitedIds.includes(uid) && uid !== ownerId;
       });
       setFollowingUsers(filtered);
     } catch (err) {
@@ -474,6 +479,32 @@ export default function MatchDetailScreen({ navigation, route }) {
       setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
     } catch (err) {
       Alert.alert("Lỗi", err.message || "Không thể mời");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAcceptInvite = async () => {
+    try {
+      setActionLoading(true);
+      const data = await acceptTeamInvite(match._id, userId);
+      setMatch(data);
+      Alert.alert("Thành công", "Bạn đã tham gia đội này.");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể chấp nhận lời mời");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectInvite = async () => {
+    try {
+      setActionLoading(true);
+      const data = await rejectTeamInvite(match._id, userId);
+      setMatch(data);
+      Alert.alert("Đã từ chối", "Bạn đã từ chối lời mời tham gia đội.");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể từ chối lời mời");
     } finally {
       setActionLoading(false);
     }
@@ -797,7 +828,29 @@ export default function MatchDetailScreen({ navigation, route }) {
 
         {!isOwner && !isEnded && !isParticipant && (
           <View style={styles.joinSection}>
-            {hasPendingRequest ? (
+            {isInvited ? (
+              <View style={styles.invitedContainer}>
+                <Text style={styles.invitedBadgeText}>📩 Bạn được mời tham gia đội này</Text>
+                <View style={styles.invitedActions}>
+                  <TouchableOpacity
+                    style={[styles.acceptInviteBtn, actionLoading && styles.disabledBtn]}
+                    onPress={handleAcceptInvite}
+                    disabled={actionLoading}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.acceptInviteBtnText}>Chấp nhận</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rejectInviteBtn, actionLoading && styles.disabledBtn]}
+                    onPress={handleRejectInvite}
+                    disabled={actionLoading}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.rejectInviteBtnText}>Từ chối</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : hasPendingRequest ? (
               <View style={styles.pendingContainer}>
                 <Text style={styles.pendingBadgeText}>⏳ Đã gửi yêu cầu tham gia</Text>
                 <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelRequest} activeOpacity={0.7}>
@@ -1070,6 +1123,50 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontWeight: '600',
     fontSize: 14,
+  },
+  invitedContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+    padding: 12,
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  invitedBadgeText: {
+    color: '#1e40af',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  invitedActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  acceptInviteBtn: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  acceptInviteBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  rejectInviteBtn: {
+    backgroundColor: '#e2e8f0',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  rejectInviteBtnText: {
+    color: '#475569',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  disabledBtn: {
+    opacity: 0.5,
   },
   teamBlock: {
     marginBottom: 14,
