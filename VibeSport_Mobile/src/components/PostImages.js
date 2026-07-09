@@ -146,7 +146,7 @@ export function PostImages({ images, containerWidth }) {
               key={i}
               onPress={() => openViewer(i)}
               activeOpacity={0.92}
-              style={{ borderRadius: 10, overflow: 'hidden' }}
+              style={{ borderRadius: 12, overflow: 'hidden' }}
             >
               <Image
                 source={{ uri }}
@@ -181,7 +181,7 @@ export function PostImages({ images, containerWidth }) {
               key={i}
               onPress={() => openViewer(i)}
               activeOpacity={0.92}
-              style={{ borderRadius: 10, overflow: 'hidden' }}
+              style={{ borderRadius: 12, overflow: 'hidden' }}
             >
               <Image
                 source={{ uri }}

@@ -56,6 +56,50 @@ function fixMediaUrl(url) {
   return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
 }
 
+const getTagDisplayName = (tagName) => {
+  switch (tagName) {
+    case 'Bóng đá': return 'Bóng đá ⚽';
+    case 'Pickleball': return 'Pickleball 🎾';
+    case 'Cầu lông': return 'Cầu lông 🏸';
+    default: return tagName;
+  }
+};
+
+const formatCount = (count) => {
+  if (!count) return '0';
+  if (count >= 1000) {
+    const kValue = (count / 1000).toFixed(1);
+    return kValue.endsWith('.0') ? `${Math.floor(count / 1000)} K` : `${kValue} K`;
+  }
+  return String(count);
+};
+
+const isPostOwner = (currentUser, post) => {
+  if (!currentUser || !post || !post.userId) return false;
+  const currentUserId = currentUser._id || currentUser.id;
+  const postAuthorId = post.userId._id || post.userId.id || (typeof post.userId === 'string' ? post.userId : null);
+  return !!currentUserId && !!postAuthorId && String(currentUserId) === String(postAuthorId);
+};
+
+const navigateToProfile = (navigation, currentUser, userId, onGoToProfile) => {
+  const targetUserId = userId ? (typeof userId === 'object' ? (userId._id || userId.id) : userId) : null;
+  if (!targetUserId) {
+    Alert.alert('Thông báo', 'Tài khoản này không tồn tại hoặc đã bị xóa.');
+    return;
+  }
+
+  const myId = currentUser?._id || currentUser?.id;
+  if (myId && String(myId) === String(targetUserId)) {
+    if (onGoToProfile) {
+      onGoToProfile();
+    } else {
+      navigation.navigate('Home', { screen: 'ProfileTab' });
+    }
+  } else {
+    navigation.navigate('UserProfile', { userId: targetUserId });
+  }
+};
+
 export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
   const { posts, loading, refreshing, hasMore, page, activeTag } = useSelector((state) => state.posts);
@@ -297,53 +341,36 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   );
 
   const renderPostItem = ({ item }) => {
-    const isOwner = user && item.userId && (user.id === item.userId._id || user._id === item.userId._id);
-    const displayTags = item.tags?.length ? item.tags : item.sportType ? [item.sportType] : [];
+    const isSelf = isPostOwner(user, item);
+    const firstLetter = item.userId?.name ? item.userId.name.charAt(0).toUpperCase() : '?';
 
     return (
       <View style={styles.postCard}>
-      {/* Header */}
+        {/* Header */}
         <View style={styles.postHeader}>
           <TouchableOpacity
-            onPress={() => {
-              const authorId = item.userId?._id || item.userId?.id;
-              if (authorId) {
-                navigation.navigate('UserProfile', { userId: authorId });
-              }
-            }}
+            onPress={() => navigateToProfile(navigation, user, item.userId, onGoToProfile)}
             activeOpacity={0.8}
           >
             {item.userId?.picture ? (
               <Image source={{ uri: item.userId.picture }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(item.userId?.name) }]}>
-                <Text style={styles.avatarPlaceholderText}>
-                  {item.userId?.name ? item.userId.name.charAt(0).toUpperCase() : '?'}
-                </Text>
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarPlaceholderText}>{firstLetter}</Text>
               </View>
             )}
           </TouchableOpacity>
           <View style={styles.postInfo}>
             <View style={styles.nameRow}>
-              <View style={styles.userNameRow}>
-                <TouchableOpacity
-                  onPress={() => {
-                    const authorId = item.userId?._id || item.userId?.id;
-                    if (authorId) navigation.navigate('UserProfile', { userId: authorId });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
-                </TouchableOpacity>
-                {item.isFollowing ? (
-                  <View style={styles.followingBadge}>
-                    <Text style={styles.followingBadgeText}>Đang theo dõi</Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.tagRow}>
-                {displayTags.map((tagName, index) => renderTagBadge(tagName, `${item._id}-${index}`))}
-              </View>
+              <TouchableOpacity
+                onPress={() => navigateToProfile(navigation, user, item.userId, onGoToProfile)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
+              </TouchableOpacity>
+              {!isSelf && (
+                <Ionicons name="people" size={16} color="#FF5F3D" style={{ marginLeft: 4 }} />
+              )}
             </View>
             <Text style={styles.timeText}>
               {formatTime(item.createdAt)}
@@ -354,7 +381,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             onPress={() => setOptionsPost(item)}
             style={styles.moreOptionsBtn}
           >
-            <Ionicons name="ellipsis-horizontal" size={20} color="#7C8190" />
+            <Ionicons name="ellipsis-horizontal" size={20} color="#000000" />
           </TouchableOpacity>
         </View>
 
@@ -372,21 +399,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
           )}
         </TouchableOpacity>
 
-        {(item.likesCount > 0 || item.commentsCount > 0) ? (
-          <View style={styles.engagementRow}>
-            <ReactionsPreview
-              likesCount={item.likesCount || 0}
-              topReactions={item.topReactions || []}
-              onPress={() => handleOpenLikes(item)}
-            />
-            {item.commentsCount > 0 ? (
-              <TouchableOpacity onPress={() => navigation.navigate('PostDetail', { postId: item._id })}>
-                <Text style={styles.commentSummaryText}>{item.commentsCount} bình luận</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
-
         {/* Divider */}
         <View style={styles.divider} />
 
@@ -396,18 +408,13 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             onPress={() => handleLike(item)}
             style={styles.actionBtn}
           >
-            {item.isLiked ? (
-              <VibeReactionIcon size={20} />
-            ) : (
-              <Ionicons name="heart-outline" size={20} color="#7C8190" />
-            )}
-            <Text
-              style={[
-                styles.actionText,
-                item.isLiked && { color: VIBE_REACTION.color },
-              ]}
-            >
-              {item.isLiked ? VIBE_REACTION.label : 'Vibe'}
+            <Ionicons
+              name={item.isLiked ? "thumbs-up" : "thumbs-up-outline"}
+              size={20}
+              color={item.isLiked ? "#FF5F3D" : "#7C8190"}
+            />
+            <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+              {formatCount(item.likesCount)}
             </Text>
           </TouchableOpacity>
 
@@ -416,12 +423,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             style={styles.actionBtn}
           >
             <Ionicons name="chatbubble-outline" size={20} color="#7C8190" />
-            <Text style={styles.actionText}>{item.commentsCount || 0} Bình luận</Text>
+            <Text style={styles.actionText}>{formatCount(item.commentsCount)}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => handleShare(item)} style={styles.actionBtn}>
-            <Ionicons name="share-outline" size={20} color="#7C8190" />
-            <Text style={styles.actionText}>Chia sẻ</Text>
+            <Ionicons name="share-social-outline" size={20} color="#7C8190" />
+            <Text style={styles.actionText}>{formatCount(item.sharesCount || 0)}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -460,9 +467,16 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         ) : (
           // ─── Normal header ──────────────────────────────────────────
           <>
-            <Text style={styles.logoText}>
-              Vibe<Text style={styles.logoHighlight}>Sport</Text>
-            </Text>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('../../assets/logovibe_tachnen.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+              <Text style={styles.logoText}>
+                Vibe<Text style={styles.logoHighlight}>Sport</Text>
+              </Text>
+            </View>
             <View style={styles.headerActions}>
               <TouchableOpacity style={styles.iconButton} onPress={handleOpenSearch}>
                 <Ionicons name="search-outline" size={24} color="#1F2937" />
@@ -474,11 +488,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 <View style={{ position: 'relative' }}>
                   <Ionicons name="notifications-outline" size={24} color="#1F2937" />
                   {unreadCount > 0 && (
-                    <View style={styles.badgeContainer}>
-                      <Text style={styles.badgeText}>
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </Text>
-                    </View>
+                    <View style={styles.notificationDot} />
                   )}
                 </View>
               </TouchableOpacity>
@@ -509,13 +519,8 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 onPress={() => handleSearchTagPress(tag.name)}
                 style={[styles.filterChip, searchActiveTag === tag.name && styles.filterChipActive]}
               >
-                <TagIcon
-                  color={searchActiveTag === tag.name ? '#FF6B35' : '#374151'}
-                  size={14}
-                  tagName={tag.name}
-                />
                 <Text style={[styles.filterChipText, searchActiveTag === tag.name && styles.filterChipTextActive]}>
-                  {tag.name}
+                  {getTagDisplayName(tag.name)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -556,15 +561,10 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                   onPress={() => handleTagPress(tag.name)}
                   style={[styles.filterChip, activeTag === tag.name && styles.filterChipActive]}
                 >
-                  <TagIcon
-                    color={activeTag === tag.name ? '#FF6B35' : '#374151'}
-                    size={14}
-                    tagName={tag.name}
-                  />
                   <Text
                     style={[styles.filterChipText, activeTag === tag.name && styles.filterChipTextActive]}
                   >
-                    {tag.name}
+                    {getTagDisplayName(tag.name)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -572,15 +572,19 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
 
           <View style={styles.bannerContainer}>
             <View style={styles.bannerCard}>
-              <Text style={styles.bannerGreeting}>
-                Xin chào {user?.name || 'Thành viên'} 👋
-              </Text>
+              <View style={styles.greetingRow}>
+                <Text style={styles.greetingText}>Xin chào</Text>
+                <View style={styles.userBadge}>
+                  <Text style={styles.userBadgeText}>{user?.name || 'Thành viên'}</Text>
+                </View>
+                <Text style={styles.greetingText}>👋</Text>
+              </View>
               <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
               <TouchableOpacity
                 onPress={() => navigation.navigate('CreatePost')}
                 style={styles.createPostBtn}
               >
-                <MaterialCommunityIcons name="pencil-box-outline" size={20} color="#FFFFFF" />
+                <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
                 <Text style={styles.createPostBtnText}>Đăng bài lên cộng đồng</Text>
               </TouchableOpacity>
             </View>
@@ -630,67 +634,61 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         >
           <View style={styles.bottomSheetContainer}>
             <View style={styles.bottomSheetHandle} />
-            <Text style={styles.bottomSheetTitle}>TÙY CHỌN BÀI VIẾT</Text>
+            <Text style={styles.bottomSheetTitle}>Tùy chọn bài viết</Text>
 
-            {optionsPost ? (
-              <TouchableOpacity
-                onPress={() => {
-                  const post = optionsPost;
-                  setOptionsPost(null);
-                  handleToggleSave(post);
-                }}
-                style={styles.bottomSheetOption}
-              >
-                <Ionicons
-                  name={optionsPost.isSaved ? 'bookmark' : 'bookmark-outline'}
-                  size={20}
-                  color="#FF6B35"
-                />
-                <Text style={[styles.bottomSheetOptionText, { color: '#FF6B35' }]}>
-                  {optionsPost.isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            
-            {optionsPost && user && (user.id === optionsPost.userId?._id || user._id === optionsPost.userId?._id) ? (
+            {optionsPost && (
               <>
                 <TouchableOpacity
                   onPress={() => {
                     const post = optionsPost;
                     setOptionsPost(null);
-                    navigation.navigate('CreatePost', { editPost: post });
+                    handleToggleSave(post);
                   }}
                   style={styles.bottomSheetOption}
                 >
-                  <Ionicons name="pencil-outline" size={20} color="#374151" />
-                  <Text style={styles.bottomSheetOptionText}>Sửa bài viết</Text>
+                  <Text style={styles.bottomSheetOptionText}>
+                    {optionsPost.isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
+                  </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => {
-                    const post = optionsPost;
-                    setOptionsPost(null);
-                    handleDelete(post._id);
-                  }}
-                  style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
-                >
-                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                  <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Xóa bài viết</Text>
-                </TouchableOpacity>
+                {isPostOwner(user, optionsPost) ? (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const post = optionsPost;
+                        setOptionsPost(null);
+                        navigation.navigate('CreatePost', { editPost: post });
+                      }}
+                      style={styles.bottomSheetOption}
+                    >
+                      <Text style={styles.bottomSheetOptionText}>Sửa bài viết</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        const post = optionsPost;
+                        setOptionsPost(null);
+                        handleDelete(post._id);
+                      }}
+                      style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                    >
+                      <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Xóa bài viết</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const post = optionsPost;
+                      setOptionsPost(null);
+                      setPostToReport(post);
+                      setReportModalVisible(true);
+                    }}
+                    style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                  >
+                    <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Báo cáo bài viết</Text>
+                  </TouchableOpacity>
+                )}
               </>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  const post = optionsPost;
-                  setOptionsPost(null);
-                  setPostToReport(post);
-                  setReportModalVisible(true);
-                }}
-                style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
-              >
-                <Ionicons name="flag-outline" size={20} color="#EF4444" />
-                <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Báo cáo bài viết</Text>
-              </TouchableOpacity>
             )}
           </View>
         </TouchableOpacity>
@@ -732,13 +730,22 @@ const styles = StyleSheet.create({
     zIndex: 10,
     elevation: 10,
   },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  logoImage: {
+    width: 28,
+    height: 28,
+  },
   logoText: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: '#2B3B52',
   },
   logoHighlight: {
-    color: '#FF6B35',
+    color: '#FF5F3D',
   },
   headerActions: {
     flexDirection: 'row',
@@ -748,23 +755,16 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 4,
   },
-  badgeContainer: {
+  notificationDot: {
     position: 'absolute',
-    top: -6,
-    right: -6,
+    top: 2,
+    right: 2,
     backgroundColor: '#EF4444',
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   bannerContainer: {
     padding: 16,
@@ -779,34 +779,50 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  bannerGreeting: {
-    fontSize: 20,
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  greetingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  userBadge: {
+    backgroundColor: '#FF5F3D',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginHorizontal: 6,
+  },
+  userBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#1F2937',
   },
   bannerSubtext: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
+    fontSize: 13,
+    color: '#9CA3AF',
     marginBottom: 16,
   },
   createPostBtn: {
-    backgroundColor: '#FF6B35',
+    backgroundColor: '#FF5F3D',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 8,
   },
   createPostBtnText: {
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: 'bold',
     fontSize: 15,
   },
   postCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 12,
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 16,
@@ -851,24 +867,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 15,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
   filterChipActive: {
-    backgroundColor: '#FFF0EA',
-    borderColor: '#FF6B35',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#FF5F3D',
   },
   filterChipText: {
-    color: '#374151',
+    color: '#1F2937',
     fontSize: 13,
     fontWeight: '600',
   },
   filterChipTextActive: {
-    color: '#FF6B35',
+    color: '#FF5F3D',
   },
   activeFilterBanner: {
     marginHorizontal: 16,
@@ -985,19 +1001,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 4,
   },
   actionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
   },
   actionText: {
     fontSize: 13,
     color: '#7C8190',
     fontWeight: '500',
+  },
+  actionTextActive: {
+    color: '#FF5F3D',
   },
   actionEmoji: {
     fontSize: 18,
@@ -1050,6 +1069,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+    backgroundColor: '#EF4444',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1065,40 +1085,38 @@ const styles = StyleSheet.create({
   },
   bottomSheetContainer: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
   },
   bottomSheetHandle: {
     width: 40,
-    height: 5,
-    borderRadius: 2.5,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: '#E5E7EB',
     alignSelf: 'center',
     marginBottom: 16,
   },
   bottomSheetTitle: {
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#9CA3AF',
-    marginBottom: 12,
+    color: '#000000',
+    marginBottom: 16,
     textAlign: 'center',
-    letterSpacing: 0.5,
   },
   bottomSheetOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    gap: 12,
+    paddingVertical: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
+    alignItems: 'flex-start',
+    paddingLeft: 24,
   },
   bottomSheetOptionText: {
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '600',
+    fontSize: 15,
+    color: '#000000',
+    fontWeight: '500',
   },
   bottomSheetCancelBtn: {
     backgroundColor: '#F3F4F6',

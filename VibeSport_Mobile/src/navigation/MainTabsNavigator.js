@@ -14,9 +14,8 @@ import ChatListScreen from '../screens/ChatListScreen';
 
 const Tab = createBottomTabNavigator();
 
-const FONT_SIZE = 13;
-const ACTIVE_COLOR = '#0b74ff';
-const INACTIVE_COLOR = '#7c8190';
+const ACTIVE_COLOR = '#FFFFFF';
+const INACTIVE_COLOR = '#1F2937';
 const TAB_BAR_HEIGHT = 70;
 
 function CustomTabBar({ state, descriptors, navigation }) {
@@ -32,15 +31,15 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
           let icon;
           if (route.name === 'PostsTab') {
-            icon = <MaterialCommunityIcons name="home-outline" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
+            icon = <Ionicons name={isFocused ? "home" : "home-outline"} size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
           } else if (route.name === 'MatchesTab') {
             icon = <MaterialCommunityIcons name="soccer" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
           } else if (route.name === 'TeamsTab') {
-            icon = <MaterialCommunityIcons name="account-group" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
+            icon = <MaterialCommunityIcons name={isFocused ? "account-group" : "account-group-outline"} size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
           } else if (route.name === 'SocialTab') {
-            icon = <Ionicons name="chatbubble-outline" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
+            icon = <Ionicons name={isFocused ? "chatbubble" : "chatbubble-outline"} size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
           } else if (route.name === 'ProfileTab') {
-            icon = <Ionicons name="person-outline" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
+            icon = <Ionicons name={isFocused ? "person" : "person-outline"} size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
           }
 
           const showChatBadge = route.name === 'SocialTab' && chatUnreadCount > 0;
@@ -170,7 +169,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeIconFrame: {
-    backgroundColor: 'rgba(11, 116, 255, 0.12)',
+    backgroundColor: '#FF5F3D',
   },
   tabBadge: {
     position: 'absolute',

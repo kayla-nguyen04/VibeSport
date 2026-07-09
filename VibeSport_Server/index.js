@@ -100,6 +100,21 @@ mongoose
     console.log('Connected to MongoDB');
     await seedTags();
     console.log('Tag catalog ready');
+
+    // Clean up Mojibake lastMessage records in database
+    try {
+      const Conversation = require('./models/Conversation');
+      const result = await Conversation.updateMany(
+        { lastMessage: { $regex: 'ð.*Ảnh|\\?.*Ảnh' } },
+        { $set: { lastMessage: '📷 Ảnh' } }
+      );
+      if (result.modifiedCount > 0) {
+        console.log(`[MIGRATION] Cleaned up ${result.modifiedCount} conversations with Mojibake lastMessage.`);
+      }
+    } catch (migErr) {
+      console.error('[MIGRATION] Error cleaning up Mojibake conversations:', migErr);
+    }
+
     startMatchNotificationCron();
     server.listen(PORT, HOST, () => {
       console.log(`Server listening at http://${HOST}:${PORT}`);
