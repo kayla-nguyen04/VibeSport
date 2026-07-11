@@ -6,7 +6,7 @@ import { icon } from '../theme';
 const ICON_NAME = 'chevron-back';
 const MIN_TOUCH_SIZE = 44;
 
-const BackButton = ({
+export const BackButton = ({
   onPress,
   size = 22,
   color = icon.dark,
