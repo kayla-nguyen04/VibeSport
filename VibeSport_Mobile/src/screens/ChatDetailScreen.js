@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Linking,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -1190,13 +1191,22 @@ export default function ChatDetailScreen({ route, navigation }) {
         )}
 
         <TouchableOpacity
-          style={styles.headerSearchBtn}
+          style={styles.headerCallBtn}
           onPress={() => {
-            Alert.alert('Tìm kiếm', 'Chức năng tìm kiếm tin nhắn đang được phát triển.');
+            if (isGroup) {
+              Alert.alert('Gọi điện nhóm', 'Tính năng gọi thoại nhóm đang được phát triển.');
+            } else {
+              const phone = peer?.phone || peer?.phoneNumber;
+              if (phone) {
+                Linking.openURL(`tel:${phone}`);
+              } else {
+                Alert.alert('Gọi điện', 'Người dùng này chưa cập nhật số điện thoại.');
+              }
+            }
           }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="search-outline" size={20} color="#374151" />
+          <Ionicons name="call-outline" size={20} color="#374151" />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1260,7 +1270,7 @@ export default function ChatDetailScreen({ route, navigation }) {
                 )}
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, styles.menuItemBorder]}
                   onPress={() => {
                     setShowMenu(false);
                     handleToggleMute();
@@ -1274,6 +1284,17 @@ export default function ChatDetailScreen({ route, navigation }) {
                   <Text style={styles.menuItemText}>
                     {isMuted ? 'Bật thông báo' : 'Tắt thông báo'}
                   </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    Alert.alert('Tìm kiếm tin nhắn', 'Tính năng tìm kiếm tin nhắn trong cuộc trò chuyện đang được phát triển.');
+                  }}
+                >
+                  <Ionicons name="search-outline" size={22} color="#374151" />
+                  <Text style={styles.menuItemText}>Tìm kiếm tin nhắn</Text>
                 </TouchableOpacity>
 
                 {isGroup && (
@@ -1522,11 +1543,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     marginHorizontal: 11,
-    marginTop: 12,
+    marginTop: 0,
     height: 74,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
+    elevation: 0,
   },
   headerAvatarContainer: {
     position: 'relative',
@@ -1579,7 +1601,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-  headerSearchBtn: {
+  headerCallBtn: {
     padding: 8,
     marginRight: -2,
   },

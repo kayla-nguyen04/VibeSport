@@ -30,6 +30,7 @@ import {
   unmuteConversation,
   openConversation,
   updateGroupInfo,
+  leaveGroup,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
@@ -708,6 +709,30 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
+  const handleLeaveGroup = (item) => {
+    Alert.alert(
+      'Rời nhóm',
+      `Bạn có chắc chắn muốn rời nhóm "${item.peer?.name || 'này'}" không? Bạn sẽ không còn nhận tin nhắn từ nhóm này nữa.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Rời nhóm',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Leaving group:', item._id);
+              await dispatch(leaveGroup(item._id)).unwrap();
+              await dispatch(fetchConversations()).unwrap();
+            } catch (e) {
+              console.error('Leave group error:', e);
+              Alert.alert('Lỗi', e.message || 'Không thể rời nhóm');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleToggleMute = (item) => {
     Alert.alert(
       item.isMuted ? 'Bật thông báo' : 'Tắt thông báo',
@@ -751,25 +776,33 @@ export default function ChatListScreen({ navigation }) {
 
     const cleanLastMessage = (text) => {
       if (!text) return '';
-      if (text.includes('ðŸ') || text.includes('ðŸ–¼ï¸')) {
+      if (
+        text.includes('ðŸ') ||
+        text.includes('ðŸ–¼ï¸') ||
+        text.includes('ð¼ï') ||
+        text.includes('ð') ||
+        text.startsWith('ð') ||
+        text === '📷 Ảnh'
+      ) {
         return '[Hình ảnh]';
       }
       return text;
     };
 
     const currentUserId = user?.id || user?._id;
+    const lastSenderId = item.lastMessageSenderId?._id || item.lastMessageSenderId;
     const isLastMessageSentByMe =
-      item.lastMessageSenderId &&
+      lastSenderId &&
       currentUserId &&
-      String(item.lastMessageSenderId) === String(currentUserId);
+      String(lastSenderId) === String(currentUserId);
 
     const getLastMessageSenderName = () => {
-      if (!item.lastMessageSenderId || isPending) return '';
+      if (!lastSenderId || isPending) return '';
       if (isLastMessageSentByMe) return 'Bạn';
       if (!item.isGroup) return '';
       
       const sender = (item.participants || []).find(
-        (p) => String(p._id || p) === String(item.lastMessageSenderId)
+        (p) => String(p._id || p) === String(lastSenderId)
       );
       if (sender) {
         const fullName = sender.name || 'Thành viên';
@@ -1164,10 +1197,23 @@ export default function ChatListScreen({ navigation }) {
                   </TouchableOpacity>
                 )}
 
+                {selectedConversation && selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      navigation.navigate('ChatDetail', { conversationId: selectedConversation._id });
+                    }}
+                  >
+                    <Ionicons name="people-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Xem thông tin nhóm</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={[
                     styles.menuItem,
-                    (!selectedConversation?.isGroup) && styles.menuItemBorder
+                    styles.menuItemBorder
                   ]}
                   onPress={() => {
                     setShowOptionsModal(false);
@@ -1202,6 +1248,19 @@ export default function ChatListScreen({ navigation }) {
                   </TouchableOpacity>
                 )}
 
+                {selectedConversation && selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      Alert.alert('Gọi nhóm', 'Tính năng gọi thoại nhóm đang được phát triển.');
+                    }}
+                  >
+                    <Ionicons name="call-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Gọi nhóm</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={[styles.menuItem, styles.menuItemBorder]}
                   onPress={() => {
@@ -1229,6 +1288,19 @@ export default function ChatListScreen({ navigation }) {
                   >
                     <Ionicons name="ban-outline" size={22} color="#374151" />
                     <Text style={styles.menuItemText}>Chặn</Text>
+                  </TouchableOpacity>
+                )}
+
+                {selectedConversation && selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      handleLeaveGroup(selectedConversation);
+                    }}
+                  >
+                    <Ionicons name="log-out-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Rời nhóm</Text>
                   </TouchableOpacity>
                 )}
 
@@ -1473,16 +1545,6 @@ export default function ChatListScreen({ navigation }) {
                   <Text style={styles.menuItemText}>Tạo nhóm</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.menuItemBorder]}
-                  onPress={() => {
-                    setShowHeaderMenu(false);
-                    setShowJoinGroupModal(true);
-                  }}
-                >
-                  <Ionicons name="link-outline" size={22} color="#374151" />
-                  <Text style={styles.menuItemText}>Tham gia bằng mã</Text>
-                </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[styles.menuItem, styles.menuItemBorder]}
@@ -1515,8 +1577,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     marginHorizontal: 9,
-    marginTop: 12,
-    marginBottom: 6,
+    marginTop: 0,
+    marginBottom: 0,
     height: 74,
     paddingHorizontal: 12,
     borderWidth: 1,
@@ -1539,7 +1601,7 @@ const styles = StyleSheet.create({
   logoHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: -2,
   },
   logoHeaderIconBtn: {
     width: 36,

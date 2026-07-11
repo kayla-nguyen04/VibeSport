@@ -484,6 +484,7 @@ const chatSlice = createSlice({
       const isActive = state.activeConversationId === conversationId;
       const isFromOther = String(message.senderId?._id || message.senderId) !== String(currentUserId);
 
+      const senderId = message.senderId?._id || message.senderId;
       if (conversation) {
         if (conversationIndex !== -1) {
           state.conversations[conversationIndex] = {
@@ -491,13 +492,15 @@ const chatSlice = createSlice({
             ...conversation,
             lastMessage,
             lastMessageAt,
+            lastMessageSenderId: senderId,
           };
         } else {
-          state.conversations.unshift({ ...conversation, lastMessage, lastMessageAt });
+          state.conversations.unshift({ ...conversation, lastMessage, lastMessageAt, lastMessageSenderId: senderId });
         }
       } else if (conversationIndex !== -1) {
         state.conversations[conversationIndex].lastMessage = lastMessage;
         state.conversations[conversationIndex].lastMessageAt = lastMessageAt;
+        state.conversations[conversationIndex].lastMessageSenderId = senderId;
       }
 
       const updatedIndex = state.conversations.findIndex((item) => item._id === conversationId);
@@ -532,17 +535,24 @@ const chatSlice = createSlice({
         state.messagesByConversation[conversationId].push(normalizedMsg);
       }
 
+      const senderId = message.senderId?._id || message.senderId;
+
       // Update conversation metadata
       const convIndex = state.conversations.findIndex((c) => c._id === conversationId);
       if (convIndex !== -1) {
         if (lastMessage) state.conversations[convIndex].lastMessage = lastMessage;
         if (lastMessageAt) state.conversations[convIndex].lastMessageAt = lastMessageAt;
+        state.conversations[convIndex].lastMessageSenderId = senderId;
         if (convUpdate) {
-          state.conversations[convIndex] = { ...state.conversations[convIndex], ...convUpdate };
+          state.conversations[convIndex] = { 
+            ...state.conversations[convIndex], 
+            ...convUpdate,
+            lastMessageSenderId: senderId,
+          };
         }
         state.conversations.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
       } else if (convUpdate) {
-        state.conversations.unshift({ ...convUpdate, lastMessage, lastMessageAt });
+        state.conversations.unshift({ ...convUpdate, lastMessage, lastMessageAt, lastMessageSenderId: senderId });
       }
     },
     conversationAccepted(state, action) {
