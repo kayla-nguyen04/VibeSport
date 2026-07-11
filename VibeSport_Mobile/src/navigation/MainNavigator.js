@@ -17,7 +17,6 @@ import ChatDetailScreen from '../screens/ChatDetailScreen';
 import FollowListScreen from '../screens/FollowListScreen';
 import GroupManagementScreen from '../screens/GroupManagementScreen';
 import JoinGroupScreen from '../screens/JoinGroupScreen';
-import MyTeamDetailScreen from '../screens/MyTeamDetailScreen';
 
 export const linking = {
   prefixes: ['vibesport://', 'https://vibesport.app'],
@@ -65,7 +64,6 @@ export function MainNavigator({ initialRouteName = 'Home' }) {
       <Stack.Screen name="FollowList" component={FollowListScreen} />
       <Stack.Screen name="GroupManagement" component={GroupManagementScreen} />
       <Stack.Screen name="JoinGroup" component={JoinGroupScreen} />
-      <Stack.Screen name="MyTeamDetail" component={MyTeamDetailScreen} />
     </Stack.Navigator>
   );
 }
