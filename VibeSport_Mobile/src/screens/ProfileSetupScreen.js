@@ -7,75 +7,77 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
 import { hydrateSession, updateProfile } from '../redux/authSlice';
 
+const ACCENT = '#FF6B35';
+const BG = '#F5F5F5';
+
 const ICON_NAMES = {
   'Bóng đá': 'soccer',
   'Cầu lông': 'badminton',
-  Pickleball: 'tennis',
+  Pickleball: 'table-tennis',
 };
 
 const SPORTS = [
   {
     key: 'Bóng đá',
-    label: 'Bóng đá',
+    label: 'BÓNG ĐÁ',
     positions: ['Tiền đạo', 'Tiền vệ', 'Hậu vệ', 'Thủ môn'],
-    description: 'Bóng đá là môn đồng đội 11 người, nhấn mạnh chiến thuật, phối hợp và kỹ năng kiểm soát bóng.',
+    description:
+      'Bóng đá là môn đồng đội 11 người, nhấn mạnh chiến thuật, phối hợp và kỹ năng kiểm soát bóng.',
   },
   {
     key: 'Cầu lông',
-    label: 'Cầu lông',
+    label: 'CẦU LÔNG',
     positions: ['Đơn', 'Đôi', 'Đôi nam', 'Đôi nữ'],
-    description: 'Cầu lông là môn đối kháng nhanh, cần phản xạ, chính xác và di chuyển linh hoạt với vợt nhẹ.',
+    description:
+      'Cầu lông là môn đối kháng nhanh, cần phản xạ, chính xác và di chuyển linh hoạt với vợt nhẹ.',
   },
   {
     key: 'Pickleball',
-    label: 'Pickleball',
+    label: 'PICKLEBALL',
     positions: ['Forehand', 'Backhand', 'Đôi'],
-    description: 'Pickleball kết hợp tennis và ping-pong trên sân nhỏ, phù hợp cho cả đôi và đơn với nhịp độ nhanh.',
+    description:
+      'Pickleball kết hợp tennis và ping-pong trên sân nhỏ, phù hợp cho cả đôi và đơn với nhịp độ nhanh.',
   },
 ];
 
 export default function ProfileSetupScreen({ navigation, route }) {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
-  const [selectedSports, setSelectedSports] = useState([]);
+  const [sportIndex, setSportIndex] = useState(0);
+  const [selectedSports, setSelectedSports] = useState(['Bóng đá']);
   const [selectedPositions, setSelectedPositions] = useState([]);
   const [area, setArea] = useState('');
+  const [bio, setBio] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleShowSportInfo = () => {
-    const primarySport = selectedSports[0] || 'Bóng đá';
-    const selectedSportData = SPORTS.find((sport) => sport.key === primarySport) || SPORTS[0];
-    Alert.alert(selectedSportData.label, selectedSportData.description);
-  };
+  const selectedSport = SPORTS[sportIndex];
 
+  // Aggregate playing positions from all selected sports
   const positionOptions = useMemo(() => {
-    const positions = selectedSports.flatMap((sportKey) => {
-      const sport = SPORTS.find((item) => item.key === sportKey);
-      return sport ? sport.positions : [];
+    const options = [];
+    selectedSports.forEach((sportKey) => {
+      const sportObj = SPORTS.find((s) => s.key === sportKey);
+      if (sportObj) {
+        sportObj.positions.forEach((pos) => {
+          if (!options.includes(pos)) {
+            options.push(pos);
+          }
+        });
+      }
     });
-
-    return Array.from(new Set(positions));
+    return options;
   }, [selectedSports]);
-
-  const primarySport = selectedSports[0] || 'Bóng đá';
-  const selectedSportData = SPORTS.find((sport) => sport.key === primarySport) || SPORTS[0];
-
-  // Filter out selected positions that are no longer valid when sports selection changes
-  useEffect(() => {
-    setSelectedPositions((current) =>
-      current.filter((pos) => positionOptions.includes(pos))
-    );
-  }, [positionOptions]);
 
   // Load user data on mount
   useEffect(() => {
@@ -87,16 +89,21 @@ export default function ProfileSetupScreen({ navigation, route }) {
 
     if (sportsFromUser.length) {
       setSelectedSports(sportsFromUser);
+      const idx = SPORTS.findIndex((s) => s.key === sportsFromUser[0]);
+      if (idx >= 0) setSportIndex(idx);
+    } else {
+      setSelectedSports(['Bóng đá']);
+      setSportIndex(0);
     }
+
     if (user?.position) {
-      setSelectedPositions(user.position.split(', ').filter(Boolean));
+      const posArray = user.position.split(',').map(p => p.trim()).filter(Boolean);
+      setSelectedPositions(posArray);
     }
-    if (user?.area) {
-      setArea(user.area);
-    }
+    if (user?.area) setArea(user.area);
+    if (user?.bio) setBio(user.bio);
   }, [user]);
 
-  // Receive location from MapPicker when user comes back
   useFocusEffect(
     useCallback(() => {
       const loc = route?.params?.selectedLocation;
@@ -107,20 +114,37 @@ export default function ProfileSetupScreen({ navigation, route }) {
     }, [navigation, route?.params?.selectedLocation])
   );
 
+  const goPrevSport = () => {
+    setSportIndex((i) => (i - 1 + SPORTS.length) % SPORTS.length);
+  };
+
+  const goNextSport = () => {
+    setSportIndex((i) => (i + 1) % SPORTS.length);
+  };
+
   const toggleSport = (sportKey) => {
-    setSelectedSports((current) =>
-      current.includes(sportKey)
-        ? current.filter((key) => key !== sportKey)
-        : [...current, sportKey]
-    );
+    setSelectedSports((prev) => {
+      if (prev.includes(sportKey)) {
+        if (prev.length <= 1) return prev; // Keep at least one sport
+        return prev.filter((s) => s !== sportKey);
+      } else {
+        return [...prev, sportKey];
+      }
+    });
   };
 
   const togglePosition = (pos) => {
-    setSelectedPositions((current) =>
-      current.includes(pos)
-        ? current.filter((item) => item !== pos)
-        : [...current, pos]
-    );
+    setSelectedPositions((prev) => {
+      if (prev.includes(pos)) {
+        return prev.filter((p) => p !== pos);
+      } else {
+        return [...prev, pos];
+      }
+    });
+  };
+
+  const handleShowSportInfo = () => {
+    Alert.alert(selectedSport.label, selectedSport.description);
   };
 
   const handlePickLocation = () => {
@@ -130,9 +154,21 @@ export default function ProfileSetupScreen({ navigation, route }) {
     });
   };
 
+  const handleSkip = () => {
+    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+  };
+
   const handleSubmit = async () => {
-    if (!selectedSports.length || !selectedPositions.length || !area.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất một môn thể thao, vị trí và khu vực.');
+    if (selectedSports.length === 0) {
+      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất một môn thể thao.');
+      return;
+    }
+    if (selectedPositions.length === 0) {
+      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất một vị trí thi đấu.');
+      return;
+    }
+    if (!area.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng chọn khu vực.');
       return;
     }
 
@@ -141,10 +177,11 @@ export default function ProfileSetupScreen({ navigation, route }) {
       await dispatch(
         updateProfile({
           userId: user?.id || user?._id,
-          favoriteSport: selectedSports[0] || null,
+          favoriteSport: selectedSports[0],
           favoriteSports: selectedSports,
           position: selectedPositions.join(', '),
           area: area.trim(),
+          bio: bio.trim(),
           profileCompleted: true,
         })
       ).unwrap();
@@ -171,118 +208,185 @@ export default function ProfileSetupScreen({ navigation, route }) {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.headerRow}>
-            <BackButton onPress={() => {
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-              }
-            }} />
-            <Text style={styles.stepText}>Bước 1/1</Text>
-          </View>
-
-          <Text style={styles.title}>Hoàn thiện hồ sơ</Text>
-          <Text style={styles.subtitle}>Chúng tôi cần thêm một số thông tin để cá nhân hóa trải nghiệm.</Text>
-
-          <View style={styles.sportPreview}>
-            <View style={styles.sportIconBox}>
-              <MaterialCommunityIcons
-                name={ICON_NAMES[primarySport] || 'sports'}
-                size={26}
-                color="#ffffff"
-              />
+          {/* Header */}
+          <View style={styles.header}>
+            <BackButton
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+                }
+              }}
+            />
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>Hoàn thiện hồ sơ</Text>
+              <View style={styles.titleUnderline} />
             </View>
-            <View style={styles.previewTextWrap}>
-              <Text style={styles.previewLabel}>Môn thể thao của bạn</Text>
-              <Text style={styles.previewSport}>
-                {selectedSports.length ? selectedSports.join(' • ') : 'Chọn ít nhất 1 môn'}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.infoIconWrap} onPress={handleShowSportInfo}>
-              <MaterialCommunityIcons name="help-circle-outline" size={22} color="#4b5563" />
+            <TouchableOpacity onPress={handleSkip} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.skipText}>Skip &gt;</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.sectionLabel}>Môn thể thao yêu thích (có thể chọn nhiều)</Text>
-          <View style={styles.optionRow}>
-            {SPORTS.map((sport) => {
-              const isSelected = selectedSports.includes(sport.key);
+          {/* Sport carousel */}
+          <Text style={styles.sectionLabel}>Chọn môn thể thao yêu thích</Text>
+          <View style={styles.sportCarousel}>
+            <TouchableOpacity style={styles.carouselArrow} onPress={goPrevSport} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={24} color="#000" />
+            </TouchableOpacity>
+
+            <View style={styles.sportIconsRow}>
+              {SPORTS.map((sport, idx) => {
+                const isSelected = selectedSports.includes(sport.key);
+                const boxSize = 72;
+                const iconSize = 30;
+
+                return (
+                  <View key={sport.key} style={{ width: boxSize, height: boxSize, position: 'relative' }}>
+                    {/* Retro shadow */}
+                    <View
+                      style={[
+                        styles.shadowBg,
+                        {
+                          top: 4,
+                          left: 4,
+                          right: -4,
+                          bottom: -4,
+                          borderRadius: 16,
+                        },
+                      ]}
+                    />
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSportIndex(idx);
+                        toggleSport(sport.key);
+                      }}
+                      activeOpacity={0.9}
+                      style={[
+                        styles.sportIconBox,
+                        {
+                          width: boxSize,
+                          height: boxSize,
+                          borderRadius: 16,
+                          transform: isSelected ? [{ translateX: 2 }, { translateY: 2 }] : [],
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={ICON_NAMES[sport.key] || 'sports'}
+                        size={iconSize}
+                        color={isSelected ? ACCENT : '#000000'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.carouselArrow} onPress={goNextSport} activeOpacity={0.7}>
+              <Ionicons name="chevron-forward" size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.sportNameRow}>
+            <View style={{ position: 'relative' }}>
+              <View style={[styles.shadowBg, { top: 4, left: 4, right: -4, bottom: -4, borderRadius: 24 }]} />
+              <View style={styles.sportNamePill}>
+                <Text style={styles.sportNameText}>{selectedSport.label}</Text>
+              </View>
+            </View>
+            
+            <View style={{ position: 'relative', width: 34, height: 34 }}>
+              <View style={[styles.shadowBg, { top: 4, left: 4, right: -4, bottom: -4, borderRadius: 17 }]} />
+              <TouchableOpacity style={styles.infoBtn} onPress={handleShowSportInfo} activeOpacity={0.9}>
+                <Ionicons name="help-circle-outline" size={22} color="#000" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Positions */}
+          <Text style={styles.sectionLabel}>Chọn vị trí thi đấu yêu thích</Text>
+          <View style={styles.positionGrid}>
+            {positionOptions.map((pos) => {
+              const isSelected = selectedPositions.includes(pos);
               return (
-                <TouchableOpacity
-                  key={sport.key}
-                  onPress={() => toggleSport(sport.key)}
-                  style={[
-                    styles.optionCard,
-                    isSelected && styles.optionCardActive,
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name={ICON_NAMES[sport.key] || 'sports'}
-                    size={18}
-                    color={isSelected ? '#4f46e5' : '#6b7280'}
-                    style={styles.optionIcon}
+                <View key={pos} style={styles.positionCardWrapper}>
+                  {/* Retro shadow */}
+                  <View
+                    style={[
+                      styles.shadowBg,
+                      {
+                        top: 4,
+                        left: 4,
+                        right: -4,
+                        bottom: -4,
+                        borderRadius: 14,
+                      },
+                    ]}
                   />
-                  <Text style={[styles.optionText, isSelected && styles.optionTextActive]}>
-                    {sport.label}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => togglePosition(pos)}
+                    activeOpacity={0.9}
+                    style={[
+                      styles.positionCardFront,
+                      {
+                        transform: isSelected ? [{ translateX: 2 }, { translateY: 2 }] : [],
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.positionText, isSelected && styles.positionTextActive]}>
+                      {pos}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               );
             })}
           </View>
 
-          <Text style={styles.sectionLabel}>Vị trí thi đấu (có thể chọn nhiều)</Text>
-          <View style={styles.optionRow}>
-            {positionOptions.length ? (
-              positionOptions.map((positionOption) => {
-                const isSelected = selectedPositions.includes(positionOption);
-                return (
-                  <TouchableOpacity
-                    key={positionOption}
-                    onPress={() => togglePosition(positionOption)}
-                    style={[
-                      styles.positionCard,
-                      isSelected && styles.positionCardActive,
-                    ]}
-                  >
-                    <Text style={[styles.positionText, isSelected && styles.positionTextActive]}>
-                      {positionOption}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })
-            ) : (
-              <Text style={styles.helperText}>Chọn ít nhất một môn thể thao để hiện các vị trí phù hợp.</Text>
-            )}
+          {/* Area */}
+          <Text style={styles.sectionLabel}>Chọn vị khu vực của bạn</Text>
+          <View style={styles.areaInputWrapper}>
+            <View style={[styles.shadowBg, { top: 4, left: 4, right: -4, bottom: -4, borderRadius: 14 }]} />
+            <TouchableOpacity style={styles.inputBlock} onPress={handlePickLocation} activeOpacity={0.9}>
+              <Ionicons name="location-outline" size={22} color="#000" />
+              <Text
+                style={[styles.inputPlaceholder, area ? styles.inputValue : null]}
+                numberOfLines={2}
+              >
+                {area || 'Chọn khu vực (Tỉnh, Quận, Xã, ...)'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#000" />
+            </TouchableOpacity>
           </View>
 
-          <Text style={styles.sectionLabel}>Khu vực</Text>
-          {area ? (
-            <View style={[styles.locationBlock, styles.locationBlockActive]}>
-              <MaterialCommunityIcons name="map-marker" size={20} color="#10b981" />
-              <Text style={[styles.locationText, styles.locationTextActive]} numberOfLines={2}>
-                {area}
-              </Text>
-              <TouchableOpacity onPress={() => setArea('')}>
-                <MaterialCommunityIcons name="close-circle" size={20} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.locationBlock}
-              onPress={handlePickLocation}
-            >
-              <MaterialCommunityIcons name="map-marker-outline" size={20} color="#6b7280" />
-              <Text style={styles.locationText}>
-                Chọn khu vực (Tỉnh, Quận, Xã...)
-              </Text>
-              <MaterialCommunityIcons name="chevron-right" size={18} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
+          {/* Bio */}
+          <Text style={styles.sectionLabel}>Mô tả về bạn</Text>
+          <TextInput
+            style={styles.bioInput}
+            placeholder="Giới thiệu về bản thân"
+            placeholderTextColor="#bbb"
+            value={bio}
+            onChangeText={setBio}
+            multiline
+            textAlignVertical="top"
+            maxLength={500}
+          />
 
-          <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
-            <Text style={styles.buttonText}>{loading ? 'Đang lưu...' : 'Hoàn tất'}</Text>
-          </TouchableOpacity>
+          <View style={styles.submitBtnWrapper}>
+            <View style={[styles.shadowBg, { top: 4, left: 4, right: -4, bottom: -4, borderRadius: 14 }]} />
+            <TouchableOpacity
+              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+              onPress={handleSubmit}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>Hoàn tất</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -292,185 +396,189 @@ export default function ProfileSetupScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f7f8fe',
+    backgroundColor: BG,
   },
-  flex: {
-    flex: 1,
-  },
+  flex: { flex: 1 },
   content: {
     flexGrow: 1,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingTop: 8,
     paddingBottom: 32,
   },
-  headerRow: {
+
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 22,
-  },
-  stepText: {
-    color: '#6b7280',
-    fontSize: 14,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#4b5563',
-    lineHeight: 22,
+    justifyContent: 'space-between',
     marginBottom: 28,
+    paddingTop: 4,
   },
-  sectionLabel: {
-    fontSize: 13,
+  headerCenter: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 17,
     fontWeight: '700',
-    color: '#374151',
-    marginBottom: 10,
+    color: '#111',
   },
-  optionRow: {
+  titleUnderline: {
+    marginTop: 4,
+    width: 120,
+    height: 2,
+    backgroundColor: '#0b74ff', // Blue underline to match mockup
+    borderRadius: 1,
+  },
+  skipText: {
+    fontSize: 13,
+    color: '#aaa',
+    fontWeight: '500',
+  },
+
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#222',
+    marginBottom: 14,
+  },
+
+  sportCarousel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  carouselArrow: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sportIconsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    minHeight: 100,
+  },
+  shadowBg: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  sportIconBox: {
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  sportNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+    gap: 10,
+  },
+  sportNamePill: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  sportNameText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111',
+    letterSpacing: 0.5,
+  },
+  infoBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  positionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 22,
+    marginBottom: 24,
   },
-  optionCard: {
-    flexBasis: '31%',
-    maxWidth: '31%',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
+  positionCardWrapper: {
+    width: '47%',
+    marginBottom: 16,
+    position: 'relative',
   },
-  optionCardActive: {
-    backgroundColor: '#eef2ff',
-    borderColor: '#4f46e5',
-  },
-  optionText: {
-    color: '#111827',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  optionTextActive: {
-    color: '#4f46e5',
-  },
-  sportPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#eef2ff',
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 22,
-  },
-  sportIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#4f46e5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  previewTextWrap: {
-    flex: 1,
-  },
-  infoIconWrap: {
-    marginLeft: 12,
-    padding: 8,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-  },
-  previewLabel: {
-    fontSize: 13,
-    color: '#4b5563',
-    marginBottom: 4,
-  },
-  previewSport: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  optionIcon: {
-    marginBottom: 8,
-  },
-  positionCard: {
-    flexBasis: '48%',
-    maxWidth: '48%',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+  positionCardFront: {
+    backgroundColor: '#fff',
     borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
+    paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  positionCardActive: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#2563eb',
+    justifyContent: 'center',
   },
   positionText: {
-    color: '#111827',
+    fontSize: 14,
     fontWeight: '600',
-    textAlign: 'center',
+    color: '#222',
   },
   positionTextActive: {
-    color: '#2563eb',
+    color: ACCENT,
+    fontWeight: '700',
   },
-  helperText: {
-    color: '#6b7280',
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 4,
+
+  areaInputWrapper: {
+    position: 'relative',
+    marginBottom: 24,
   },
-  locationBlock: {
+  inputBlock: {
     flexDirection: 'row',
-    alignItems: "center",
-    gap: 10,
-    width: '100%',
-    minHeight: 56,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 16,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: '#ffffff',
-    marginBottom: 28,
+    paddingVertical: 16,
+    gap: 12,
   },
-  locationBlockActive: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#86efac',
-  },
-  locationText: {
+  inputPlaceholder: {
     flex: 1,
-    color: '#4b5563',
     fontSize: 14,
+    color: '#888',
+  },
+  inputValue: {
+    color: '#000',
     fontWeight: '500',
   },
-  locationTextActive: {
-    color: '#10b981',
+
+  bioInput: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 100,
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 28,
   },
-  button: {
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
+
+  submitBtnWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
+  submitBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
-    backgroundColor: '#2563eb',
+    justifyContent: 'center',
+    minHeight: 52,
   },
-  buttonText: {
-    color: '#ffffff',
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
+  submitBtnText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },
