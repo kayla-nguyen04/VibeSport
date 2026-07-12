@@ -101,6 +101,26 @@ const authSlice = createSlice({
       state.error = action.payload;
       state.successMessage = null;
     },
+    // THÊM CHỨC NĂNG CẬP NHẬT ĐỘNG SỐ LƯỢNG FOLLOW CỦA CHÍNH MÌNH
+    updateUserFollowCounts(state, action) {
+      const { followingIncrement, followerIncrement } = action.payload;
+      if (state.user) {
+        if (followingIncrement !== undefined) {
+          state.user.followingCount = Math.max(0, (state.user.followingCount || 0) + followingIncrement);
+        }
+        if (followerIncrement !== undefined) {
+          state.user.followerCount = Math.max(0, (state.user.followerCount || 0) + followerIncrement);
+        }
+        // Đồng bộ ngược lại AsyncStorage để khi tắt app bật lại không lệch số liệu
+        AsyncStorage.getItem(AUTH_STORAGE_KEY).then((savedSessionStr) => {
+          if (savedSessionStr) {
+            const session = JSON.parse(savedSessionStr);
+            session.user = state.user;
+            AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+          }
+        }).catch((err) => console.warn('Sync updated follow counts storage error:', err));
+      }
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -200,5 +220,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearAuthError, clearAuthFeedback, setAuthError } = authSlice.actions;
+export const { clearAuthError, clearAuthFeedback, setAuthError, updateUserFollowCounts } = authSlice.actions;
 export default authSlice.reducer;

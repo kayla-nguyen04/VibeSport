@@ -4,13 +4,13 @@ import {
   FlatList,
   Image,
   Modal,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context'; // ĐÃ SỬA: Chuyển sang import từ thư viện safe area context chuyên dụng
 import { Ionicons } from '@expo/vector-icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -46,189 +46,181 @@ function ImageViewerModal({ images, initialIndex, visible, onClose }) {
           </Text>
         </View>
 
-        {/* Image List */}
+        {/* Images List */}
         <FlatList
           data={images}
-          keyExtractor={(_, i) => String(i)}
+          keyExtractor={(item, index) => `${item}-${index}`}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialIndex || 0}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          initialScrollIndex={initialIndex || 0}
-          getItemLayout={(_, index) => ({
+          getItemLayout={(data, index) => ({
             length: SCREEN_WIDTH,
             offset: SCREEN_WIDTH * index,
             index,
           })}
           renderItem={({ item }) => (
             <View style={viewerStyles.imageSlide}>
-              <Image
-                source={{ uri: item }}
-                style={viewerStyles.fullImage}
-                resizeMode="contain"
-              />
+              <Image source={{ uri: item }} style={viewerStyles.fullImage} />
             </View>
           )}
         />
-
-        {/* Dot indicators */}
-        {images.length > 1 && (
-          <View style={viewerStyles.dotRow}>
-            {images.map((_, i) => (
-              <View
-                key={i}
-                style={[viewerStyles.dot, i === currentIndex && viewerStyles.dotActive]}
-              />
-            ))}
-          </View>
-        )}
       </SafeAreaView>
     </Modal>
   );
 }
 
-// ─── Main PostImages Component ────────────────────────────────────────────────
-/**
- * Props:
- *  - images: string[]   — array of image URIs
- *  - containerWidth: number (optional) — width of the card for sizing
- */
-export function PostImages({ images, containerWidth }) {
-  const [viewerVisible, setViewerVisible] = useState(false);
-  const [viewerIndex, setViewerIndex] = useState(0);
+// ─── Main Grid Component ───────────────────────────────────────────────────
+export function PostImages({ images }) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedIndex, setActionIndex] = useState(0);
 
   if (!images || images.length === 0) return null;
 
-  const cardWidth = containerWidth || SCREEN_WIDTH - 32 - 32; // subtract margins + card padding
-  const MAX_VISIBLE = 2; // max tiles shown in the grid
-  const hiddenCount = images.length - MAX_VISIBLE; // how many are hidden under the overlay
-
   const openViewer = (index) => {
-    setViewerIndex(index);
-    setViewerVisible(true);
+    setActionIndex(index);
+    setModalVisible(true);
   };
 
-  // ── Single image ──────────────────────────────────────────────────────────
-  if (images.length === 1) {
+  const count = images.length;
+
+  // 1 Image
+  if (count === 1) {
     return (
-      <>
-        <TouchableOpacity
-          style={styles.singleContainer}
-          onPress={() => openViewer(0)}
-          activeOpacity={0.92}
-        >
-          <Image
-            source={{ uri: images[0] }}
-            style={[styles.singleImage, { width: cardWidth }]}
-            resizeMode="cover"
-          />
+      <View style={styles.gridContainer}>
+        <TouchableOpacity onPress={() => openViewer(0)} activeOpacity={0.9} style={styles.singleImageWrap}>
+          <Image source={{ uri: images[0] }} style={styles.singleImage} />
         </TouchableOpacity>
-
         <ImageViewerModal
           images={images}
-          initialIndex={0}
-          visible={viewerVisible}
-          onClose={() => setViewerVisible(false)}
+          initialIndex={selectedIndex}
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
         />
-      </>
-    );
-  }
-
-  // ── Two images ────────────────────────────────────────────────────────────
-  if (images.length === 2) {
-    const tileWidth = (cardWidth - GRID_GAP) / 2;
-    return (
-      <>
-        <View style={[styles.gridRow, { width: cardWidth }]}>
-          {images.map((uri, i) => (
-            <TouchableOpacity
-              key={i}
-              onPress={() => openViewer(i)}
-              activeOpacity={0.92}
-              style={{ borderRadius: 10, overflow: 'hidden' }}
-            >
-              <Image
-                source={{ uri }}
-                style={{ width: tileWidth, height: DUAL_HEIGHT }}
-                resizeMode="cover"
-              />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <ImageViewerModal
-          images={images}
-          initialIndex={viewerIndex}
-          visible={viewerVisible}
-          onClose={() => setViewerVisible(false)}
-        />
-      </>
-    );
-  }
-
-  // ── Three or more images: show first 2, overlay on the 2nd ───────────────
-  const visibleImages = images.slice(0, MAX_VISIBLE);
-  const tileWidth = (cardWidth - GRID_GAP) / 2;
-
-  return (
-    <>
-      <View style={[styles.gridRow, { width: cardWidth }]}>
-        {visibleImages.map((uri, i) => {
-          const isLast = i === MAX_VISIBLE - 1 && hiddenCount > 0;
-          return (
-            <TouchableOpacity
-              key={i}
-              onPress={() => openViewer(i)}
-              activeOpacity={0.92}
-              style={{ borderRadius: 10, overflow: 'hidden' }}
-            >
-              <Image
-                source={{ uri }}
-                style={{ width: tileWidth, height: DUAL_HEIGHT }}
-                resizeMode="cover"
-              />
-              {/* Dark overlay with "+N" on the last visible tile */}
-              {isLast && (
-                <View style={styles.overlay}>
-                  <Text style={styles.overlayText}>+{hiddenCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
       </View>
+    );
+  }
 
+  // 2 Images
+  if (count === 2) {
+    return (
+      <View style={styles.gridContainer}>
+        <View style={styles.row}>
+          <TouchableOpacity onPress={() => openViewer(0)} activeOpacity={0.9} style={styles.halfCell}>
+            <Image source={{ uri: images[0] }} style={styles.imageCover} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openViewer(1)} activeOpacity={0.9} style={styles.halfCell}>
+            <Image source={{ uri: images[1] }} style={styles.imageCover} />
+          </TouchableOpacity>
+        </View>
+        <ImageViewerModal
+          images={images}
+          initialIndex={selectedIndex}
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+        />
+      </View>
+    );
+  }
+
+  // 3 Images
+  if (count === 3) {
+    return (
+      <View style={styles.gridContainer}>
+        <View style={styles.row}>
+          <TouchableOpacity onPress={() => openViewer(0)} activeOpacity={0.9} style={[styles.cell, { flex: 2, height: 210 }]}>
+            <Image source={{ uri: images[0] }} style={styles.imageCover} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, gap: 4 }}>
+            <TouchableOpacity onPress={() => openViewer(1)} activeOpacity={0.9} style={[styles.cell, { height: 103 }]}>
+              <Image source={{ uri: images[1] }} style={styles.imageCover} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => openViewer(2)} activeOpacity={0.9} style={[styles.cell, { height: 103 }]}>
+              <Image source={{ uri: images[2] }} style={styles.imageCover} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <ImageViewerModal
+          images={images}
+          initialIndex={selectedIndex}
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+        />
+      </View>
+    );
+  }
+
+  // 4+ Images
+  return (
+    <View style={styles.gridContainer}>
+      <View style={styles.row}>
+        <TouchableOpacity onPress={() => openViewer(0)} activeOpacity={0.9} style={[styles.cell, { flex: 1, height: 210 }]}>
+          <Image source={{ uri: images[0] }} style={styles.imageCover} />
+        </TouchableOpacity>
+        <View style={{ flex: 1, gap: 4 }}>
+          <TouchableOpacity onPress={() => openViewer(1)} activeOpacity={0.9} style={[styles.cell, { height: 67 }]}>
+            <Image source={{ uri: images[1] }} style={styles.imageCover} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openViewer(2)} activeOpacity={0.9} style={[styles.cell, { height: 67 }]}>
+            <Image source={{ uri: images[2] }} style={styles.imageCover} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openViewer(3)} activeOpacity={0.9} style={[styles.cell, { height: 72 }]}>
+            <Image source={{ uri: images[3] }} style={styles.imageCover} />
+            {count > 4 && (
+              <View style={styles.overlay}>
+                <Text style={styles.overlayText}>+{count - 4}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
       <ImageViewerModal
         images={images}
-        initialIndex={viewerIndex}
-        visible={viewerVisible}
-        onClose={() => setViewerVisible(false)}
+        initialIndex={selectedIndex}
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
       />
-    </>
+    </View>
   );
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const GRID_GAP = 4;
-const DUAL_HEIGHT = 200;
-
-// ─── Grid Styles ──────────────────────────────────────────────────────────────
+// ─── Grid Render Styles ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  singleContainer: {
-    marginTop: 12,
-    borderRadius: 12,
+  gridContainer: {
+    width: '100%',
+    borderRadius: 14,
     overflow: 'hidden',
-    alignSelf: 'stretch',
+    backgroundColor: '#F3F4F6',
+    marginTop: 8,
   },
-  singleImage: {
-    height: 240,
+  row: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  singleImageWrap: {
+    width: '100%',
+    maxHeight: 320,
     backgroundColor: '#E5E7EB',
   },
-  gridRow: {
-    flexDirection: 'row',
-    gap: GRID_GAP,
-    marginTop: 12,
+  singleImage: {
+    width: '100%',
+    height: 240,
+    resizeMode: 'cover',
+  },
+  halfCell: {
+    flex: 1,
+    height: 160,
+    backgroundColor: '#E5E7EB',
+  },
+  cell: {
+    backgroundColor: '#E5E7EB',
+  },
+  imageCover: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -238,7 +230,7 @@ const styles = StyleSheet.create({
   },
   overlayText: {
     color: '#FFFFFF',
-    fontSize: 30,
+    fontSize: 24,
     fontWeight: '700',
     letterSpacing: 1,
   },
@@ -276,31 +268,13 @@ const viewerStyles = StyleSheet.create({
   },
   imageSlide: {
     width: SCREEN_WIDTH,
-    flex: 1,
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
   fullImage: {
     width: SCREEN_WIDTH,
     height: '100%',
-  },
-  dotRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-    paddingBottom: 24,
-    paddingTop: 12,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  dotActive: {
-    backgroundColor: '#FF6B35',
-    width: 18,
-    borderRadius: 4,
+    resizeMode: 'contain',
   },
 });

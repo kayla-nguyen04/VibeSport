@@ -21,7 +21,9 @@ import {
   toggleFollowRequest,
 } from '../services/userApi';
 import { updatePostFollowStatus } from '../redux/postSlice';
+import { updateUserFollowCounts } from '../redux/authSlice';
 import { API_BASE_URL } from '../components/constants/api';
+import { safeApiCall, APIError } from '../services/apiHelper';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 const TABS = [
@@ -74,10 +76,21 @@ export default function FollowListScreen({ route, navigation }) {
         getFollowingListRequest(token, isSelf ? null : targetUserId),
         getFollowersListRequest(token, isSelf ? null : targetUserId),
       ]);
-      setFollowingList(followingRes.data || []);
-      setFollowersList(followersRes.data || []);
+      setFollowingList(followingRes?.data || []);
+      setFollowersList(followersRes?.data || []);
     } catch (error) {
-      Alert.alert('Lỗi', error.message || 'Không thể tải danh sách theo dõi');
+      const errorMessage = error instanceof APIError 
+        ? error.message 
+        : error?.message || 'Không thể tải danh sách theo dõi. Vui lòng thử lại.';
+      
+      if (!silent) {
+        Alert.alert(
+          '⚠️ Lỗi tải dữ liệu',
+          errorMessage,
+          [{ text: 'OK', onPress: () => {} }]
+        );
+      }
+      console.warn('[FollowListScreen] Load error:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -112,13 +125,26 @@ export default function FollowListScreen({ route, navigation }) {
         isFollowedBy: res.isFollowedBy ?? item.isFollowedBy,
       });
 
+      if (isSelf) {
+        dispatch(updateUserFollowCounts({ followingIncrement: nextFollowing ? 1 : -1 }));
+      }
+
       if (!nextFollowing && isSelf && activeTab === 'following') {
         setFollowingList((prev) => prev.filter((user) => String(user._id || user.id) !== String(userId)));
       }
 
       dispatch(updatePostFollowStatus({ userId, isFollowing: nextFollowing }));
     } catch (error) {
-      Alert.alert('Lỗi', error.message || 'Không thể cập nhật theo dõi');
+      const errorMessage = error instanceof APIError 
+        ? error.message 
+        : error?.message || 'Không thể cập nhật theo dõi. Vui lòng thử lại.';
+      
+      Alert.alert(
+        '⚠️ Lỗi cập nhật',
+        errorMessage,
+        [{ text: 'OK', onPress: () => {} }]
+      );
+      console.warn('[FollowListScreen] Toggle follow error:', error);
     } finally {
       setActionUserId(null);
     }
@@ -136,47 +162,87 @@ export default function FollowListScreen({ route, navigation }) {
     const name = item.name || 'Thành viên VibeSport';
     const isMe = String(userId) === String(currentUserId);
     const isMutual = item.isFollowing && item.isFollowedBy;
+    const sportInfo = [item.favoriteSport, item.position, item.area]
+      .filter(Boolean)
+      .join(' • ') || 'Thành viên VibeSport';
 
     return (
       <TouchableOpacity
-        style={styles.userRow}
+        style={styles.userCardWrapper}
         activeOpacity={0.85}
-        onPress={() => navigation.navigate('UserProfile', { userId })}
+        onPress={() => {
+          if (!isMe) {
+            navigation.navigate('UserProfile', { userId });
+          }
+        }}
       >
-        {item.picture ? (
-          <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(name) }]}>
-            <Text style={styles.avatarText}>{getInitials(name)}</Text>
-          </View>
-        )}
-
-        <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>{name}</Text>
-          <Text style={styles.userMeta} numberOfLines={1}>
-            {[item.favoriteSport, item.position, item.area].filter(Boolean).join(' • ') || 'Thành viên VibeSport'}
-          </Text>
-          {isMutual ? <Text style={styles.mutualLabel}>Bạn bè</Text> : null}
-        </View>
-
-        {!isMe ? (
-          <TouchableOpacity
-            style={[
-              styles.followBtn,
-              item.isFollowing && styles.followBtnActive,
-            ]}
-            onPress={() => handleToggleFollow(item)}
-            disabled={actionUserId === userId}
-          >
-            {actionUserId === userId ? (
-              <ActivityIndicator size="small" color={item.isFollowing ? '#64748B' : '#FFFFFF'} />
+        <View style={styles.userCard}>
+          {/* Avatar Section */}
+          <View style={styles.avatarContainer}>
+            {item.picture ? (
+              <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.avatar} />
             ) : (
-              <Text style={[styles.followBtnText, item.isFollowing && styles.followBtnTextActive]}>
-                {item.isFollowing ? 'Đang theo dõi' : item.isFollowedBy ? 'Follow lại' : 'Follow'}
-              </Text>
+              <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(name) }]}>
+                <Text style={styles.avatarText}>{getInitials(name)}</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        ) : null}
+            {isMutual && <View style={styles.mutualBadge} />}
+          </View>
+
+          {/* User Info Section */}
+          <View style={styles.userInfoContainer}>
+            <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
+              {name}
+            </Text>
+            <Text style={styles.userMeta} numberOfLines={2} ellipsizeMode="tail">
+              {sportInfo}
+            </Text>
+            {isMutual && (
+              <View style={styles.mutualLabelContainer}>
+                <Text style={styles.mutualLabel}>👥 Bạn bè</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Follow Button Section */}
+          {!isMe && (
+            <TouchableOpacity
+              style={[
+                styles.followBtn,
+                item.isFollowing && styles.followBtnActive,
+                (!item.isFollowing && item.isFollowedBy) && styles.followBtnBack,
+              ]}
+              onPress={() => handleToggleFollow(item)}
+              disabled={actionUserId === userId}
+              activeOpacity={0.75}
+            >
+              {actionUserId === userId ? (
+                <ActivityIndicator 
+                  size="small" 
+                  color={item.isFollowing ? '#64748B' : '#FFFFFF'} 
+                />
+              ) : (
+                <>
+                  <Text style={[styles.followBtnText, item.isFollowing && styles.followBtnTextActive]}>
+                    {item.isFollowing 
+                      ? 'Đang theo dõi' 
+                      : item.isFollowedBy 
+                        ? 'Theo dõi lại' 
+                        : 'Theo dõi'}
+                  </Text>
+                  {!item.isFollowing && (
+                    <Ionicons 
+                      name={item.isFollowedBy ? "arrow-back-outline" : "add"} 
+                      size={16} 
+                      color="#FFFFFF" 
+                      style={{ marginLeft: 4 }} 
+                    />
+                  )}
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -276,8 +342,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTextWrap: {
-    flex: 1,
     marginHorizontal: 12,
+    flex: 1,
   },
   headerTitle: {
     fontSize: 17,
@@ -319,15 +385,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 24,
-  },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
   },
   avatar: {
     width: 50,
@@ -382,6 +439,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  followBtnBack: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
+  },
   followBtnText: {
     fontSize: 12,
     fontWeight: '700',
@@ -412,5 +473,40 @@ const styles = StyleSheet.create({
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  userCardWrapper: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  mutualBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  userInfoContainer: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  mutualLabelContainer: {
+    marginTop: 2,
   },
 });

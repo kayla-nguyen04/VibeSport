@@ -31,6 +31,7 @@ export async function createMatch(matchData) {
   });
 }
 
+// ĐÃ CẢI THIỆN: Bổ sung tham số phân tách participantId để quét toàn bộ trận đấu tham gia
 export async function getMatches(filters = {}) {
   const params = new URLSearchParams();
   if (filters.sport) params.append("sport", filters.sport);
@@ -38,6 +39,7 @@ export async function getMatches(filters = {}) {
   if (filters.area) params.append("area", filters.area);
   if (filters.startTime) params.append("startTime", filters.startTime);
   if (filters.createdBy) params.append("createdBy", filters.createdBy);
+  if (filters.participantId) params.append("participantId", filters.participantId); // Thêm tham số lọc người tham gia
 
   const query = params.toString() ? `?${params.toString()}` : "";
 
