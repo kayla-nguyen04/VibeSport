@@ -5,6 +5,7 @@ import {
   markAllReadRequest,
   markOneReadRequest,
 } from '../services/notificationApi';
+import { logoutUser } from './authSlice';
 
 export const fetchNotifications = createAsyncThunk(
   'notifications/fetchNotifications',
@@ -118,6 +119,12 @@ const notificationSlice = createSlice({
         }
         // Giảm unreadCount nếu nó lớn hơn 0
         state.unreadCount = Math.max(0, state.unreadCount - 1);
+      })
+      .addCase(logoutUser.fulfilled, (state) => {
+        state.notifications = [];
+        state.unreadCount = 0;
+        state.loading = false;
+        state.error = null;
       });
   },
 });

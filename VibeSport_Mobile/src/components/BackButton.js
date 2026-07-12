@@ -6,11 +6,12 @@ import { icon } from '../theme';
 const ICON_NAME = 'chevron-back';
 const MIN_TOUCH_SIZE = 44;
 
-export const BackButton = ({
+export function BackButton({
   onPress,
   size = 22,
   color = icon.dark,
-}) => {
+  name,
+}) {
   const hitSlop = {
     top: (MIN_TOUCH_SIZE - size) / 2,
     bottom: (MIN_TOUCH_SIZE - size) / 2,
@@ -27,13 +28,13 @@ export const BackButton = ({
       accessibilityLabel="Quay lại"
     >
       <Ionicons
-        name={ICON_NAME}
+        name={name || ICON_NAME}
         size={size}
         color={color}
       />
     </TouchableOpacity>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {

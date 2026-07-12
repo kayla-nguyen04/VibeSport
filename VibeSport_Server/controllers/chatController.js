@@ -200,6 +200,7 @@ function formatConversation(conversation, currentUserId, isFriend) {
       : null,
     lastMessage,
     lastMessageAt: conversation.lastMessageAt,
+    lastMessageSenderId: conversation.lastMessageSenderId || null,
     unreadCount,
     updatedAt: conversation.updatedAt,
     status: conversation.status,
@@ -515,6 +516,7 @@ exports.sendMessage = async (req, res) => {
 
         conversation.lastMessage = trimmedContent;
         conversation.lastMessageAt = message.createdAt;
+        conversation.lastMessageSenderId = req.userId;
         setUnreadCount(conversation, req.userId, 0);
         setUnreadCount(conversation, recipientId, getUnreadCount(conversation, recipientId) + 1);
         conversation.deletedByUserIds = [];
@@ -570,6 +572,7 @@ exports.sendMessage = async (req, res) => {
       });
       conversation.lastMessage = trimmedContent;
       conversation.lastMessageAt = new Date();
+      conversation.lastMessageSenderId = req.userId;
       conversation.deletedByUserIds = [];
       conversation.markModified('deletedByUserIds');
       await conversation.save();
@@ -609,6 +612,7 @@ exports.sendMessage = async (req, res) => {
 
     conversation.lastMessage = trimmedContent;
     conversation.lastMessageAt = message.createdAt;
+    conversation.lastMessageSenderId = req.userId;
     setUnreadCount(conversation, req.userId, 0);
     
     otherParticipants.forEach((pId) => {
@@ -1862,8 +1866,9 @@ exports.sendImageMessage = async (req, res) => {
       (p) => String(p._id || p) !== String(req.userId)
     );
 
-    conversation.lastMessage = 'ð¼ï¸ Ảnh';
+    conversation.lastMessage = '[Hình ảnh]';
     conversation.lastMessageAt = message.createdAt;
+    conversation.lastMessageSenderId = req.userId;
     setUnreadCount(conversation, req.userId, 0);
     otherParticipants.forEach((pId) => {
       const pIdStr = String(pId._id || pId);
@@ -1882,7 +1887,7 @@ exports.sendImageMessage = async (req, res) => {
           global.io.to(pIdStr).emit('new_message', {
             conversationId: id,
             message: populatedMessage,
-            lastMessage: 'ð¼ï¸ Ảnh',
+            lastMessage: '[Hình ảnh]',
             lastMessageAt: conversation.lastMessageAt,
             conversation: formatConversation(populatedConversation, pIdStr, true),
           });

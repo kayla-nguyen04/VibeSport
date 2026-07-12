@@ -66,6 +66,7 @@ exports.getUserProfile = async (req, res) => {
     });
 
     const presence = getPresenceFromLastSeen(user.lastSeenAt);
+    const isSelf = String(viewerId) === String(id);
 
     res.json({
       success: true,
@@ -77,8 +78,9 @@ exports.getUserProfile = async (req, res) => {
         mutualFriends,
         isFollowing: Boolean(isFollowing),
         isFollowedBy: Boolean(isFollowedBy),
-        isSelf: String(viewerId) === String(id),
+        isSelf,
         presence,
+        ...(isSelf ? { email: user.email, phone: user.phone } : {}),
       },
     });
   } catch (error) {
