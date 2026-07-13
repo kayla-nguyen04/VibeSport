@@ -77,6 +77,15 @@ const formatTime = (dateString) => {
   return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
+const cleanLastMessage = (text) => {
+  if (!text) return 'Bắt đầu trò chuyện';
+  // Clean up Mojibake encoding error for image messages (e.g. containing corrupted characters and ending with 'Ảnh')
+  if ((text.includes('ð') || text.includes('ï') || text.includes('')) && text.includes('Ảnh')) {
+    return '📷 Ảnh';
+  }
+  return text;
+};
+
 export default function ChatListScreen({ navigation }) {
   const dispatch = useDispatch();
   const { conversations, loadingConversations } = useSelector((state) => state.chat);
@@ -822,7 +831,6 @@ export default function ChatListScreen({ navigation }) {
       : item.lastMessage
         ? `${prefix}${cleanLastMessage(item.lastMessage)}`
         : 'Bắt đầu trò chuyện';
-
     const subtitleColor = isPending ? '#0b74ff' : '#6B7280';
     const unreadCount = item.unreadCount || 0;
 
@@ -941,7 +949,7 @@ export default function ChatListScreen({ navigation }) {
             </View>
             <View style={styles.conversationBottomRow}>
               <Text style={styles.lastMessage} numberOfLines={1}>
-                {item.lastMessage || 'Bắt đầu trò chuyện'}
+                {cleanLastMessage(item.lastMessage)}
               </Text>
             </View>
           </View>

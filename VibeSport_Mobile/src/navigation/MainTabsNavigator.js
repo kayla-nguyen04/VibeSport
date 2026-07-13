@@ -14,9 +14,8 @@ import ChatListScreen from '../screens/ChatListScreen';
 
 const Tab = createBottomTabNavigator();
 
-const FONT_SIZE = 13;
-const ACTIVE_COLOR = '#ffffff';
-const INACTIVE_COLOR = '#111111';
+const ACTIVE_COLOR = '#FFFFFF';
+const INACTIVE_COLOR = '#1F2937';
 const TAB_BAR_HEIGHT = 70;
 
 function CustomTabBar({ state, descriptors, navigation }) {
@@ -195,12 +194,7 @@ const styles = StyleSheet.create({
   overflow: 'hidden',
   },
   activeIconFrame: {
-    width: 52,
-  height: 52,
-  borderRadius: 26,
-  backgroundColor: '#F97316',
-  justifyContent: 'center',
-  alignItems: 'center',
+    backgroundColor: '#FF5F3D',
   },
   tabBadge: {
     position: 'absolute',

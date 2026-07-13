@@ -662,7 +662,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
   if (!post) return null;
 
-  const isOwner = currentUser && post.userId && (currentUser.id === post.userId._id || currentUser._id === post.userId._id);
+  const isOwner = currentUser && post.userId && String(currentUser._id || currentUser.id) === String(post.userId._id || post.userId.id || post.userId);
   const posterAvatarColor = getAvatarColor(post.userId?.name);
   const displayTags = post.tags?.length ? post.tags : post.sportType ? [post.sportType] : [];
 
@@ -686,8 +686,8 @@ export default function PostDetailScreen({ route, navigation }) {
           style={styles.headerUserInfo}
           activeOpacity={0.8}
           onPress={() => {
-            const authorId = post.userId?._id || post.userId?.id;
-            if (authorId) navigation.navigate('UserProfile', { userId: authorId });
+            const authorId = post.userId?._id || post.userId?.id || post.userId;
+            navigateToProfile(authorId);
           }}
         >
           {post.userId?.picture ? (

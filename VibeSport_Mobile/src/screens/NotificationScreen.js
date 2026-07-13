@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   RefreshControl,
@@ -37,10 +38,22 @@ function fixMediaUrl(url) {
 export function NotificationScreen({ navigation }) {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
+  const currentUser = useSelector((state) => state.auth.user);
   const { notifications, loading, unreadCount } = useSelector((state) => state.notifications);
   const conversations = useSelector((state) => state.chat.conversations);
   const { enqueue } = useNotificationNavigationQueue(navigation);
   const visibleNotifications = notifications.filter((item) => item.type !== 'message');
+
+  const handleAvatarPress = (fromUser) => {
+    const userId = fromUser?._id || fromUser?.id || fromUser;
+    if (!userId) return;
+    const myId = currentUser?._id || currentUser?.id;
+    if (userId === myId) {
+      navigation.navigate('Home', { screen: 'ProfileTab' });
+    } else {
+      navigation.navigate('UserProfile', { userId });
+    }
+  };
 
   useEffect(() => {
     dispatch(fetchNotifications());
@@ -52,6 +65,23 @@ export function NotificationScreen({ navigation }) {
 
   const handleMarkAllRead = () => {
     dispatch(markAllNotificationsRead());
+  };
+
+  const handleHeaderMorePress = () => {
+    Alert.alert(
+      'Tùy chọn thông báo',
+      '',
+      [
+        {
+          text: 'Đánh dấu đọc tất cả',
+          onPress: handleMarkAllRead,
+        },
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
   const handleNotificationPress = (item) => {
@@ -74,14 +104,14 @@ export function NotificationScreen({ navigation }) {
     }
 
     const conversationId = item.conversationId?._id || item.conversationId;
-if (item.type === 'group' && conversationId) {
-  const found = conversations.find((c) => String(c._id) === String(conversationId));
-  if (found) {
-    navigation.navigate('GroupManagement', { conversationId });
-  } else {
-    enqueue(conversationId, 'group');
-  }
-}
+    if (item.type === 'group' && conversationId) {
+      const found = conversations.find((c) => String(c._id) === String(conversationId));
+      if (found) {
+        navigation.navigate('GroupManagement', { conversationId });
+      } else {
+        enqueue(conversationId, 'group');
+      }
+    }
   };
 
   const formatTime = (dateString) => {
@@ -102,25 +132,30 @@ if (item.type === 'group' && conversationId) {
     const fromUser = item.fromUserId;
     const senderName = fromUser?.name || 'Thành viên VibeSport';
     const isUnread = !item.read;
+    const firstLetter = senderName.charAt(0).toUpperCase();
 
     return (
       <TouchableOpacity
         onPress={() => handleNotificationPress(item)}
         activeOpacity={0.8}
-        style={[styles.notificationItem, isUnread && styles.unreadItem]}
+        style={[
+          styles.notificationItem,
+          isUnread ? styles.unreadItem : styles.readItem
+        ]}
       >
-       
-        {fromUser?.picture ? (
-          <Image source={{ uri: fixMediaUrl(fromUser.picture) }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(senderName) }]}>
-            <Text style={styles.avatarPlaceholderText}>
-              {senderName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <TouchableOpacity
+          onPress={() => handleAvatarPress(fromUser)}
+          activeOpacity={0.8}
+        >
+          {fromUser?.picture ? (
+            <Image source={{ uri: fixMediaUrl(fromUser.picture) }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(senderName) }]}>
+              <Text style={styles.avatarPlaceholderText}>{firstLetter}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-      
         <View style={styles.contentInfo}>
           <Text style={[styles.messageText, isUnread && styles.unreadMessageText]}>
             {item.message}
@@ -128,20 +163,9 @@ if (item.type === 'group' && conversationId) {
           <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
         </View>
 
-       
-        {item.type === 'follow' ? (
-          <View style={styles.followBadge}>
-            <Ionicons name="person-add" size={18} color="#FF6B35" />
-          </View>
-        ) : item.postThumbnail ? (
-          <Image source={{ uri: fixMediaUrl(item.postThumbnail) }} style={styles.postThumbnail} />
-        ) : item.postId ? (
-          <View style={styles.postIconPlaceholder}>
-            <Ionicons name="document-text-outline" size={18} color="#9CA3AF" />
-          </View>
-        ) : null}
-
-        <View style={[styles.unreadDot, { backgroundColor: isUnread ? '#FF6B35' : 'transparent' }]} />
+        {isUnread && (
+          <View style={styles.redDot} />
+        )}
       </TouchableOpacity>
     );
   };
@@ -156,18 +180,19 @@ if (item.type === 'group' && conversationId) {
         >
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Thông báo</Text>
-        {unreadCount > 0 ? (
-          <TouchableOpacity
-            onPress={handleMarkAllRead}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.markAllBtn}
-          >
-            <Text style={styles.markAllText}>Đọc tất cả</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerRightPlaceholder} />
-        )}
+        
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitleNormal}>Thông </Text>
+          <Text style={styles.headerTitleHighlight}>Báo</Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleHeaderMorePress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.moreHeaderBtn}
+        >
+          <Ionicons name="ellipsis-vertical" size={24} color="#000000" />
+        </TouchableOpacity>
       </ScreenHeader>
 
       <FlatList
@@ -211,47 +236,57 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 4,
   },
-  headerTitle: {
+  headerTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitleNormal: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: '#000000',
   },
-  markAllBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  markAllText: {
-    fontSize: 13,
-    color: '#FF6B35',
+  headerTitleHighlight: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#FF5F3D',
   },
-  headerRightPlaceholder: {
-    width: 60,
+  moreHeaderBtn: {
+    padding: 4,
   },
   listContent: {
     flexGrow: 1,
+    paddingTop: 16,
   },
   notificationItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    position: 'relative',
   },
   unreadItem: {
-    backgroundColor: '#FFF7ED', // light tint orange
+    borderColor: '#E5E7EB',
+  },
+  readItem: {
+    borderColor: '#E5E7EB',
+    opacity: 0.45,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#E5E7EB',
   },
   avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EF4444',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -263,7 +298,6 @@ const styles = StyleSheet.create({
   contentInfo: {
     flex: 1,
     marginLeft: 12,
-    marginRight: 8,
   },
   messageText: {
     fontSize: 14,
@@ -271,46 +305,22 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   unreadMessageText: {
-    color: '#1F2937',
-    fontWeight: '500',
+    color: '#000000',
+    fontWeight: 'bold',
   },
   timeText: {
     fontSize: 11,
     color: '#9CA3AF',
     marginTop: 4,
   },
-  postThumbnail: {
-    width: 42,
-    height: 42,
-    borderRadius: 6,
-    backgroundColor: '#F3F4F6',
-  },
-  followBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFF0EA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#FFD4C2',
-  },
-  postIconPlaceholder: {
-    width: 42,
-    height: 42,
-    borderRadius: 6,
-    backgroundColor: '#FAFAFA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  unreadDot: {
+  redDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#FF6B35',
-    marginLeft: 8,
+    backgroundColor: '#EF4444',
   },
   emptyContainer: {
     flex: 1,

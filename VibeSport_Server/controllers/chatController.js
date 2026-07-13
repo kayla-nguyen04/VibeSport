@@ -1866,7 +1866,7 @@ exports.sendImageMessage = async (req, res) => {
       (p) => String(p._id || p) !== String(req.userId)
     );
 
-    conversation.lastMessage = '[Hình ảnh]';
+    conversation.lastMessage = '📷 Ảnh';
     conversation.lastMessageAt = message.createdAt;
     conversation.lastMessageSenderId = req.userId;
     setUnreadCount(conversation, req.userId, 0);
@@ -1887,7 +1887,7 @@ exports.sendImageMessage = async (req, res) => {
           global.io.to(pIdStr).emit('new_message', {
             conversationId: id,
             message: populatedMessage,
-            lastMessage: '[Hình ảnh]',
+            lastMessage: '📷 Ảnh',
             lastMessageAt: conversation.lastMessageAt,
             conversation: formatConversation(populatedConversation, pIdStr, true),
           });
