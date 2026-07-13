@@ -8,6 +8,7 @@ import {
   Image,
   StatusBar,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,28 +58,30 @@ const MOCK_POSTS = [
 function AppHeader({ navigation }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.appHeader, { paddingTop: insets.top }]}>
-      <View style={styles.appHeaderLeft}>
-        <Image
-          source={require('../../assets/logosp.png')}
-          style={styles.appLogo}
-          resizeMode="contain"
-        />
-        <Text style={styles.appTitle}>
-          <Text style={styles.appTitleVibe}>Vibe</Text>
-          <Text style={styles.appTitleSport}>Sport</Text>
-        </Text>
-      </View>
-      <View style={styles.appHeaderRight}>
-        <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7}>
-          <Ionicons name="search-outline" size={22} color="#1a1a1a" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7}>
-          <View>
-            <Ionicons name="notifications-outline" size={22} color="#1a1a1a" />
-            <View style={styles.notifDot} />
-          </View>
-        </TouchableOpacity>
+    <View style={{ paddingTop: insets.top }}>
+      <View style={styles.appHeader}>
+        <View style={styles.appHeaderLeft}>
+          <Image
+            source={require('../../assets/logosp.png')}
+            style={styles.appLogo}
+            resizeMode="contain"
+          />
+          <Text style={styles.appTitle}>
+            <Text style={styles.appTitleVibe}>F</Text>
+            <Text style={styles.appTitleSport}>C</Text>
+          </Text>
+        </View>
+        <View style={styles.appHeaderRight}>
+          <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7}>
+            <Ionicons name="search-outline" size={22} color="#1a1a1a" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconBtn} activeOpacity={0.7}>
+            <View>
+              <Ionicons name="notifications-outline" size={22} color="#1a1a1a" />
+              <View style={styles.notifDot} />
+            </View>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -297,26 +300,31 @@ const styles = StyleSheet.create({
 
   // App Header
   appHeader: {
-    backgroundColor: '#ffffff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e8ecf2',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginHorizontal: 9,
+    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginBottom: 0,
+    height: 74,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 94, 94, 0.19)',
+    zIndex: 10,
   },
   appHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
   appLogo: {
-    width: 30,
-    height: 30,
+    width: 44,
+    height: 44,
+    marginRight: -6,
   },
   appTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
   },
   appTitleVibe: {
@@ -328,12 +336,12 @@ const styles = StyleSheet.create({
   appHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: -2,
   },
   headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
