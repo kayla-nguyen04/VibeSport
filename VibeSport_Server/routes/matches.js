@@ -11,6 +11,16 @@ const populateFields = [
   { path: "pendingJoinRequests", select: "name email picture area favoriteSport" },
 ];
 
+const getPositionLabel = (posId) => {
+  if (!posId) return "";
+  if (posId.includes("bench")) return "Dự bị";
+  if (posId.endsWith("gk")) return "Thủ môn";
+  if (posId.endsWith("st")) return "Tiền đạo";
+  if (posId.endsWith("lb") || posId.includes("cb") || posId.endsWith("rb")) return "Hậu vệ";
+  if (posId.includes("dm") || posId.endsWith("lm") || posId.includes("am") || posId.endsWith("rm")) return "Tiền vệ";
+  return "";
+};
+
 router.post("/", async (req, res) => {
   try {
     const {
@@ -243,6 +253,13 @@ router.post("/:id/leave", async (req, res) => {
     if (match.currentPlayers < match.maxPlayers && match.status === "full") {
       match.status = "open";
     }
+    // Clean up member positions and roles
+    if (match.memberPositions) {
+      match.memberPositions = match.memberPositions.filter((mp) => String(mp.userId) !== String(userId));
+    }
+    if (match.memberRoles) {
+      match.memberRoles = match.memberRoles.filter((mr) => String(mr.userId) !== String(userId));
+    }
     await match.save();
 
     return res.json({ success: true, message: "Rút khỏi trận đấu thành công", data: match });
@@ -383,6 +400,54 @@ router.post("/:id/request-join", async (req, res) => {
     if (match.participants.length >= match.maxPlayers) {
       return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
     }
+    if (Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0) {
+      // Check if user selected two positions with the same label/role in the same team
+      const team1Labels = [];
+      const team2Labels = [];
+      for (const posId of selectedPositionIds) {
+        const isTeam1 = posId.startsWith("t1_");
+        const label = getPositionLabel(posId);
+        if (label) {
+          if (isTeam1) {
+            if (team1Labels.includes(label)) {
+              return res.status(400).json({ success: false, message: `Không được chọn 2 vị trí ${label} trong Đội 1` });
+            }
+            team1Labels.push(label);
+          } else {
+            if (team2Labels.includes(label)) {
+              return res.status(400).json({ success: false, message: `Không được chọn 2 vị trí ${label} trong Đội 2` });
+            }
+            team2Labels.push(label);
+          }
+        }
+      }
+
+      // Find occupied positions by active participants
+      const occupiedPositions = (match.memberPositions || [])
+        .filter((mp) => match.participants.some((p) => String(p) === String(mp.userId)) && mp.positionId)
+        .map((mp) => mp.positionId);
+
+      // Find pending requested positions from other pending users
+      const pendingPositions = [];
+      (match.pendingJoinRequestPositions || []).forEach((entry) => {
+        const isStillPending = match.pendingJoinRequests.some((p) => String(p) === String(entry.userId));
+        if (isStillPending && String(entry.userId) !== String(userId)) {
+          if (Array.isArray(entry.positionIds)) {
+            pendingPositions.push(...entry.positionIds);
+          }
+        }
+      });
+
+      // Check if any of selectedPositionIds is already occupied or pending
+      for (const posId of selectedPositionIds) {
+        if (occupiedPositions.includes(posId)) {
+          return res.status(400).json({ success: false, message: `Vị trí đã có người tham gia` });
+        }
+        if (pendingPositions.includes(posId)) {
+          return res.status(400).json({ success: false, message: `Vị trí đã có người đăng ký` });
+        }
+      }
+    }
 
     match.pendingJoinRequests.push(userId);
     if (Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0) {
@@ -500,9 +565,24 @@ router.post("/:id/accept-join", async (req, res) => {
       match.memberRoles.push({ userId, role: "member" });
     }
     if (!match.memberPositions) match.memberPositions = [];
-    if (!match.memberPositions.some((p) => String(p.userId) === String(userId))) {
-      match.memberPositions.push({ userId, positionId: "" });
+    const reqPosEntry = (match.pendingJoinRequestPositions || []).find(
+      (entry) => String(entry.userId) === String(userId)
+    );
+    const positionToAssign = reqPosEntry && reqPosEntry.positionIds && reqPosEntry.positionIds.length > 0
+      ? reqPosEntry.positionIds[0]
+      : "";
+
+    const existingPosIndex = match.memberPositions.findIndex((p) => String(p.userId) === String(userId));
+    if (existingPosIndex > -1) {
+      match.memberPositions[existingPosIndex].positionId = positionToAssign;
+    } else {
+      match.memberPositions.push({ userId, positionId: positionToAssign });
     }
+
+    // Clean up this user's entry from pendingJoinRequestPositions
+    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
+      (entry) => String(entry.userId) !== String(userId)
+    );
     await match.save();
 
     const owner = await User.findById(ownerId).select("name");

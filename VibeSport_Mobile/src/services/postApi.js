@@ -6,51 +6,60 @@ import { API_BASE_URL } from '../components/constants/api';
 // Timeout mặc định: 30s cho request thường, 60s cho upload file
 const DEFAULT_TIMEOUT_MS = 30000;
 const UPLOAD_TIMEOUT_MS = 60000;
+const API_BASE_URL_CANDIDATES = Array.from(new Set([
+  API_BASE_URL,
+  'http://10.0.2.2:4000',
+  'http://localhost:4000',
+  'http://192.168.1.5:4000',
+].filter(Boolean)));
 
 async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  const headers = {
-    ...(options.headers ?? {}),
-  };
+  let lastError = null;
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  for (const baseUrl of API_BASE_URL_CANDIDATES) {
+    const headers = {
+      ...(options.headers ?? {}),
+    };
 
-  // Dùng AbortController để tự động hủy request nếu quá timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      throw new Error('Yêu cầu bị hết thời gian. Vui lòng thử lại.');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-    throw new Error('Không thể kết nối đến máy chủ. Kiểm tra lại kết nối mạng.');
-  } finally {
-    clearTimeout(timeoutId);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      const text = await response.text().catch(() => '');
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch (e) {
+        throw new Error(`Lỗi máy chủ (${response.status}): Phản hồi không hợp lệ`);
+      }
+
+      if (!response.ok) {
+        throw new Error(json?.message || `Lỗi ${response.status}: ${response.statusText}`);
+      }
+
+      return json;
+    } catch (err) {
+      lastError = err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
-  // Đọc body dưới dạng text trước, sau đó mới parse JSON
-  // Tránh crash khi server trả về HTML thay vì JSON
-  const text = await response.text().catch(() => '');
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch (e) {
-    // Server trả về HTML (trang lỗi) thay vì JSON
-    throw new Error(`Lỗi máy chủ (${response.status}): Phản hồi không hợp lệ`);
+  if (lastError?.name === 'AbortError') {
+    throw new Error('Yêu cầu bị hết thời gian. Vui lòng thử lại.');
   }
 
-  if (!response.ok) {
-    throw new Error(json?.message || `Lỗi ${response.status}: ${response.statusText}`);
-  }
-  return json;
+  throw new Error(`Không thể kết nối đến máy chủ. Đã thử: ${API_BASE_URL_CANDIDATES.join(', ')}.`);
 }
 
 // ─── POST API ENDPOINTS ───────────────────────────────────────

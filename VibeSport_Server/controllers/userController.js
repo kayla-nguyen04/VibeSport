@@ -43,11 +43,19 @@ exports.getUserProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
 
-    const followingByTarget = await Follow.find({ followerId: id }).distinct('followingId');
+    // Lấy danh sách thô kết hợp xác thực sự tồn tại thực thể qua populate để loại trừ user ảo/rác
+    const [followersRaw, followingRaw] = await Promise.all([
+      Follow.find({ followingId: id }).populate('followerId', '_id'),
+      Follow.find({ followerId: id }).populate('followingId', '_id')
+    ]);
 
-    const [followerCount, followingCount, isFollowing, isFollowedBy, mutualFriends] = await Promise.all([
-      Follow.countDocuments({ followingId: id }),
-      Follow.countDocuments({ followerId: id }),
+    // Chỉ tính các bản ghi mà tài khoản đối phương thực tế vẫn còn tồn tại trong cơ sở dữ liệu
+    const followerCount = followersRaw.filter(f => f.followerId).length;
+    const followingCount = followingRaw.filter(f => f.followingId).length;
+
+    const followingByTarget = followingRaw.filter(f => f.followingId).map(f => f.followingId._id);
+
+    const [isFollowing, isFollowedBy, mutualFriends] = await Promise.all([
       viewerId ? Follow.exists({ followerId: viewerId, followingId: id }) : false,
       viewerId ? Follow.exists({ followerId: id, followingId: viewerId }) : false,
       viewerId && String(viewerId) !== String(id)
@@ -66,6 +74,7 @@ exports.getUserProfile = async (req, res) => {
     });
 
     const presence = getPresenceFromLastSeen(user.lastSeenAt);
+    const isSelf = String(viewerId) === String(id);
 
     res.json({
       success: true,
@@ -77,8 +86,9 @@ exports.getUserProfile = async (req, res) => {
         mutualFriends,
         isFollowing: Boolean(isFollowing),
         isFollowedBy: Boolean(isFollowedBy),
-        isSelf: String(viewerId) === String(id),
+        isSelf,
         presence,
+        ...(isSelf ? { email: user.email, phone: user.phone } : {}),
       },
     });
   } catch (error) {
@@ -245,9 +255,7 @@ exports.searchUsers = async (req, res) => {
 
 exports.getMutualFriends = async (req, res) => {
   try {
-    // Find all users the current user is following
     const following = await Follow.find({ followerId: req.userId }).distinct('followingId');
-    // Find all mutual follows (where following is also following the current user)
     const mutualFollowers = await Follow.find({
       followerId: { $in: following },
       followingId: req.userId,
@@ -270,29 +278,31 @@ exports.getMutualFriends = async (req, res) => {
 exports.getFollowingList = async (req, res) => {
   try {
     const targetUserId = req.params.id || req.userId;
+    const viewerId = req.userId;
+
     const followDocs = await Follow.find({ followerId: targetUserId })
       .populate('followingId', '_id name picture favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followingId).filter(Boolean);
     const userIds = users.map((u) => u._id);
 
-    const [followedByTarget, followedByViewer] = await Promise.all([
-      Follow.find({ followerId: { $in: userIds }, followingId: targetUserId }).distinct('followerId'),
-      req.userId
-        ? Follow.find({ followerId: req.userId, followingId: { $in: userIds } }).distinct('followingId')
-        : [],
+    const [viewerFollowing, targetFollowers] = await Promise.all([
+      viewerId ? Follow.find({ followerId: viewerId, followingId: { $in: userIds } }).distinct('followingId') : [],
+      Follow.find({ followerId: { $in: userIds }, followingId: targetUserId }).distinct('followerId')
     ]);
 
-    const followedByTargetSet = new Set(followedByTarget.map(String));
-    const followedByViewerSet = new Set(followedByViewer.map(String));
-    const isSelf = String(req.userId) === String(targetUserId);
+    const viewerFollowingSet = new Set(viewerFollowing.map(String));
+    const targetFollowersSet = new Set(targetFollowers.map(String));
 
-    const data = users.map((user) => ({
-      ...formatUserPublic(user),
-      _id: user._id,
-      isFollowing: isSelf ? true : followedByViewerSet.has(String(user._id)),
-      isFollowedBy: followedByTargetSet.has(String(user._id)),
-    }));
+    const data = users.map((user) => {
+      const uIdStr = String(user._id);
+      return {
+        ...formatUserPublic(user),
+        _id: user._id,
+        isFollowing: viewerFollowingSet.has(uIdStr),
+        isFollowedBy: targetFollowersSet.has(uIdStr),
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -308,24 +318,31 @@ exports.getFollowingList = async (req, res) => {
 exports.getFollowersList = async (req, res) => {
   try {
     const targetUserId = req.params.id || req.userId;
+    const viewerId = req.userId;
+
     const followDocs = await Follow.find({ followingId: targetUserId })
       .populate('followerId', '_id name picture favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followerId).filter(Boolean);
     const userIds = users.map((u) => u._id);
 
-    const followedByViewer = req.userId
-      ? await Follow.find({ followerId: req.userId, followingId: { $in: userIds } }).distinct('followingId')
-      : [];
+    const [viewerFollowing, viewerFollowers] = await Promise.all([
+      viewerId ? Follow.find({ followerId: viewerId, followingId: { $in: userIds } }).distinct('followingId') : [],
+      viewerId ? Follow.find({ followerId: { $in: userIds }, followingId: viewerId }).distinct('followerId') : []
+    ]);
 
-    const followedByViewerSet = new Set(followedByViewer.map(String));
+    const viewerFollowingSet = new Set(viewerFollowing.map(String));
+    const viewerFollowersSet = new Set(viewerFollowers.map(String));
 
-    const data = users.map((user) => ({
-      ...formatUserPublic(user),
-      _id: user._id,
-      isFollowing: followedByViewerSet.has(String(user._id)),
-      isFollowedBy: true,
-    }));
+    const data = users.map((user) => {
+      const uIdStr = String(user._id);
+      return {
+        ...formatUserPublic(user),
+        _id: user._id,
+        isFollowing: viewerFollowingSet.has(uIdStr),
+        isFollowedBy: viewerFollowersSet.has(uIdStr),
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -337,4 +354,3 @@ exports.getFollowersList = async (req, res) => {
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách người theo dõi' });
   }
 };
-

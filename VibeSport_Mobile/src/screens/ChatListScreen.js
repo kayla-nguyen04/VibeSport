@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Linking,
   Platform,
   RefreshControl,
   StyleSheet,
@@ -29,11 +30,14 @@ import {
   unmuteConversation,
   openConversation,
   updateGroupInfo,
+  leaveGroup,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
 import * as ImagePicker from 'expo-image-picker';
 import { isUserOnline } from '../utils/presence';
+import { color } from '../theme/colors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 const FILTERS = ['Tất cả', 'Chưa đọc', 'Chưa trả lời'];
@@ -87,13 +91,226 @@ export default function ChatListScreen({ navigation }) {
   const { conversations, loadingConversations } = useSelector((state) => state.chat);
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
+
+  const renderConversationAvatar = (item) => {
+    const peer = item.peer;
+    const peerName = peer?.name || 'Thành viên VibeSport';
+    
+    // Single chat OR Group chat with custom avatar
+    if (!item.isGroup || (peer && peer.picture)) {
+      const pictureUrl = peer?.picture;
+      return (
+        <View style={{ position: 'relative' }}>
+          {pictureUrl ? (
+            <Image
+              source={{ uri: fixMediaUrl(pictureUrl) }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View
+              style={[
+                styles.avatarFallback,
+                { backgroundColor: getAvatarColor(peerName) },
+              ]}
+            >
+              <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
+            </View>
+          )}
+          {!item.isGroup && peer?.lastSeenAt && isUserOnline(peer.lastSeenAt) && (
+            <View style={styles.onlineDot} />
+          )}
+        </View>
+      );
+    }
+    
+    // Group chat with NO custom avatar - Show layered circles like Zalo
+    const currentUserId = user?._id;
+    const otherMembers = (item.participants || []).filter(
+      (p) => String(p._id || p) !== String(currentUserId)
+    );
+    
+    const totalCount = otherMembers.length;
+    
+    if (totalCount === 0) {
+      return (
+        <View style={[styles.avatarFallback, { backgroundColor: getAvatarColor(peerName) }]}>
+          <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
+        </View>
+      );
+    }
+    
+    if (totalCount === 1) {
+      const singleMember = otherMembers[0];
+      const displayName = singleMember.name || 'User';
+      return (
+        <View style={{ position: 'relative' }}>
+          {singleMember.picture ? (
+            <Image
+              source={{ uri: fixMediaUrl(singleMember.picture) }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View
+              style={[
+                styles.avatarFallback,
+                { backgroundColor: getAvatarColor(displayName) },
+              ]}
+            >
+              <Text style={styles.avatarText}>{getInitials(displayName)}</Text>
+            </View>
+          )}
+        </View>
+      );
+    }
+    
+    if (totalCount === 2) {
+      const m0 = otherMembers[0];
+      const m1 = otherMembers[1];
+      
+      return (
+        <View style={styles.groupAvatarGrid}>
+          {/* Member 1 (top-left) */}
+          <View style={[styles.groupAvatarItem, { width: 34, height: 34, borderRadius: 17, top: 2, left: 2, backgroundColor: getAvatarColor(m0.name) }]}>
+            {m0.picture ? (
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 31, height: 31, borderRadius: 15.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.groupAvatarItemText, { fontSize: 12 }]}>{getInitials(m0.name)}</Text>
+            )}
+          </View>
+          {/* Member 2 (bottom-right) */}
+          <View style={[styles.groupAvatarItem, { width: 34, height: 34, borderRadius: 17, bottom: 2, right: 2, backgroundColor: getAvatarColor(m1.name) }]}>
+            {m1.picture ? (
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 31, height: 31, borderRadius: 15.5 }} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.groupAvatarItemText, { fontSize: 12 }]}>{getInitials(m1.name)}</Text>
+            )}
+          </View>
+        </View>
+      );
+    }
+    
+    if (totalCount === 3) {
+      const m0 = otherMembers[0];
+      const m1 = otherMembers[1];
+      const m2 = otherMembers[2];
+      
+      return (
+        <View style={styles.groupAvatarGrid}>
+          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+            {m0.picture ? (
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.groupAvatarItemText}>{getInitials(m0.name)}</Text>
+            )}
+          </View>
+          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+            {m1.picture ? (
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.groupAvatarItemText}>{getInitials(m1.name)}</Text>
+            )}
+          </View>
+          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, left: 14.5, backgroundColor: getAvatarColor(m2.name) }]}>
+            {m2.picture ? (
+              <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.groupAvatarItemText}>{getInitials(m2.name)}</Text>
+            )}
+          </View>
+        </View>
+      );
+    }
+    
+    // 4 or more members
+    const m0 = otherMembers[0];
+    const m1 = otherMembers[1];
+    const m2 = otherMembers[2];
+    const m3 = otherMembers[3];
+    const hasMore = totalCount > 4;
+    const remainingText = (totalCount - 3) > 9 ? '9+' : `+${totalCount - 3}`;
+    
+    return (
+      <View style={styles.groupAvatarGrid}>
+        <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+          {m0.picture ? (
+            <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+          ) : (
+            <Text style={styles.groupAvatarItemText}>{getInitials(m0.name)}</Text>
+          )}
+        </View>
+        <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+          {m1.picture ? (
+            <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+          ) : (
+            <Text style={styles.groupAvatarItemText}>{getInitials(m1.name)}</Text>
+          )}
+        </View>
+        <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, left: 1, backgroundColor: getAvatarColor(m2.name) }]}>
+          {m2.picture ? (
+            <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+          ) : (
+            <Text style={styles.groupAvatarItemText}>{getInitials(m2.name)}</Text>
+          )}
+        </View>
+        {hasMore ? (
+          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, right: 1, backgroundColor: '#07823b' }]}>
+            <Text style={styles.groupAvatarItemText}>{remainingText}</Text>
+          </View>
+        ) : (
+          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, right: 1, backgroundColor: getAvatarColor(m3.name) }]}>
+            {m3.picture ? (
+              <Image source={{ uri: fixMediaUrl(m3.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            ) : (
+              <Text style={styles.groupAvatarItemText}>{getInitials(m3.name)}</Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const [searchText, setSearchText] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('inbox');
   const [activeFilter, setActiveFilter] = useState('Tất cả');
   const [showFilter, setShowFilter] = useState(false);
   const [unblockingId, setUnblockingId] = useState(null);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+
+  const unreadNotificationCount = useSelector((state) => state.notifications?.unreadCount || 0);
+
+  const [pinnedConversationIds, setPinnedConversationIds] = useState([]);
+
+  React.useEffect(() => {
+    const loadPinned = async () => {
+      try {
+        const value = await AsyncStorage.getItem('pinned_conversations');
+        if (value) {
+          setPinnedConversationIds(JSON.parse(value));
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    loadPinned();
+  }, []);
+
+  const handleTogglePin = async (conversationId) => {
+    let updated = [];
+    if (pinnedConversationIds.includes(conversationId)) {
+      updated = pinnedConversationIds.filter((id) => id !== conversationId);
+    } else {
+      updated = [...pinnedConversationIds, conversationId];
+    }
+    setPinnedConversationIds(updated);
+    try {
+      await AsyncStorage.setItem('pinned_conversations', JSON.stringify(updated));
+    } catch (e) {
+      // ignore
+    }
+  };
 
   // Group creation modal states
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -378,10 +595,17 @@ export default function ChatListScreen({ navigation }) {
   // DEBUG: Log all conversations removed to keep console clean
 
   const inboxConversations = React.useMemo(() => {
-    return applyFilter(
+    const filtered = applyFilter(
       allConversations.filter((item) => !item.isHidden && !item.hasOtherPendingRequest)
     );
-  }, [allConversations, applyFilter]);
+    return [...filtered].sort((a, b) => {
+      const aPinned = pinnedConversationIds.includes(a._id);
+      const bPinned = pinnedConversationIds.includes(b._id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+  }, [allConversations, applyFilter, pinnedConversationIds]);
 
   const pendingConversations = React.useMemo(() => {
     return applyFilter(
@@ -494,6 +718,30 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
+  const handleLeaveGroup = (item) => {
+    Alert.alert(
+      'Rời nhóm',
+      `Bạn có chắc chắn muốn rời nhóm "${item.peer?.name || 'này'}" không? Bạn sẽ không còn nhận tin nhắn từ nhóm này nữa.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Rời nhóm',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Leaving group:', item._id);
+              await dispatch(leaveGroup(item._id)).unwrap();
+              await dispatch(fetchConversations()).unwrap();
+            } catch (e) {
+              console.error('Leave group error:', e);
+              Alert.alert('Lỗi', e.message || 'Không thể rời nhóm');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleToggleMute = (item) => {
     Alert.alert(
       item.isMuted ? 'Bật thông báo' : 'Tắt thông báo',
@@ -534,11 +782,55 @@ export default function ChatListScreen({ navigation }) {
     const peerName = peer?.name || 'Thành viên VibeSport';
     const isPending = item.isPending && !item.blockedByMe;
     const hasOtherPendingMessages = (item.otherPendingMessages?.length || 0) > 0;
+
+    const cleanLastMessage = (text) => {
+      if (!text) return '';
+      if (
+        text.includes('ðŸ') ||
+        text.includes('ðŸ–¼ï¸') ||
+        text.includes('ð¼ï') ||
+        text.includes('ð') ||
+        text.startsWith('ð') ||
+        text === '📷 Ảnh'
+      ) {
+        return '[Hình ảnh]';
+      }
+      return text;
+    };
+
+    const currentUserId = user?.id || user?._id;
+    const lastSenderId = item.lastMessageSenderId?._id || item.lastMessageSenderId;
+    const isLastMessageSentByMe =
+      lastSenderId &&
+      currentUserId &&
+      String(lastSenderId) === String(currentUserId);
+
+    const getLastMessageSenderName = () => {
+      if (!lastSenderId || isPending) return '';
+      if (isLastMessageSentByMe) return 'Bạn';
+      if (!item.isGroup) return '';
+      
+      const sender = (item.participants || []).find(
+        (p) => String(p._id || p) === String(lastSenderId)
+      );
+      if (sender) {
+        const fullName = sender.name || 'Thành viên';
+        const parts = fullName.trim().split(' ');
+        return parts[parts.length - 1];
+      }
+      return '';
+    };
+
+    const senderPrefix = getLastMessageSenderName();
+    const prefix = senderPrefix ? `${senderPrefix}: ` : '';
+
     const subtitle = isPending
       ? (hasOtherPendingMessages
-          ? item.otherPendingMessages?.[0]?.content || 'Tin nhắn chờ xác nhận'
+          ? cleanLastMessage(item.otherPendingMessages?.[0]?.content) || 'Tin nhắn chờ xác nhận'
           : 'Chờ bạn chấp nhận')
-      : cleanLastMessage(item.lastMessage);
+      : item.lastMessage
+        ? `${prefix}${cleanLastMessage(item.lastMessage)}`
+        : 'Bắt đầu trò chuyện';
     const subtitleColor = isPending ? '#0b74ff' : '#6B7280';
     const unreadCount = item.unreadCount || 0;
 
@@ -555,26 +847,7 @@ export default function ChatListScreen({ navigation }) {
             }
           }}
         >
-          <View style={{ position: 'relative' }}>
-            {peer?.picture ? (
-              <Image
-                source={{ uri: fixMediaUrl(peer.picture) }}
-                style={styles.avatar}
-              />
-            ) : (
-              <View
-                style={[
-                  styles.avatarFallback,
-                  { backgroundColor: getAvatarColor(peerName) },
-                ]}
-              >
-                <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
-              </View>
-            )}
-            {!item.isGroup && peer?.lastSeenAt && isUserOnline(peer.lastSeenAt) && (
-              <View style={styles.onlineDot} />
-            )}
-          </View>
+          {renderConversationAvatar(item)}
 
           <View style={styles.conversationBody}>
             <View style={styles.conversationTopRow}>
@@ -587,26 +860,41 @@ export default function ChatListScreen({ navigation }) {
               >
                 {peerName}
               </Text>
-              <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {pinnedConversationIds.includes(item._id) && (
+                  <Ionicons name="pin" size={12} color="#94A3B8" style={{ transform: [{ rotate: '45deg' }] }} />
+                )}
+                <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
+              </View>
             </View>
             <View style={styles.conversationBottomRow}>
-              {isPending && <View style={styles.pendingDot} />}
-              <Text
-                style={[
-                  styles.lastMessage,
-                  unreadCount > 0 && styles.lastMessageUnread,
-                  { color: subtitleColor },
-                ]}
-                numberOfLines={1}
-              >
-                {subtitle}
-              </Text>
-              {unreadCount > 0 && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadBadgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
-                </View>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                {isPending && <View style={styles.pendingDot} />}
+                <Text
+                  style={[
+                    styles.lastMessage,
+                    unreadCount > 0 && styles.lastMessageUnread,
+                    { color: subtitleColor },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {subtitle}
+                </Text>
+                {unreadCount > 0 && (
+                  <View style={styles.unreadDot} />
+                )}
+              </View>
+              {!isPending && (
+                <TouchableOpacity
+                  style={styles.moreOptionsBtn}
+                  onPress={() => {
+                    setSelectedConversation(item);
+                    setShowOptionsModal(true);
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color="#64748B" />
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -644,43 +932,31 @@ export default function ChatListScreen({ navigation }) {
     const isUnblocking = unblockingId === item._id;
 
     return (
-      <TouchableOpacity
-        style={styles.conversationItem}
-        activeOpacity={0.85}
-        onPress={() => openChat(item)}
-      >
-        {peer?.picture ? (
-          <Image
-            source={{ uri: fixMediaUrl(peer.picture) }}
-            style={styles.avatar}
-          />
-        ) : (
-          <View
-            style={[
-              styles.avatarFallback,
-              { backgroundColor: getAvatarColor(peerName) },
-            ]}
-          >
-            <Text style={styles.avatarText}>{getInitials(peerName)}</Text>
-          </View>
-        )}
+      <View style={styles.conversationItem}>
+        <TouchableOpacity
+          style={styles.conversationItemTouchable}
+          activeOpacity={0.85}
+          onPress={() => openChat(item)}
+        >
+          {renderConversationAvatar(item)}
 
-        <View style={styles.conversationBody}>
-          <View style={styles.conversationTopRow}>
-            <Text style={styles.peerName} numberOfLines={1}>
-              {peerName}
-            </Text>
-            <Ionicons name="ban" size={14} color="#DC2626" />
+          <View style={styles.conversationBody}>
+            <View style={styles.conversationTopRow}>
+              <Text style={styles.peerName} numberOfLines={1}>
+                {peerName}
+              </Text>
+              <Ionicons name="ban" size={14} color="#DC2626" />
+            </View>
+            <View style={styles.conversationBottomRow}>
+              <Text style={styles.lastMessage} numberOfLines={1}>
+                {cleanLastMessage(item.lastMessage)}
+              </Text>
+            </View>
           </View>
-          <View style={styles.conversationBottomRow}>
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {cleanLastMessage(item.lastMessage)}
-            </Text>
-          </View>
-        </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.unblockButton}
+          style={[styles.unblockButton, { marginRight: 12 }]}
           onPress={() => handleUnblock(item)}
           disabled={isUnblocking}
           activeOpacity={0.7}
@@ -691,7 +967,7 @@ export default function ChatListScreen({ navigation }) {
             <Text style={styles.unblockButtonText}>Bỏ chặn</Text>
           )}
         </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -737,96 +1013,96 @@ export default function ChatListScreen({ navigation }) {
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.headerLeftBtn}
-          activeOpacity={0.7}
-          onPress={() => setShowFilter(true)}
-        >
-          <Ionicons name="options-outline" size={24} color="#262626" />
-        </TouchableOpacity>
-
-        <View style={styles.headerTabs}>
-          {['inbox', 'requests', 'blocked'].map((tab) => {
-            const count =
-              tab === 'requests'
-                ? pendingConversations.length
-                : tab === 'blocked'
-                  ? blockedConversations.length
-                  : 0;
-            const label =
-              tab === 'inbox'
-                ? 'Hộp thư'
-                : tab === 'requests'
-                  ? 'Yêu cầu'
-                  : 'Bị chặn';
-
-            return (
+      <View style={styles.logoHeaderCard}>
+        {isSearching ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setIsSearching(false);
+                setSearchText('');
+              }}
+              style={{ marginRight: 8, padding: 4 }}
+            >
+              <Ionicons name="arrow-back-outline" size={24} color="#000000" />
+            </TouchableOpacity>
+            <TextInput
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Tìm kiếm..."
+              placeholderTextColor="#8E8E8E"
+              autoFocus
+              style={{
+                flex: 1,
+                fontSize: 16,
+                color: '#000000',
+                paddingVertical: 4,
+              }}
+            />
+            {searchText.length > 0 && (
               <TouchableOpacity
-                key={tab}
-                style={[
-                  styles.headerTab,
-                  activeTab === tab && styles.headerTabActive,
-                ]}
-                onPress={() => setActiveTab(tab)}
-                activeOpacity={0.7}
+                onPress={() => setSearchText('')}
+                style={{ padding: 4 }}
               >
-                <View style={styles.headerTabInner}>
-                  <Text
-                    style={[
-                      styles.headerTabText,
-                      activeTab === tab && styles.headerTabTextActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                  {count > 0 && (
-                    <View
-                      style={[
-                        styles.tabBadge,
-                        tab === 'blocked' && styles.tabBadgeRed,
-                      ]}
-                    >
-                      <Text style={styles.tabBadgeText}>{count}</Text>
-                    </View>
+                <Ionicons name="close-circle" size={20} color="#8E8E8E" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : activeTab === 'inbox' ? (
+          <>
+            <View style={styles.logoHeaderLeft}>
+              <Image
+                source={require('../../assets/logosp.png')}
+                style={styles.logoHeaderImage}
+                resizeMode="contain"
+              />
+              <Text style={styles.logoHeaderText}>
+                Tin<Text style={{ color: color.FF6B3D }}>Nhắn</Text>
+              </Text>
+            </View>
+
+            <View style={styles.logoHeaderRight}>
+              <TouchableOpacity
+                style={styles.logoHeaderIconBtn}
+                onPress={() => setIsSearching(true)}
+              >
+                <Ionicons name="search-outline" size={20} color="#000000" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.logoHeaderIconBtn}
+                onPress={() => setShowHeaderMenu(true)}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color="#000000" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.logoHeaderIconBtn}
+                onPress={() => navigation.navigate('Notification')}
+              >
+                <View style={{ position: 'relative' }}>
+                  <Ionicons name="notifications-outline" size={20} color="#000000" />
+                  {unreadNotificationCount > 0 && (
+                    <View style={styles.bellRedDot} />
                   )}
                 </View>
               </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity
-            style={[styles.headerRightBtn, { marginRight: 8 }]}
-            activeOpacity={0.7}
-            onPress={() => setShowJoinGroupModal(true)}
-          >
-            <Ionicons name="link-outline" size={26} color="#262626" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerRightBtn}
-            activeOpacity={0.7}
-            onPress={handleOpenCreateGroup}
-          >
-            <Ionicons name="create-outline" size={26} color="#262626" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.searchWrap}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color="#8E8E8E" />
-          <TextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Tìm kiếm"
-            placeholderTextColor="#8E8E8E"
-            style={styles.searchInput}
-            returnKeyType="search"
-          />
-        </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.logoHeaderLeft}>
+              <TouchableOpacity
+                style={{ marginRight: 12, padding: 4 }}
+                onPress={() => setActiveTab('inbox')}
+              >
+                <Ionicons name="arrow-back-outline" size={24} color="#000000" />
+              </TouchableOpacity>
+              <Text style={styles.logoHeaderText}>
+                {activeTab === 'requests' ? 'Yêu cầu tin nhắn' : 'Tin nhắn bị chặn'}
+              </Text>
+            </View>
+          </>
+        )}
       </View>
 
       {loadingConversations && activeData.length === 0 ? (
@@ -910,11 +1186,91 @@ export default function ChatListScreen({ navigation }) {
                 <View style={styles.menuHandle} />
 
                 <Text style={styles.menuTitle} numberOfLines={1}>
-                  {selectedConversation?.peer?.name || selectedConversation?.name || 'Tùy chọn cuộc trò chuyện'}
+                  Tùy chọn đoạn chat
                 </Text>
 
+                {selectedConversation && !selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      const peerId = selectedConversation.peer?._id || selectedConversation.peer?.id;
+                      if (peerId) {
+                        navigation.navigate('UserProfile', { userId: peerId });
+                      }
+                    }}
+                  >
+                    <Ionicons name="person-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Xem trang cá nhân</Text>
+                  </TouchableOpacity>
+                )}
+
+                {selectedConversation && selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      navigation.navigate('ChatDetail', { conversationId: selectedConversation._id });
+                    }}
+                  >
+                    <Ionicons name="people-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Xem thông tin nhóm</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[
+                    styles.menuItem,
+                    styles.menuItemBorder
+                  ]}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    handleTogglePin(selectedConversation?._id);
+                  }}
+                >
+                  <Ionicons
+                    name={pinnedConversationIds.includes(selectedConversation?._id) ? 'pin' : 'pin-outline'}
+                    size={22}
+                    color="#374151"
+                  />
+                  <Text style={styles.menuItemText}>
+                    {pinnedConversationIds.includes(selectedConversation?._id) ? 'Bỏ ghim' : 'Ghim'}
+                  </Text>
+                </TouchableOpacity>
+
+                {selectedConversation && !selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      const phone = selectedConversation.peer?.phone || selectedConversation.peer?.phoneNumber;
+                      if (phone) {
+                        Linking.openURL(`tel:${phone}`);
+                      } else {
+                        Alert.alert('Gọi điện', 'Người dùng này chưa cập nhật số điện thoại.');
+                      }
+                    }}
+                  >
+                    <Ionicons name="call-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Gọi điện</Text>
+                  </TouchableOpacity>
+                )}
+
+                {selectedConversation && selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      Alert.alert('Gọi nhóm', 'Tính năng gọi thoại nhóm đang được phát triển.');
+                    }}
+                  >
+                    <Ionicons name="call-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Gọi nhóm</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
                   onPress={() => {
                     setShowOptionsModal(false);
                     handleToggleMute(selectedConversation);
@@ -930,17 +1286,6 @@ export default function ChatListScreen({ navigation }) {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.menuItem, styles.menuItemBorder]}
-                  onPress={() => {
-                    setShowOptionsModal(false);
-                    handleDeleteConversation(selectedConversation);
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
-                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa cuộc trò chuyện</Text>
-                </TouchableOpacity>
-
                 {selectedConversation && !selectedConversation.isGroup && (
                   <TouchableOpacity
                     style={[styles.menuItem, styles.menuItemBorder]}
@@ -949,12 +1294,34 @@ export default function ChatListScreen({ navigation }) {
                       handleBlockConversation(selectedConversation);
                     }}
                   >
-                    <Ionicons name="ban-outline" size={22} color="#EF4444" />
-                    <Text style={[styles.menuItemText, styles.menuItemDanger]}>Chặn người dùng</Text>
+                    <Ionicons name="ban-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Chặn</Text>
                   </TouchableOpacity>
                 )}
 
-                {/* Cancel button removed since clicking outside closes the modal */}
+                {selectedConversation && selectedConversation.isGroup && (
+                  <TouchableOpacity
+                    style={[styles.menuItem, styles.menuItemBorder]}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      handleLeaveGroup(selectedConversation);
+                    }}
+                  >
+                    <Ionicons name="log-out-outline" size={22} color="#374151" />
+                    <Text style={styles.menuItemText}>Rời nhóm</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowOptionsModal(false);
+                    handleDeleteConversation(selectedConversation);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Xóa đoạn chat</Text>
+                </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -1149,6 +1516,59 @@ export default function ChatListScreen({ navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <Modal
+        visible={showHeaderMenu}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowHeaderMenu(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowHeaderMenu(false)}>
+          <View style={styles.menuOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.menuContainer}>
+                <View style={styles.menuHandle} />
+
+                <Text style={styles.menuTitle}>Tùy chọn tin nhắn</Text>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    setActiveTab('requests');
+                  }}
+                >
+                  <Ionicons name="chatbox-ellipses-outline" size={22} color="#374151" />
+                  <Text style={styles.menuItemText}>Yêu cầu</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    handleOpenCreateGroup();
+                  }}
+                >
+                  <Ionicons name="people-outline" size={22} color="#374151" />
+                  <Text style={styles.menuItemText}>Tạo nhóm</Text>
+                </TouchableOpacity>
+
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemBorder]}
+                  onPress={() => {
+                    setShowHeaderMenu(false);
+                    setActiveTab('blocked');
+                  }}
+                >
+                  <Ionicons name="ban-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuItemText, styles.menuItemDanger]}>Đã chặn</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </Screen>
   );
 }
@@ -1156,7 +1576,55 @@ export default function ChatListScreen({ navigation }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: '#F5F6F8',
+  },
+  logoHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginHorizontal: 9,
+    marginTop: 0,
+    marginBottom: 0,
+    height: 74,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 94, 94, 0.19)',
+  },
+  logoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoHeaderImage: {
+    width: 44,
+    height: 44,
+    marginRight: -6,
+  },
+  logoHeaderText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  logoHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: -2,
+  },
+  logoHeaderIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellRedDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF0000',
   },
   header: {
     flexDirection: 'row',
@@ -1244,7 +1712,8 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   listContent: {
-    paddingBottom: 8,
+    paddingTop: 0,
+    paddingBottom: 24,
   },
   emptyList: {
     flexGrow: 1,
@@ -1257,15 +1726,22 @@ const styles = StyleSheet.create({
   conversationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#DBDBDB',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    marginHorizontal: 9,
+    marginVertical: 6,
+    height: 78,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 0,
+    elevation: 4,
   },
   conversationItemTouchable: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   itemActions: {
     flexDirection: 'row',
@@ -1291,6 +1767,24 @@ const styles = StyleSheet.create({
   avatarText: {
     color: '#FFFFFF',
     fontSize: 20,
+    fontWeight: '700',
+  },
+  groupAvatarGrid: {
+    width: 56,
+    height: 56,
+    position: 'relative',
+  },
+  groupAvatarItem: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  groupAvatarItemText: {
+    color: '#FFFFFF',
+    fontSize: 9,
     fontWeight: '700',
   },
   conversationBody: {
@@ -1339,19 +1833,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#262626',
   },
-  unreadBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#ED4956',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 5,
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    marginLeft: 6,
+    marginRight: 6,
+    alignSelf: 'center',
   },
-  unreadBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
+  moreOptionsBtn: {
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   blockedLabel: {
     fontSize: 14,

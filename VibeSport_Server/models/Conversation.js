@@ -35,6 +35,11 @@ const conversationSchema = new Schema(
       type: Date,
       default: Date.now,
     },
+    lastMessageSenderId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     unreadByUser: {
       type: Schema.Types.Mixed,
       default: {},

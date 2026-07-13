@@ -122,6 +122,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const [searchActiveTag, setSearchActiveTag] = useState(null);
   const searchDebounceRef = useRef(null);
   const searchInputRef = useRef(null);
+  const initialFeedRequestKeyRef = useRef('');
 
   useEffect(() => {
     getTagsRequest(token, 'sport')
@@ -136,8 +137,19 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   }, [dispatch, token]);
 
   useEffect(() => {
+    if (!token) {
+      initialFeedRequestKeyRef.current = '';
+      return;
+    }
+
+    const requestKey = `${activeTag || 'all'}:1`;
+    if (initialFeedRequestKeyRef.current === requestKey) {
+      return;
+    }
+
+    initialFeedRequestKeyRef.current = requestKey;
     dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
-  }, [dispatch, activeTag]);
+  }, [dispatch, activeTag, token]);
 
   // ─── Search logic ──────────────────────────────────────────────
   const executeSearch = useCallback((keyword, tag) => {
@@ -187,13 +199,18 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   };
 
   const handleRefresh = useCallback(() => {
+    if (!token || loading || refreshing) {
+      return;
+    }
+    initialFeedRequestKeyRef.current = `${activeTag || 'all'}:1`;
     dispatch(fetchPosts({ page: 1, limit: 10, tag: activeTag }));
-  }, [dispatch, activeTag]);
+  }, [dispatch, activeTag, loading, refreshing, token]);
 
   const handleLoadMore = () => {
-    if (!loading && !refreshing && hasMore) {
-      dispatch(fetchPosts({ page: page + 1, limit: 10, tag: activeTag }));
+    if (!token || loading || refreshing || !hasMore) {
+      return;
     }
+    dispatch(fetchPosts({ page: page + 1, limit: 10, tag: activeTag }));
   };
 
   const handleTagPress = (tagName) => {
