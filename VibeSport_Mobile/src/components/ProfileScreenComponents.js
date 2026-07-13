@@ -205,7 +205,7 @@ export function ProfileOptionsSheet({
 
 export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPickAvatar }) {
   const rawDisplayName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
-  const displayName = (rawDisplayName === 'Long Nguyên' || rawDisplayName === 'Long') ? 'Longabc' : rawDisplayName;
+  const displayName = (rawDisplayName === 'Long Nguyên' || rawDisplayName === 'Long Nguyễn' || rawDisplayName === 'Long') ? 'Longabc' : rawDisplayName;
   const bio = profile?.bio || 'Chưa cập nhật tiểu sử';
   const isLongNguyen = displayName === 'Long Nguyen';
 
@@ -392,7 +392,7 @@ function formatCount(num) {
 export const ProfilePostCard = memo(function ProfilePostCard({ post, profile, onOpenPost, onToggleLike, onShare, onOpenMenu }) {
   const author = post.userId || {};
   const rawAuthorName = author.name || profile?.name || 'Thành viên VibeSport';
-  const authorName = (rawAuthorName === 'Long Nguyên' || rawAuthorName === 'Long') ? 'Longabc' : rawAuthorName;
+  const authorName = (rawAuthorName === 'Long Nguyên' || rawAuthorName === 'Long Nguyễn' || rawAuthorName === 'Long') ? 'Longabc' : rawAuthorName;
   const authorPicture = author.picture || profile?.picture;
   const isLiked = Boolean(post.isLiked);
   const isLongNguyen = authorName === 'Long Nguyen';

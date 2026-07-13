@@ -360,7 +360,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const renderPostItem = ({ item }) => {
     const isSelf = isPostOwner(user, item);
     const rawName = item.userId?.name || 'Thành viên VibeSport';
-    const postOwnerName = (rawName === 'Long Nguyên' || rawName === 'Long') ? 'Longabc' : rawName;
+    const postOwnerName = (rawName === 'Long Nguyên' || rawName === 'Long Nguyễn' || rawName === 'Long') ? 'Longabc' : rawName;
     const firstLetter = postOwnerName ? postOwnerName.charAt(0).toUpperCase() : '?';
 
     return (
@@ -594,9 +594,9 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
               <View style={styles.greetingRow}>
                 <Text style={styles.greetingText}>Xin chào</Text>
                 <View style={styles.userBadge}>
-                  <Text style={styles.userBadgeText}>{(user?.name === 'Long Nguyên' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên')}</Text>
+                  <Text style={styles.userBadgeText}>{(user?.name === 'Long Nguyên' || user?.name === 'Long Nguyễn' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên')}</Text>
                 </View>
-                <Text style={styles.greetingText}>👋</Text>
+                <MaterialCommunityIcons name="hand-wave-outline" size={24} color="#000000" style={{ marginLeft: 2 }} />
               </View>
               <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
               <TouchableOpacity
