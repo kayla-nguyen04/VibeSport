@@ -44,4 +44,5 @@ const styles = StyleSheet.create({
   },
 });
 
+export { BackButton };
 export default BackButton;

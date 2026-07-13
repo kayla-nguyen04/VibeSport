@@ -24,6 +24,10 @@ import { createMatch, updateMatch, deleteMatch } from "../services/matchService"
 import { getPostsRequest } from "../services/postApi";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { TagIcon } from "../components/TagIcon";
+import { primary } from "../theme";
+
+const ORANGE = primary.DEFAULT; // '#FF6B3D'
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -162,16 +166,23 @@ function SoccerFieldIcon({ color = '#1A1A1A' }) {
 }
 
 function NeoButton({ isSelected, onPress, children }) {
-  const themeColor = isSelected ? "#FF6B35" : "#CCCCCC";
+  const shadowColor = "#E0E0E0";
+  const borderColor = isSelected ? ORANGE : "#CCCCCC";
   return (
     <View style={styles.neoContainer}>
-      {isSelected && (
-        <View style={[styles.neoShadow, { backgroundColor: '#FF6B35' }]} />
-      )}
+      <View style={[styles.neoShadow, { backgroundColor: shadowColor }]} />
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.9}
-        style={[styles.neoContent, { borderColor: themeColor, backgroundColor: '#FFFFFF' }]}
+        style={[
+          styles.neoContent,
+          {
+            borderColor: borderColor,
+            backgroundColor: '#FFFFFF',
+            top: isSelected ? 3 : 0,
+            left: isSelected ? 3 : 0,
+          }
+        ]}
       >
         {children}
       </TouchableOpacity>
@@ -180,24 +191,26 @@ function NeoButton({ isSelected, onPress, children }) {
 }
 
 function CourtTypeButton({ label, subLabel, isSelected, onPress }) {
+  const shadowColor = "#E0E0E0";
+  const borderColor = isSelected ? ORANGE : "#CCCCCC";
   return (
     <View style={styles.courtTypeContainer}>
-      {isSelected && (
-        <View style={[styles.courtTypeShadow, { backgroundColor: '#FF6B35' }]} />
-      )}
+      <View style={[styles.courtTypeShadow, { backgroundColor: shadowColor }]} />
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.9}
         style={[
           styles.courtTypeContent,
           {
-            borderColor: isSelected ? '#FF6B35' : '#CCCCCC',
+            borderColor: borderColor,
             backgroundColor: '#FFFFFF',
+            top: isSelected ? 3 : 0,
+            left: isSelected ? 3 : 0,
           },
         ]}
       >
-        <Text style={[styles.courtTypeLabel, { color: isSelected ? '#FF6B35' : '#1A1A1A' }]}>{label}</Text>
-        <Text style={[styles.courtTypeSubLabel, { color: isSelected ? '#FF6B35' : '#999' }]}>{subLabel}</Text>
+        <Text style={[styles.courtTypeLabel, { color: isSelected ? ORANGE : '#1A1A1A' }]}>{label}</Text>
+        <Text style={[styles.courtTypeSubLabel, { color: isSelected ? ORANGE : '#999' }]}>{subLabel}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1419,7 +1432,7 @@ export default function CreateMatchScreen({ navigation, route }) {
 
           {/* Bench */}
           <View style={pitchModal.benchSection}>
-            <Text style={pitchModal.benchLabel}>🪑 Thành viên dự bị (không bắt buộc)</Text>
+            <Text style={pitchModal.benchLabel}>Thành viên dự bị (không bắt buộc)</Text>
             <Text style={pitchModal.benchHint}>Mỗi đội tối đa 3 người dự bị • Để trống nếu không cần</Text>
             <View style={pitchModal.benchRow}>
               {/* Team 1 Bench */}
@@ -1471,13 +1484,14 @@ export default function CreateMatchScreen({ navigation, route }) {
 
       <ScreenHeader style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
           onPress={() => navigation && navigation.goBack()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.backButton}
         >
-          <Text style={styles.backArrow}>←</Text>
+          <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isEditMode ? "Sửa trận đấu" : "Tạo trận đấu"}</Text>
-        <View style={styles.headerSpacer} />
+        <View style={{ width: 24 }} />
       </ScreenHeader>
 
       <ScrollView
@@ -1495,24 +1509,24 @@ export default function CreateMatchScreen({ navigation, route }) {
               onPress={() => handleSelectSport(item.key)}
             >
               {item.key === "badminton" && (
-                <MaterialCommunityIcons
-                  name="badminton"
+                <TagIcon
+                  tagName="Cầu lông"
                   size={32}
-                  color={sport === "badminton" ? "#FF6B35" : "#333"}
+                  color={sport === "badminton" ? ORANGE : "#333"}
                 />
               )}
               {item.key === "football" && (
-                <MaterialCommunityIcons
-                  name="soccer"
+                <TagIcon
+                  tagName="Bóng đá"
                   size={32}
-                  color={sport === "football" ? "#FF6B35" : "#333"}
+                  color={sport === "football" ? ORANGE : "#333"}
                 />
               )}
               {item.key === "pickleball" && (
-                <MaterialCommunityIcons
-                  name="tennis-ball"
+                <TagIcon
+                  tagName="Pickleball"
                   size={32}
-                  color={sport === "pickleball" ? "#FF6B35" : "#333"}
+                  color={sport === "pickleball" ? ORANGE : "#333"}
                 />
               )}
             </NeoButton>
@@ -1761,7 +1775,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             })
           }
         >
-          <Ionicons name="location-outline" size={16} color="#FF6B35" style={styles.mapLinkIcon} />
+          <Ionicons name="location-outline" size={16} color={ORANGE} style={styles.mapLinkIcon} />
           <Text style={styles.mapLinkText}>Chọn vị trí trên bản đồ</Text>
         </TouchableOpacity>
         {locationCoords && (
@@ -1815,44 +1829,32 @@ export default function CreateMatchScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F2F3F5",
   },
 
   // Header
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E8E8E8",
-    borderRadius: 30,
-    marginHorizontal: 16,
-    marginTop: Platform.OS === "ios" ? 8 : 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginHorizontal: 10,
+    marginTop: Platform.OS === 'ios' ? 8 : 10,
     marginBottom: 8,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 22,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backArrow: {
-    fontSize: 22,
-    color: "#333",
-    fontWeight: "500",
+    padding: 4,
   },
   headerTitle: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1a1a1a",
-    marginLeft: 4,
-  },
-  headerSpacer: {
-    width: 36,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginLeft: 12,
   },
 
   // ScrollView
@@ -1882,16 +1884,14 @@ const styles = StyleSheet.create({
   },
   neoShadow: {
     position: 'absolute',
-    top: 4,
-    left: 4,
+    top: 5,
+    left: 5,
     width: '100%',
     height: '100%',
     borderRadius: 18,
   },
   neoContent: {
     position: 'absolute',
-    top: 0,
-    left: 0,
     width: '100%',
     height: '100%',
     borderWidth: 1.5,
@@ -1909,16 +1909,14 @@ const styles = StyleSheet.create({
   },
   courtTypeShadow: {
     position: 'absolute',
-    top: 4,
-    left: 4,
+    top: 5,
+    left: 5,
     width: '100%',
     height: '100%',
     borderRadius: 14,
   },
   courtTypeContent: {
     position: 'absolute',
-    top: 0,
-    left: 0,
     width: '100%',
     height: '100%',
     borderWidth: 1.5,
@@ -1949,7 +1947,7 @@ const styles = StyleSheet.create({
     left: 3,
     right: -3,
     bottom: -3,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#CCCCCC',
     borderRadius: 14,
   },
   pitchTriggerContent: {
@@ -1960,7 +1958,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#1A1A1A',
+    borderColor: '#CCCCCC',
     borderRadius: 14,
     paddingHorizontal: 14,
     flexDirection: 'row',
@@ -2183,7 +2181,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FF6B35",
+    backgroundColor: ORANGE,
     paddingVertical: 15,
     borderRadius: 30,
   },
@@ -2271,7 +2269,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#FF6B35",
+    backgroundColor: ORANGE,
     alignItems: "center",
     justifyContent: "center",
   },
