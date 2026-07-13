@@ -451,7 +451,7 @@ export default function TeamsScreen({ navigation }) {
       <View style={styles.headerWrap}>
         <View style={styles.header}>
           <View style={styles.headerBrand}>
-            <Image source={require("../../assets/logo_vibe.png")} style={styles.headerLogo} resizeMode="contain" />
+            <Image source={require("../../assets/logo_vibesport_icon.png")} style={styles.headerLogo} resizeMode="contain" />
             <Text style={styles.headerTitle}>
               <Text style={styles.headerTitleBlack}>Tạo</Text>
               <Text style={styles.headerTitleOrange}>Trận</Text>
