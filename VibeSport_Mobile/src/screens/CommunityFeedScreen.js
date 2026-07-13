@@ -598,7 +598,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 </View>
                 <Text style={styles.greetingText}>👋</Text>
               </View>
-              <Text style={styles.bannerSubtext}>Longabc</Text>
+              <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
               <TouchableOpacity
                 onPress={() => navigation.navigate('CreatePost')}
                 style={styles.createPostBtn}
