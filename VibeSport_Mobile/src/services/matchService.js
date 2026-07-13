@@ -205,3 +205,23 @@ export async function updateMemberPosition(matchId, ownerId, userId, positionId)
     body: JSON.stringify({ ownerId, userId, positionId }),
   });
 }
+
+export async function acceptTeamInvite(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/accept-invite`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export async function rejectTeamInvite(matchId, userId) {
+  return matchRequest(`${MATCHES_URL}/${matchId}/reject-invite`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ userId }),
+  });
+}

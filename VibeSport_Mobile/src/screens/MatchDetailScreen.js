@@ -12,8 +12,10 @@ import {
   Platform,
   Modal,
   TextInput,
+  Pressable,
 } from "react-native";
 import { useSelector } from "react-redux";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getMatchById,
   deleteMatch,
@@ -26,12 +28,18 @@ import {
   inviteTeamMember,
   acceptInvite,
   approveInvite,
+  acceptTeamInvite,
+  rejectTeamInvite,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { TagIcon } from "../components/TagIcon";
+import { primary } from "../theme";
 
-const SPORT_ICONS = { football: "⚽", badminton: "🏸", pickleball: "🏓" };
+const ORANGE = primary.DEFAULT; // '#FF6B3D'
+const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
 const AVATAR_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FB8C00", "#8E24AA", "#00ACC1"];
 
 // ─── Football position definitions (mirrored from CreateMatchScreen) ────────
@@ -118,8 +126,35 @@ const getInitials = (name) => {
 
 const formatCost = (c) => {
   if (!c || c === 0) return "Miễn phí";
-  if (c >= 1000) return `${c / 1000}K / người`;
-  return `${c} VND`;
+  const formatted = c.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formatted} vnd/ người`;
+};
+
+const getRelativeTime = (dateStr) => {
+  try {
+    const now = new Date();
+    const created = new Date(dateStr);
+    const diffMs = now - created;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "Vừa xong";
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} ngày trước`;
+  } catch (e) {
+    return "Mới đăng";
+  }
+};
+
+const formatTimeLabel = (timeStr) => {
+  if (!timeStr) return "";
+  const cleaned = timeStr.trim();
+  if (cleaned.includes(":")) {
+    const parts = cleaned.split(":");
+    return `${parts[0]}g ${parts[1]}p`;
+  }
+  return cleaned;
 };
 
 const parseDate = (dateStr) => {
@@ -144,30 +179,35 @@ const normalizeId = (id) => (id == null ? "" : String(id));
 
 const getUserId = (user) => normalizeId(typeof user === "object" ? user?._id || user?.id : user);
 
-function UserRow({ user, label, badge, onPress, rightAction }) {
+function UserRow({ user, label, badge, onPress, rightAction, isMe, showTeammatesIcon }) {
   if (!user || typeof user !== "object") return null;
   const name = user.name || "Người dùng";
 
   return (
-    <View style={styles.userRowWrap}>
-      <View style={styles.userRowContent}>
+    <View style={styles.userRowCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         <TouchableOpacity style={styles.userRow} onPress={onPress} activeOpacity={0.7} disabled={!onPress}>
-          <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[0] }]}>
+          <View style={[styles.userAvatar, { backgroundColor: '#ef4444' }]}>
             <Text style={styles.userInitials}>{getInitials(name)}</Text>
           </View>
           <View style={styles.userInfo}>
-            <View style={styles.userNameRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.userName}>{name}</Text>
-              {badge ? (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{badge}</Text>
-                </View>
-              ) : null}
+              {isMe && <Text style={{ fontSize: 13, color: '#888' }}>• bạn</Text>}
+              {showTeammatesIcon && (
+                <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginLeft: 2 }} />
+              )}
             </View>
-            {label ? <Text style={styles.userMeta}>{label}</Text> : null}
-            {user.area ? <Text style={styles.userMeta}>📍 {user.area}</Text> : null}
+            {label ? <Text style={styles.userSub}>{label}</Text> : null}
           </View>
         </TouchableOpacity>
+        
+        {badge ? (
+          <View style={styles.figmaBadge}>
+            <Text style={styles.figmaBadgeText}>{badge}</Text>
+          </View>
+        ) : null}
+        
         {rightAction ? <View style={styles.userRowRightAction}>{rightAction}</View> : null}
       </View>
     </View>
@@ -175,9 +215,12 @@ function UserRow({ user, label, badge, onPress, rightAction }) {
 }
 
 export default function MatchDetailScreen({ navigation, route }) {
+  const { matchId: routeMatchId } = route.params;
+  const insets = useSafeAreaInsets();
+  const chatUnreadCount = useSelector((state) => state.chat?.unreadCount || 0);
   const user = useSelector((state) => state.auth?.user);
   const token = useSelector((state) => state.auth?.token);
-  const matchId = route?.params?.matchId;
+  const matchId = routeMatchId || route?.params?.matchId;
   const initialMatch = route?.params?.match;
   const [match, setMatch] = useState(initialMatch || null);
   const [loading, setLoading] = useState(!initialMatch);
@@ -193,6 +236,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [showKickModal, setShowKickModal] = useState(false);
   const [showJoinRequests, setShowJoinRequests] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
 
@@ -225,6 +269,19 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   const totalNeeded = selectedPositionIds.length + benchTeam1 + benchTeam2;
 
+  const neededRolesList = useMemo(() => {
+    if (match?.sport !== "football") return [];
+    const counts = {};
+    const processTeam = (teamRoles) => {
+      Object.entries(teamRoles).forEach(([role, qty]) => {
+        counts[role] = (counts[role] || 0) + qty;
+      });
+    };
+    processTeam(teamBreakdown.teamA.roles);
+    processTeam(teamBreakdown.teamB.roles);
+    return Object.entries(counts).map(([role, qty]) => ({ role, qty }));
+  }, [match?.sport, teamBreakdown]);
+
   const reloadMatch = async () => {
     if (!matchId) return;
     const data = await getMatchById(matchId);
@@ -253,16 +310,25 @@ export default function MatchDetailScreen({ navigation, route }) {
     : null;
   const ownerId = getUserId(ownerRoleEntry?.userId || creator || match.createdBy);
   const isOwner = !!ownerId && String(ownerId) === String(userId);
-  const icon = SPORT_ICONS[match.sport] || "⚽";
   const currentCount = match.currentPlayers || match.participants?.length || 0;
   const maxCount = match.maxPlayers || 10;
   const coords = match.location;
   const participants = match.participants || [];
   const pendingRequests = match.pendingJoinRequests || [];
+
+  // Merge creator into participant list (always show first)
+  const allParticipants = useMemo(() => {
+    if (!creator) return participants;
+    const creatorInList = participants.some(p => getUserId(p) === creatorId);
+    if (creatorInList) return participants;
+    return [creator, ...participants];
+  }, [creator, creatorId, participants]);
   const pendingRequestPositions = match.pendingJoinRequestPositions || [];
+  const invitedMembers = match.invitedMembers || [];
 
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
+  const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
@@ -304,7 +370,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleRequestJoin = () => {
-    if (match.sport === "football" && (selectedPositionIds.length > 0 || benchTeam1 > 0 || benchTeam2 > 0)) {
+    if (match.sport === "football" && selectedPositionIds.length > 0) {
       setShowPositionModal(true);
       return;
     }
@@ -365,36 +431,6 @@ export default function MatchDetailScreen({ navigation, route }) {
         ? prev.filter(id => id !== positionId)
         : [...prev, positionId]
     );
-  };
-
-  const getPositionStatus = (posId) => {
-    if (!match) return { isOccupied: false, isPending: false, label: "" };
-
-    const occupiedEntry = (match.memberPositions || []).find((mp) => {
-      const isParticipant = (match.participants || []).some((p) => {
-        const pid = typeof p === "object" ? p._id || p.id : p;
-        return String(pid) === String(mp.userId);
-      });
-      return mp.positionId === posId && isParticipant;
-    });
-
-    if (occupiedEntry) {
-      return { isOccupied: true, isPending: false, label: "Đã có người tham gia" };
-    }
-
-    const pendingEntry = (match.pendingJoinRequestPositions || []).find((entry) => {
-      const isPending = (match.pendingJoinRequests || []).some((p) => {
-        const pid = typeof p === "object" ? p._id || p.id : p;
-        return String(pid) === String(entry.userId);
-      });
-      return entry.positionIds && entry.positionIds.includes(posId) && isPending && String(entry.userId) !== String(userId);
-    });
-
-    if (pendingEntry) {
-      return { isOccupied: false, isPending: true, label: "Đã có người xin tham gia" };
-    }
-
-    return { isOccupied: false, isPending: false, label: "" };
   };
 
   const handleAcceptRequest = async (requestUserId) => {
@@ -477,12 +513,13 @@ export default function MatchDetailScreen({ navigation, route }) {
       setShowInviteModal(true);
       const res = await getFollowingListRequest(token);
       const list = res?.data || [];
-      // Filter out users already participating or with pending requests
+      // Filter out users already participating, requested, or invited
       const participantIds = participants.map((p) => getUserId(p));
       const pendingIds = pendingRequests.map((p) => getUserId(p));
+      const invitedIds = (match.invitedMembers || []).map((p) => getUserId(p));
       const filtered = list.filter((u) => {
         const uid = String(u._id || u.id);
-        return !participantIds.includes(uid) && !pendingIds.includes(uid) && uid !== ownerId;
+        return !participantIds.includes(uid) && !pendingIds.includes(uid) && !invitedIds.includes(uid) && uid !== ownerId;
       });
       setFollowingUsers(filtered);
     } catch (err) {
@@ -504,6 +541,32 @@ export default function MatchDetailScreen({ navigation, route }) {
       setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
     } catch (err) {
       Alert.alert("Lỗi", err.message || "Không thể mời");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAcceptInvite = async () => {
+    try {
+      setActionLoading(true);
+      const data = await acceptTeamInvite(match._id, userId);
+      setMatch(data);
+      Alert.alert("Thành công", "Bạn đã tham gia đội này.");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể chấp nhận lời mời");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectInvite = async () => {
+    try {
+      setActionLoading(true);
+      const data = await rejectTeamInvite(match._id, userId);
+      setMatch(data);
+      Alert.alert("Đã từ chối", "Bạn đã từ chối lời mời tham gia đội.");
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể từ chối lời mời");
     } finally {
       setActionLoading(false);
     }
@@ -537,197 +600,155 @@ export default function MatchDetailScreen({ navigation, route }) {
   const content = loading || !match ? (
     <Screen style={styles.safeArea}>
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#0066cc" />
+        <ActivityIndicator size="large" color={ORANGE} />
       </View>
     </Screen>
   ) : (
     <Screen style={styles.safeArea}>
-      <ScreenHeader style={styles.header}>
+      <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backArrow}>←</Text>
+          <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
-        <View style={styles.headerSpacer} />
-      </ScreenHeader>
+        
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {!isOwner && !isParticipant && !hasPendingRequest && !isEnded && (
+            <TouchableOpacity
+              style={styles.joinHeaderBtn}
+              onPress={handleRequestJoin}
+              disabled={actionLoading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.joinHeaderBtnText}>Yêu cầu tham gia</Text>
+              <View style={styles.redDot} />
+            </TouchableOpacity>
+          )}
+
+          {isOwner && match.status !== "completed" && (
+            <>
+              <TouchableOpacity
+                style={[styles.joinHeaderBtn, { width: 90 }]}
+                onPress={() => setShowRequestModal(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.joinHeaderBtnText}>Yêu cầu</Text>
+                {pendingRequests.length > 0 && <View style={styles.redDot} />}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={{ padding: 4 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => setShowOptionsModal(true)}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color="#333" />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.sportSquare}>
-              <Text style={styles.sportIcon}>{icon}</Text>
+              <TagIcon tagName={SPORT_TAG_MAP[match.sport] || "Bóng đá"} size={28} color="#fff" />
             </View>
             <View style={styles.titleBlock}>
               <Text style={styles.title}>{match.title}</Text>
-              <Text style={styles.statusText}>
-                {match.status === "full" ? "Đã đủ người" : match.status === "completed" ? "Đã kết thúc" : "Tìm người"}
-              </Text>
+              <Text style={styles.timeAgoText}>{match.createdAt ? getRelativeTime(match.createdAt) : "Mới đăng"}</Text>
             </View>
-          </View>
-
-          <View style={styles.costStrip}>
-            <Text style={styles.costLabel}>🪙 Chi phí sân</Text>
-            <Text style={styles.costValue}>{formatCost(match.costPerPerson)}</Text>
           </View>
 
           <View style={styles.infoSection}>
             <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>🕒</Text>
-              <Text style={styles.infoText}>{match.startTime} • {getDayLabel(match.date)}</Text>
+              <View style={styles.infoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
+              <Text style={styles.infoText}>{formatTimeLabel(match.startTime)} - {getDayLabel(match.date)} - {match.date}</Text>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>📍</Text>
-              <Text style={styles.infoText}>{match.locationName}</Text>
-            </View>
-            {coords?.lat != null && coords?.lng != null && (
-              <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
-                <Text style={styles.viewLocationIcon}>🗺️</Text>
-                <Text style={styles.viewLocationText}>Xem vị trí trên bản đồ</Text>
-                <Text style={styles.viewLocationArrow}>→</Text>
-              </TouchableOpacity>
-            )}
-            <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>{icon}</Text>
-              <Text style={styles.infoText}>
-                {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}
-              </Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoIcon}>👥</Text>
-              <Text style={styles.infoText}>{currentCount}/{maxCount} người</Text>
-            </View>
-          </View>
 
-          {match.note ? (
-            <View style={styles.noteBox}>
-              <Text style={styles.noteLabel}>Ghi chú</Text>
-              <Text style={styles.noteText}>{match.note}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Số người cần tìm */}
-        {match.sport === "football" && totalNeeded > 0 && (
-          <View style={styles.sectionCard}>
-            <View style={styles.neededHeaderRow}>
-              <Text style={styles.sectionTitle}>🔍 Số người cần tìm</Text>
-              <View style={styles.totalNeededBadge}>
-                <Text style={styles.totalNeededText}>{totalNeeded} người</Text>
-              </View>
-            </View>
-            {match.maxPlayers && getFootballFormatLabel(match.maxPlayers) ? (
+            {match.note ? (
               <View style={styles.infoRow}>
-                <Text style={[styles.infoIcon, { fontSize: 12 }]}>🏟️</Text>
-                <Text style={styles.helperInfoText}>
-                  Loại sân: {getFootballFormatLabel(match.maxPlayers)} • Tối đa {match.maxPlayers} người
-                </Text>
+                <View style={styles.infoIcon}><MaterialCommunityIcons name="square-edit-outline" size={16} color="#333" /></View>
+                <Text style={styles.infoText}>{match.note}</Text>
               </View>
             ) : null}
 
-            {/* Team 1 */}
-            {(teamBreakdown.teamA.count > 0 || teamBreakdown.teamA.bench > 0) && (
-              <View style={styles.teamBlock}>
-                <View style={styles.teamLabelRow}>
-                  <View style={[styles.teamDot, { backgroundColor: "#3b82f6" }]} />
-                  <Text style={styles.teamLabel}>Đội 1{getFootballPlayerCountPerTeam(match.maxPlayers) ? ` (tối đa ${getFootballPlayerCountPerTeam(match.maxPlayers)})` : ""}</Text>
-                  <Text style={styles.teamCount}>
-                    {teamBreakdown.teamA.count + teamBreakdown.teamA.bench} người
-                  </Text>
-                </View>
-                <View style={styles.roleTags}>
-                  {Object.entries(teamBreakdown.teamA.roles).map(([role, qty]) => (
-                    <View
-                      key={`a_${role}`}
-                      style={[styles.roleTag, { backgroundColor: ROLE_TAG_COLORS[role]?.bg || "#f3f4f6" }]}
-                    >
-                      <Text style={[styles.roleTagText, { color: ROLE_TAG_COLORS[role]?.text || "#374151" }]}>
-                        {ROLE_LABELS[role] || role} ×{qty}
-                      </Text>
-                    </View>
-                  ))}
-                  {teamBreakdown.teamA.bench > 0 && (
-                    <View style={[styles.roleTag, { backgroundColor: "#f3f4f6" }]}>
-                      <Text style={[styles.roleTagText, { color: "#6b7280" }]}>
-                        Dự bị ×{teamBreakdown.teamA.bench}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-
-            {/* Team 2 */}
-            {(teamBreakdown.teamB.count > 0 || teamBreakdown.teamB.bench > 0) && (
-              <View style={styles.teamBlock}>
-                <View style={styles.teamLabelRow}>
-                  <View style={[styles.teamDot, { backgroundColor: "#ef4444" }]} />
-                  <Text style={styles.teamLabel}>Đội 2{getFootballPlayerCountPerTeam(match.maxPlayers) ? ` (tối đa ${getFootballPlayerCountPerTeam(match.maxPlayers)})` : ""}</Text>
-                  <Text style={styles.teamCount}>
-                    {teamBreakdown.teamB.count + teamBreakdown.teamB.bench} người
-                  </Text>
-                </View>
-                <View style={styles.roleTags}>
-                  {Object.entries(teamBreakdown.teamB.roles).map(([role, qty]) => (
-                    <View
-                      key={`b_${role}`}
-                      style={[styles.roleTag, { backgroundColor: ROLE_TAG_COLORS[role]?.bg || "#f3f4f6" }]}
-                    >
-                      <Text style={[styles.roleTagText, { color: ROLE_TAG_COLORS[role]?.text || "#374151" }]}>
-                        {ROLE_LABELS[role] || role} ×{qty}
-                      </Text>
-                    </View>
-                  ))}
-                  {teamBreakdown.teamB.bench > 0 && (
-                    <View style={[styles.roleTag, { backgroundColor: "#f3f4f6" }]}>
-                      <Text style={[styles.roleTagText, { color: "#6b7280" }]}>
-                        Dự bị ×{teamBreakdown.teamB.bench}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
+            <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}>
+              <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
+              <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+            </View>
           </View>
-        )}
 
-        {creator && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Người tạo trận</Text>
-            <UserRow
-              user={creator}
-              label="Chủ trận"
-              badge="Tạo trận"
-              onPress={() => openProfile(creator)}
-            />
+          <View style={styles.gridContainer}>
+            <View style={styles.gridColumn}>
+              <Text style={styles.gridLabel}>Số người đã tuyển.</Text>
+              <View style={styles.gridBox}>
+                <Ionicons name="people-outline" size={16} color="#333" />
+                <Text style={styles.gridValue}>{currentCount}/{maxCount}</Text>
+              </View>
+            </View>
+            <View style={styles.gridColumn}>
+              <Text style={styles.gridLabel}>Tiền cọc sân.</Text>
+              <View style={styles.gridBox}>
+                <Ionicons name="wallet-outline" size={16} color="#333" />
+                <Text style={styles.gridValue} numberOfLines={1}>{formatCost(match.costPerPerson)}</Text>
+              </View>
+            </View>
           </View>
-        )}
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>
-              Người tham gia ({participants.length})
-            </Text>
-            {isOwner && (
-              <TouchableOpacity style={styles.inviteSmallBtn} onPress={handleOpenInvite} activeOpacity={0.7}>
-                <Text style={styles.inviteSmallBtnText}>＋ Mời</Text>
+          {neededRolesList.length > 0 && (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={styles.gridLabel}>Vị trí cần tìm.</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {neededRolesList.map(({ role, qty }) => (
+                  <View key={`needed_${role}`} style={styles.outlineRoleTag}>
+                    <Text style={styles.outlineRoleTagText}>{ROLE_LABELS[role] || role} x{qty}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.locationRowContainer}>
+            <View style={styles.locationInfoCol}>
+              <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
+              <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
+            </View>
+            {coords?.lat != null && coords?.lng != null && (
+              <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
+                <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
               </TouchableOpacity>
             )}
           </View>
-          {participants.length === 0 ? (
+        </View>
+
+        {/* Creator is shown in participant list below with badge */}
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
+            {isOwner && (
+              <TouchableOpacity style={styles.inviteSmallBtn} onPress={handleOpenInvite} activeOpacity={0.7}>
+                <Text style={styles.inviteSmallBtnText}>Mời +</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {allParticipants.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
           ) : (
-            participants.map((p, idx) => {
+            allParticipants.map((p, idx) => {
               const pid = getUserId(p);
               const isCreatorParticipant = pid === creatorId;
+              const isMe = String(pid) === String(userId);
               return (
                 <UserRow
                   key={pid || idx}
                   user={typeof p === "object" ? p : { name: "Người chơi" }}
-                  label={isCreatorParticipant ? "Chủ trận" : "Thành viên"}
-                  badge={isCreatorParticipant ? "Tạo trận" : null}
+                  badge={isCreatorParticipant ? "Người tạo trận" : "Người tham gia"}
+                  isMe={isMe}
+                  showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
                   rightAction={
                     isOwner && !isCreatorParticipant && !isEnded ? (
@@ -746,130 +767,76 @@ export default function MatchDetailScreen({ navigation, route }) {
           )}
         </View>
 
-        {isOwner && pendingRequests.length > 0 && (
-          <View style={styles.requestSummaryCard}>
-            <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>Yêu cầu tham gia ({pendingRequests.length})</Text>
-              <TouchableOpacity
-                style={styles.openRequestBtn}
-                onPress={() => setShowRequestModal(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.openRequestBtnText}>Xem tất cả</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.requestSummaryText} numberOfLines={2}>
-              Nhấn vào để xem chi tiết yêu cầu tham gia, vị trí ứng tuyển và chấp nhận/từ chối.
-            </Text>
-          </View>
-        )}
+        
 
         <Modal visible={showRequestModal} animationType="slide">
           <Screen style={styles.safeArea}>
-            <ScreenHeader style={styles.header}>
+            <View style={styles.header}>
               <TouchableOpacity style={styles.backButton} onPress={() => setShowRequestModal(false)}>
-                <Text style={styles.backArrow}>←</Text>
+                <Ionicons name="arrow-back" size={24} color="#333" />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Yêu cầu tham gia</Text>
               <View style={styles.headerSpacer} />
-            </ScreenHeader>
+            </View>
 
             <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-              {pendingRequests.map((p, idx) => {
-                const requestUserId = getUserId(p);
-                const requestPositions = getRequestPositions(requestUserId);
-                return (
-                  <View key={requestUserId || idx} style={styles.requestModalItem}>
-                    <UserRow
-                      user={typeof p === "object" ? p : { name: "Người dùng" }}
-                      label="Muốn tham gia trận"
-                      onPress={() => openProfile(p)}
-                      rightAction={
-                        <View style={styles.requestActions}>
-                          <TouchableOpacity
-                            style={styles.acceptBtn}
-                            onPress={() => handleAcceptRequest(requestUserId)}
-                            disabled={actionLoading}
-                          >
-                            <Text style={styles.acceptBtnText}>Chấp nhận</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.rejectBtn}
-                            onPress={() => handleRejectRequest(requestUserId)}
-                            disabled={actionLoading}
-                          >
-                            <Text style={styles.rejectBtnText}>Từ chối</Text>
-                          </TouchableOpacity>
+              {pendingRequests.length === 0 ? (
+                <View style={styles.centered}>
+                  <Text style={styles.emptyText}>Không có yêu cầu nào</Text>
+                </View>
+              ) : (
+                pendingRequests.map((p, idx) => {
+                  const requestUserId = getUserId(p);
+                  const requestUser = typeof p === "object" ? p : { name: "Người dùng" };
+                  const requestName = requestUser.name || "Người dùng";
+                  const requestPositions = getRequestPositions(requestUserId);
+                  const posLabels = requestPositions.map((posId) => {
+                    const pos = ALL_POSITIONS.find((item) => item.id === posId);
+                    return pos?.label || posId;
+                  });
+                  return (
+                    <View key={requestUserId || idx} style={styles.requestFigmaCard}>
+                      <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }} onPress={() => openProfile(p)} activeOpacity={0.7}>
+                        <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[idx % AVATAR_COLORS.length] }]}>
+                          <Text style={styles.userInitials}>{getInitials(requestName)}</Text>
                         </View>
-                      }
-                    />
-                    {requestPositions.length > 0 && (
-                      <View style={styles.requestPositionBox}>
-                        <Text style={styles.requestPositionLabel}>Vị trí ứng tuyển</Text>
-                        <View style={styles.requestPositionTags}>
-                          {requestPositions.map((posId) => {
-                            let pos = ALL_POSITIONS.find((item) => item.id === posId);
-                            if (!pos && posId.includes("bench")) {
-                              const isTeam1 = posId.startsWith("t1_");
-                              const numStr = posId.split("_").pop();
-                              const benchTeam1 = match?.benchMembersTeam1 || 0;
-                              const benchTeam2 = match?.benchMembersTeam2 || 0;
-                              pos = {
-                                id: posId,
-                                label: `Dự bị${(isTeam1 ? benchTeam1 : benchTeam2) > 1 ? ` ${numStr}` : ""}`,
-                                role: "bench",
-                                isBench: true,
-                              };
-                            }
-                            if (!pos) return null;
-                            const teamText = `Đội ${posId.startsWith('t1_') ? '1' : '2'}`;
-                            return (
-                              <View key={posId} style={styles.requestPositionTag}>
-                                <Text style={styles.requestPositionTagText}>
-                                  {pos.label} ({teamText}){pos.isBench ? " free" : ""}
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: "#111", marginLeft: 10 }}>{requestName}</Text>
+                      </TouchableOpacity>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#111", lineHeight: 20, marginBottom: 4 }}>
+                        {requestName} muốn tham gia với vị trí:
+                      </Text>
+                      {posLabels.length > 0 && (
+                        <Text style={{ fontSize: 14, fontWeight: "700", color: "#111", marginBottom: 16 }}>
+                          {posLabels.join(", ")}.
+                        </Text>
+                      )}
+                      <View style={{ flexDirection: "row", gap: 12 }}>
+                        <TouchableOpacity
+                          style={styles.requestRejectBtn}
+                          onPress={() => handleRejectRequest(requestUserId)}
+                          disabled={actionLoading}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.requestRejectText}>Từ chối</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.requestAcceptBtn}
+                          onPress={() => handleAcceptRequest(requestUserId)}
+                          disabled={actionLoading}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.requestAcceptText}>Đồng ý</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
-                  </View>
-                );
-              })}
+                    </View>
+                  );
+                })
+              )}
             </ScrollView>
           </Screen>
         </Modal>
 
-        {!isOwner && !isEnded && !isParticipant && (
-          <View style={styles.joinSection}>
-            {hasPendingRequest ? (
-              <View style={styles.pendingContainer}>
-                <Text style={styles.pendingBadgeText}>⏳ Đã gửi yêu cầu tham gia</Text>
-                <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelRequest} activeOpacity={0.7}>
-                  <Text style={styles.cancelBtnText}>Hủy yêu cầu</Text>
-                </TouchableOpacity>
-              </View>
-            ) : isFull ? (
-              <View style={styles.fullBadge}>
-                <Text style={styles.fullBadgeText}>Trận đã đủ người</Text>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={[styles.joinBtn, actionLoading && styles.joinBtnDisabled]}
-                onPress={handleRequestJoin}
-                disabled={actionLoading}
-                activeOpacity={0.7}
-              >
-                {actionLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.joinBtnText}>Tham gia</Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+        
 
         {/* Position Selection Modal */}
         <Modal
@@ -887,108 +854,35 @@ export default function MatchDetailScreen({ navigation, route }) {
             </View>
 
             <ScrollView style={styles.positionModalList}>
-              {(() => {
-                const displayPositionIds = [...selectedPositionIds];
-                if (benchTeam1 > 0) {
-                  for (let i = 1; i <= benchTeam1; i++) {
-                    displayPositionIds.push(`t1_bench_${i}`);
-                  }
-                }
-                if (benchTeam2 > 0) {
-                  for (let i = 1; i <= benchTeam2; i++) {
-                    displayPositionIds.push(`t2_bench_${i}`);
-                  }
-                }
-
-                return displayPositionIds.map((posId) => {
-                  let pos = ALL_POSITIONS.find((p) => p.id === posId);
-                  if (!pos && posId.includes("bench")) {
-                    const isTeam1 = posId.startsWith("t1_");
-                    const numStr = posId.split("_").pop();
-                    pos = {
-                      id: posId,
-                      label: `Dự bị${(isTeam1 ? benchTeam1 : benchTeam2) > 1 ? ` ${numStr}` : ""}`,
-                      role: "bench",
-                      isBench: true,
-                    };
-                  }
-                  if (!pos) return null;
-
-                  const isSelected = selectedPositions.includes(posId);
-                  const status = getPositionStatus(posId);
-                  const isBlocked = status.isOccupied || status.isPending;
-
-                  return (
-                    <TouchableOpacity
-                      key={posId}
-                      style={[
-                        styles.positionOption,
-                        isSelected && styles.positionOptionSelected,
-                        isBlocked && styles.positionOptionDisabled
-                      ]}
-                      onPress={() => {
-                        if (isBlocked) return;
-                        setSelectedPositions((prev) => {
-                          if (prev.includes(posId)) {
-                            return prev.filter((id) => id !== posId);
-                          }
-
-                          const isTeam1 = posId.startsWith("t1_");
-                          const currentTeamPrefix = isTeam1 ? "t1_" : "t2_";
-                          const currentLabel = pos.label;
-
-                          const hasDuplicate = prev.some((selectedId) => {
-                            if (selectedId.startsWith(currentTeamPrefix)) {
-                              let pSelected = ALL_POSITIONS.find((p) => p.id === selectedId);
-                              if (!pSelected && selectedId.includes("bench")) {
-                                pSelected = { label: "Dự bị" };
-                              }
-                              const selectedLabel = pSelected?.label || "";
-                              const normSelected = selectedLabel.startsWith("Dự bị") ? "Dự bị" : selectedLabel;
-                              const normCurrent = currentLabel.startsWith("Dự bị") ? "Dự bị" : currentLabel;
-
-                              return normSelected === normCurrent;
-                            }
-                            return false;
-                          });
-
-                          if (hasDuplicate) {
-                            Alert.alert(
-                              "Thông báo",
-                              `Bạn đã chọn một vị trí ${currentLabel.startsWith("Dự bị") ? "Dự bị" : currentLabel} ở Đội ${isTeam1 ? "1" : "2"} rồi.`
-                            );
-                            return prev;
-                          }
-
-                          return [...prev, posId];
-                        });
-                      }}
-                      disabled={isBlocked}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[
-                          styles.positionOptionText,
-                          isSelected && styles.positionOptionTextSelected,
-                          isBlocked && styles.positionOptionTextDisabled
-                        ]}>
-                          {pos.label} (Đội {posId.startsWith('t1_') ? '1' : '2'})
-                          {pos.isBench && (
-                            <Text style={{ color: '#9ca3af', fontWeight: '400', fontSize: 13 }}> free</Text>
-                          )}
-                        </Text>
-                        {isBlocked && (
-                          <Text style={styles.positionOptionStatusText}>
-                            {status.label}
-                          </Text>
-                        )}
-                      </View>
-                      {isSelected && !isBlocked && (
-                        <Text style={styles.positionOptionCheck}>✓</Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                });
-              })()}
+              {selectedPositionIds.map((posId) => {
+                const pos = ALL_POSITIONS.find((p) => p.id === posId);
+                if (!pos) return null;
+                const isSelected = selectedPositions.includes(posId);
+                return (
+                  <TouchableOpacity
+                    key={posId}
+                    style={[
+                      styles.positionOption,
+                      isSelected && styles.positionOptionSelected
+                    ]}
+                    onPress={() => {
+                      setSelectedPositions((prev) =>
+                        prev.includes(posId) ? prev.filter((id) => id !== posId) : [...prev, posId]
+                      );
+                    }}
+                  >
+                    <Text style={[
+                      styles.positionOptionText,
+                      isSelected && styles.positionOptionTextSelected
+                    ]}>
+                      {pos.label} (Đội {posId.startsWith('t1_') ? '1' : '2'})
+                    </Text>
+                    {isSelected && (
+                      <Text style={styles.positionOptionCheck}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
             <TouchableOpacity
@@ -1010,72 +904,72 @@ export default function MatchDetailScreen({ navigation, route }) {
           </View>
         </Modal>
 
-        {!isOwner && isParticipant && !isEnded && (
-          <TouchableOpacity style={styles.leaveActionBtn} onPress={handleLeave} activeOpacity={0.7}>
-            <Text style={styles.leaveActionText}>Rút khỏi trận</Text>
-          </TouchableOpacity>
-        )}
+        
 
-        {isOwner && match.status !== "completed" && (
-          <View style={styles.ownerActions}>
-            <TouchableOpacity style={styles.editActionBtn} onPress={handleEdit} activeOpacity={0.7}>
-              <Text style={styles.editActionText}>✏️ Sửa trận đấu</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteActionBtn} onPress={handleDelete} activeOpacity={0.7}>
-              <Text style={styles.deleteActionText}>🗑️ Xóa trận đấu</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </ScrollView>
 
       {/* ─── Invite Modal (from following list) ─── */}
+      {/* ─── Invite Modal ─── */}
       <Modal visible={showInviteModal} animationType="slide">
         <Screen style={styles.safeArea}>
           <ScreenHeader style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={() => setShowInviteModal(false)}>
               <Text style={styles.backArrow}>←</Text>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Mời người đang follow</Text>
+            <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
             <View style={styles.headerSpacer} />
           </ScreenHeader>
-          {inviteLoading ? (
-            <View style={styles.centered}>
-              <ActivityIndicator size="large" color="#0066cc" />
+          
+          <View style={{ flex: 1, paddingHorizontal: 16 }}>
+            <View style={styles.copyLinkBox}>
+              <Text style={styles.copyLinkLabel}>Link: <Text style={styles.copyLinkValue}>{match._id}</Text></Text>
+              <TouchableOpacity style={styles.copyLinkBtn} onPress={() => Alert.alert("Đã sao chép link")}>
+                <Text style={styles.copyLinkBtnText}>Sao chép link</Text>
+              </TouchableOpacity>
             </View>
-          ) : followingUsers.length === 0 ? (
-            <View style={styles.centered}>
-              <Text style={styles.emptyInviteText}>Không có người dùng nào để mời</Text>
-              <Text style={styles.emptyInviteSub}>Bạn chưa follow ai hoặc tất cả đã tham gia</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={followingUsers}
-              keyExtractor={(item) => String(item._id || item.id)}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => {
-                const uName = item.name || "Người dùng";
-                return (
-                  <View style={styles.inviteUserCard}>
-                    <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[uName.length % AVATAR_COLORS.length] }]}>
-                      <Text style={styles.userInitials}>{getInitials(uName)}</Text>
+
+            {inviteLoading ? (
+              <View style={styles.centered}>
+                <ActivityIndicator size="large" color={ORANGE} />
+              </View>
+            ) : followingUsers.length === 0 ? (
+              <View style={styles.centered}>
+                <Text style={styles.emptyInviteText}>Không có người dùng nào để mời</Text>
+                <Text style={styles.emptyInviteSub}>Bạn chưa follow ai hoặc tất cả đã tham gia</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={followingUsers}
+                keyExtractor={(item) => String(item._id || item.id)}
+                contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
+                renderItem={({ item }) => {
+                  const uName = item.name || "Người dùng";
+                  return (
+                    <View style={styles.inviteUserCard}>
+                      <View style={[styles.userAvatar, { backgroundColor: '#ef4444' }]}>
+                        <Text style={styles.userInitials}>{getInitials(uName)}</Text>
+                      </View>
+                      <View style={styles.inviteUserInfo}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.inviteUserName}>{uName}</Text>
+                          <Ionicons name="people-outline" size={14} color={ORANGE} />
+                        </View>
+                        <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.inviteActionBtn}
+                        onPress={() => handleInviteUser(String(item._id || item.id))}
+                        disabled={actionLoading}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.inviteActionBtnText}>Mời</Text>
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.inviteUserInfo}>
-                      <Text style={styles.inviteUserName}>{uName}</Text>
-                      <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.inviteActionBtn}
-                      onPress={() => handleInviteUser(String(item._id || item.id))}
-                      disabled={actionLoading}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.inviteActionBtnText}>Mời</Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              }}
-            />
-          )}
+                  );
+                }}
+              />
+            )}
+          </View>
         </Screen>
       </Modal>
 
@@ -1112,6 +1006,83 @@ export default function MatchDetailScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+
+      {/* ─── Options Modal (3 dots) ─── */}
+      <Modal visible={showOptionsModal} transparent animationType="slide">
+        <View style={styles.optionsOverlay}>
+          <View style={styles.bottomSheetContainer}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>Tùy chọn trận đấu</Text>
+            
+            <TouchableOpacity 
+              style={styles.optionBtn} 
+              onPress={() => { setShowOptionsModal(false); handleEdit(); }}
+            >
+              <Ionicons name="pencil-outline" size={22} color="#1F2937" style={{ width: 28 }} />
+              <Text style={styles.optionBtnText}>Sửa trận đấu</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionBtn} 
+              onPress={() => { setShowOptionsModal(false); handleDelete(); }}
+            >
+              <Ionicons name="trash-outline" size={22} color="#EF4444" style={{ width: 28 }} />
+              <Text style={[styles.optionBtnText, { color: '#EF4444' }]}>Xóa trận đấu</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionsCancelBtn} 
+              onPress={() => setShowOptionsModal(false)}
+            >
+              <Text style={styles.optionsCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+
+      {/* ─── Custom Bottom Tab Bar ─── */}
+      <View style={[styles.bottomBarOuter, {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: insets.bottom + 12,
+      }]}>
+        <View style={styles.bottomBarWrap}>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'PostsTab' })}>
+            <View style={styles.iconFrame}>
+              <Ionicons name="home-outline" size={22} color="#1F2937" />
+            </View>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'MatchesTab' })}>
+            <View style={[styles.iconFrame, styles.activeIconFrame]}>
+              <MaterialCommunityIcons name="soccer" size={28} color="#FFFFFF" />
+            </View>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'TeamsTab' })}>
+            <View style={styles.iconFrame}>
+              <MaterialCommunityIcons name="account-group-outline" size={22} color="#1F2937" />
+            </View>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'SocialTab' })}>
+            <View style={styles.iconFrame}>
+              <Ionicons name="chatbubble-outline" size={22} color="#1F2937" />
+              {chatUnreadCount > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'ProfileTab' })}>
+            <View style={styles.iconFrame}>
+              <Ionicons name="person-outline" size={22} color="#1F2937" />
+            </View>
+          </Pressable>
+        </View>
+      </View>
     </Screen>
   );
 
@@ -1127,19 +1098,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     backgroundColor: "#fff",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eee",
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
   backButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   backArrow: { fontSize: 22, color: "#333" },
   headerTitle: { flex: 1, fontSize: 18, fontWeight: "700", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
+  joinHeaderBtn: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    width: 145,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  joinHeaderBtnText: { color: '#333', fontSize: 12, fontWeight: '700' },
+  redDot: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#ff3b30",
+  },
   container: { padding: 16, paddingBottom: 40 },
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -1148,32 +1151,85 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: "row", alignItems: "center" },
   sportSquare: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: "#0d6efd",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: ORANGE,
     alignItems: "center",
     justifyContent: "center",
   },
-  sportIcon: { fontSize: 24 },
+  // sportIcon removed – now renders TagIcon directly
   titleBlock: { flex: 1, marginLeft: 12 },
   title: { fontSize: 18, fontWeight: "800", color: "#111" },
-  statusText: { fontSize: 13, color: "#22c55e", fontWeight: "700", marginTop: 4 },
-  costStrip: {
+  timeAgoText: { fontSize: 12, color: "#888", marginTop: 4 },
+  gridContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "#fffbf0",
-    padding: 12,
-    borderRadius: 8,
+    gap: 12,
     marginTop: 14,
+    marginBottom: 14,
+  },
+  gridColumn: {
+    flex: 1,
+  },
+  gridLabel: {
+    fontSize: 12,
+    color: "#666",
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  gridBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    gap: 6,
+  },
+  gridValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#333",
+  },
+  locationRowContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#f0f0f0",
+  },
+  locationInfoCol: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  locationInfoText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#333",
+    fontWeight: "600",
   },
   costLabel: { fontSize: 13, color: "#856404", fontWeight: "600" },
   costValue: { fontSize: 15, color: "#856404", fontWeight: "800" },
   infoSection: { marginTop: 16, gap: 12 },
-  infoRow: { flexDirection: "row", alignItems: "flex-start" },
-  infoIcon: { fontSize: 14, width: 28 },
+  infoRow: { flexDirection: "row", alignItems: "center" },
+  infoIcon: { width: 28, alignItems: 'center', justifyContent: 'center' },
   infoText: { flex: 1, fontSize: 14, color: "#333", fontWeight: "500", lineHeight: 20 },
   infoTextMuted: { flex: 1, fontSize: 13, color: "#888", lineHeight: 20 },
+  viewLocationBtn: {
+    backgroundColor: ORANGE,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 10,
+    flexShrink: 0,
+  },
+  viewLocationBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   pendingContainer: {
     alignItems: 'center',
     marginBottom: 8,
@@ -1189,6 +1245,50 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontWeight: '600',
     fontSize: 14,
+  },
+  invitedContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+    padding: 12,
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  invitedBadgeText: {
+    color: '#1e40af',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  invitedActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  acceptInviteBtn: {
+    backgroundColor: ORANGE,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  acceptInviteBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  rejectInviteBtn: {
+    backgroundColor: '#e2e8f0',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  rejectInviteBtnText: {
+    color: '#475569',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  disabledBtn: {
+    opacity: 0.5,
   },
   teamBlock: {
     marginBottom: 14,
@@ -1231,6 +1331,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  outlineRoleTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+  },
+  outlineRoleTagText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#333",
+  },
   noteBox: {
     marginTop: 14,
     padding: 12,
@@ -1248,8 +1361,20 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontWeight: "800", color: "#333", marginBottom: 12 },
   helperInfoText: { fontSize: 12, color: "#888", fontStyle: "italic", marginLeft: 4, flex: 1 },
   emptyText: { fontSize: 13, color: "#999" },
-  userRowWrap: { marginBottom: 10 },
-  userRowContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  userRowCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+    padding: 10,
+    marginBottom: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  userRowContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flex: 1 },
   userRow: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
   userRowRightAction: { marginLeft: 8, justifyContent: "center", flexShrink: 0 },
   userAvatar: {
@@ -1261,16 +1386,28 @@ const styles = StyleSheet.create({
   },
   userInitials: { color: "#fff", fontSize: 13, fontWeight: "800" },
   userInfo: { marginLeft: 12, flex: 1 },
-  userNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   userName: { fontSize: 15, fontWeight: "700", color: "#111" },
-  userMeta: { fontSize: 12, color: "#666", marginTop: 2 },
+  userSub: { fontSize: 12, color: "#888", marginTop: 2 },
+  figmaBadge: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: "#fff",
+  },
+  figmaBadgeText: {
+    fontSize: 11,
+    color: "#333",
+    fontWeight: "700",
+  },
   badge: {
-    backgroundColor: "#eef4ff",
+    backgroundColor: "#fff3ef",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  badgeText: { fontSize: 10, color: "#0066cc", fontWeight: "700" },
+  badgeText: { fontSize: 10, color: ORANGE, fontWeight: "700" },
   chevron: { fontSize: 22, color: "#ccc", marginLeft: 8 },
   requestSummaryCard: {
     backgroundColor: "#fff",
@@ -1286,13 +1423,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   openRequestBtn: {
-    backgroundColor: "#e0f2fe",
+    backgroundColor: "#fff3ef",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
   },
   openRequestBtnText: {
-    color: "#0369a1",
+    color: ORANGE,
     fontWeight: "700",
     fontSize: 13,
   },
@@ -1303,6 +1440,45 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+  },
+  requestFigmaCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  requestRejectBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  requestRejectText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#333",
+  },
+  requestAcceptBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: ORANGE,
+    alignItems: "center",
+  },
+  requestAcceptText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#fff",
   },
   requestActions: { flexDirection: "row", gap: 8, marginLeft: 8, alignItems: "center" },
   requestPanel: {
@@ -1327,7 +1503,7 @@ const styles = StyleSheet.create({
   requestItem: { marginBottom: 10 },
   requestActions: { flexDirection: "row", gap: 8, marginLeft: 8, alignItems: "center" },
   acceptBtn: {
-    backgroundColor: "#0066cc",
+    backgroundColor: ORANGE,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
@@ -1359,22 +1535,26 @@ const styles = StyleSheet.create({
   requestPositionTagText: { fontSize: 11, fontWeight: "700", color: "#0369a1" },
   joinSection: { marginBottom: 12 },
   joinBtn: {
-    backgroundColor: "#0066cc",
+    backgroundColor: "#16a34a",
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
   },
   joinBtnDisabled: { opacity: 0.6 },
   joinBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  pendingBadge: {
-    backgroundColor: "#fff8e1",
-    paddingVertical: 14,
-    borderRadius: 12,
+  pendingContainer: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff8e1",
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#ffe082",
   },
   pendingBadgeText: { color: "#856404", fontSize: 14, fontWeight: "700" },
+  cancelBtn: { backgroundColor: "#ef4444", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  cancelBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
   fullBadge: {
     backgroundColor: "#f3f3f3",
     paddingVertical: 14,
@@ -1392,8 +1572,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   leaveActionText: { fontSize: 15, fontWeight: "700", color: "#ef4444" },
-  ownerActions: { gap: 10, marginTop: 4 },
+  ownerActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   editActionBtn: {
+    flex: 1,
     backgroundColor: "#fff8e1",
     borderWidth: 1,
     borderColor: "#ffe082",
@@ -1403,6 +1584,7 @@ const styles = StyleSheet.create({
   },
   editActionText: { fontSize: 15, fontWeight: "700", color: "#333" },
   deleteActionBtn: {
+    flex: 1,
     backgroundColor: "#fff",
     borderWidth: 1.5,
     borderColor: "#ef4444",
@@ -1474,23 +1656,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#3b82f6",
   },
-  positionOptionDisabled: {
-    opacity: 0.55,
-    backgroundColor: "#f3f4f6",
-  },
-  positionOptionTextDisabled: {
-    color: "#9ca3af",
-  },
-  positionOptionStatusText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#ef4444",
-    marginTop: 2,
-  },
   positionModalConfirm: {
     marginHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: "#0066cc",
+    backgroundColor: ORANGE,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -1511,13 +1680,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inviteSmallBtn: {
-    backgroundColor: "#e0f2fe",
-    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    paddingHorizontal: 16,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 20,
   },
   inviteSmallBtnText: {
-    color: "#0369a1",
+    color: "#333",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1532,8 +1703,6 @@ const styles = StyleSheet.create({
     color: "#b91c1c",
     fontSize: 12,
     fontWeight: "700",
-  
-    
   },
   // ─── Invite Modal ───
   inviteUserCard: {
@@ -1561,7 +1730,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   inviteActionBtn: {
-    backgroundColor: "#0066cc",
+    backgroundColor: ORANGE,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 8,
@@ -1582,6 +1751,39 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     textAlign: "center",
     marginTop: 4,
+  },
+  copyLinkBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  copyLinkLabel: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "500",
+  },
+  copyLinkValue: {
+    fontWeight: "700",
+  },
+  copyLinkBtn: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  copyLinkBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#333",
   },
   // ─── Kick Modal ───
   kickOverlay: {
@@ -1648,5 +1850,117 @@ const styles = StyleSheet.create({
   kickConfirmText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  // ─── Options Modal ───
+  optionsOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  bottomSheetContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+  },
+  bottomSheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#9CA3AF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  optionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  optionBtnText: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  optionsCancelBtn: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  optionsCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  bottomBarOuter: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 6,
+  },
+  bottomBarWrap: {
+    backgroundColor: '#ffffff',
+    borderRadius: 40,
+    borderWidth: 1.2,
+    borderColor: '#d1d5db',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 70,
+    paddingHorizontal: 8,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonPressed: {
+    opacity: 0.7,
+  },
+  iconFrame: {
+    width: 52,
+    height: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 26,
+    overflow: 'hidden',
+  },
+  activeIconFrame: {
+    backgroundColor: '#FF5F3D',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  tabBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });
