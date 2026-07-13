@@ -1049,22 +1049,22 @@ export default function MatchDetailScreen({ navigation, route }) {
         bottom: insets.bottom + 12,
       }]}>
         <View style={styles.bottomBarWrap}>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('PostsTab')}>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'PostsTab' })}>
             <View style={styles.iconFrame}>
               <Ionicons name="home-outline" size={22} color="#1F2937" />
             </View>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('MatchesTab')}>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'MatchesTab' })}>
             <View style={[styles.iconFrame, styles.activeIconFrame]}>
               <MaterialCommunityIcons name="soccer" size={28} color="#FFFFFF" />
             </View>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('TeamsTab')}>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'TeamsTab' })}>
             <View style={styles.iconFrame}>
               <MaterialCommunityIcons name="account-group-outline" size={22} color="#1F2937" />
             </View>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('SocialTab')}>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'SocialTab' })}>
             <View style={styles.iconFrame}>
               <Ionicons name="chatbubble-outline" size={22} color="#1F2937" />
               {chatUnreadCount > 0 && (
@@ -1076,7 +1076,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               )}
             </View>
           </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('ProfileTab')}>
+          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'ProfileTab' })}>
             <View style={styles.iconFrame}>
               <Ionicons name="person-outline" size={22} color="#1F2937" />
             </View>

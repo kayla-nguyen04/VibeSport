@@ -119,7 +119,7 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
       navigation.goBack();
       return;
     }
-    navigation?.navigate?.('PostsTab');
+    navigation?.navigate?.('Home', { screen: 'PostsTab' });
   };
 
   const openFollowList = (initialTab) => {
