@@ -102,7 +102,7 @@ const navigateToProfile = (navigation, currentUser, userId, onGoToProfile) => {
 
 export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const dispatch = useDispatch();
-  const { posts, loading, refreshing, hasMore, page, activeTag } = useSelector((state) => state.posts);
+  const { posts, loading, refreshing, hasMore, page, activeTag, error } = useSelector((state) => state.posts);
   const { unreadCount } = useSelector((state) => state.notifications);
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
@@ -125,9 +125,18 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   const initialFeedRequestKeyRef = useRef('');
 
   useEffect(() => {
+    if (error) {
+      console.error('Redux posts fetch error:', error);
+    }
+  }, [error]);
+
+  useEffect(() => {
     getTagsRequest(token, 'sport')
       .then((res) => setCatalogTags(res.data || []))
-      .catch(() => setCatalogTags([]));
+      .catch((err) => {
+        console.error('getTagsRequest failed:', err);
+        setCatalogTags([]);
+      });
   }, [token]);
 
   useEffect(() => {
@@ -427,12 +436,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             onPress={() => handleLike(item)}
             style={styles.actionBtn}
           >
-            <Ionicons
-              name={item.isLiked ? "thumbs-up" : "thumbs-up-outline"}
-              size={20}
-              color={item.isLiked ? "#FF5F3D" : "#7C8190"}
-            />
-            <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>
+            {item.isLiked ? (
+              <VibeReactionIcon size={20} />
+            ) : (
+              <Ionicons name="heart-outline" size={20} color="#7C8190" />
+            )}
+            <Text style={[styles.actionText, item.isLiked && { color: VIBE_REACTION.color }]}>
               {formatCount(item.likesCount)}
             </Text>
           </TouchableOpacity>
@@ -498,14 +507,14 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             </View>
             <View style={styles.headerActions}>
               <TouchableOpacity style={styles.iconButton} onPress={handleOpenSearch}>
-                <Ionicons name="search-outline" size={24} color="#1F2937" />
+                <Ionicons name="search-outline" size={26} color="#1F2937" />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconButton}
                 onPress={() => navigation.navigate('Notification')}
               >
                 <View style={{ position: 'relative' }}>
-                  <Ionicons name="notifications-outline" size={24} color="#1F2937" />
+                  <Ionicons name="notifications-outline" size={26} color="#1F2937" />
                   {unreadCount > 0 && (
                     <View style={styles.notificationDot} />
                   )}
@@ -742,7 +751,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -755,14 +764,14 @@ const styles = StyleSheet.create({
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   logoImage: {
-    width: 28,
-    height: 28,
+    width: 36,
+    height: 36,
   },
   logoText: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#2B3B52',
   },
@@ -1165,7 +1174,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 40,
+    height: 44,
   },
   searchIcon: {
     marginRight: 8,

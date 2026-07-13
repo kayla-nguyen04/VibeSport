@@ -28,6 +28,7 @@ import {
   surface,
   text,
 } from '../theme';
+import { VibeReactionIcon, VIBE_REACTION } from './PostReactions';
 
 export const SPORTS = [
   { key: 'Bóng đá', label: 'Bóng đá' },
@@ -436,15 +437,15 @@ export const ProfilePostCard = memo(function ProfilePostCard({ post, profile, on
           onPress={() => onToggleLike(post)}
           style={styles.postActionButton}
         >
-          <Ionicons
-            name={isLiked ? 'thumbs-up' : 'thumbs-up-outline'}
-            size={spacing.lg}
-            color={isLiked ? primary.DEFAULT : surface.muted}
-          />
+          {isLiked ? (
+            <VibeReactionIcon size={spacing.lg} />
+          ) : (
+            <Ionicons name="heart-outline" size={spacing.lg} color={surface.muted} />
+          )}
           <Text
             style={[
               styles.postActionText,
-              isLiked && styles.postActionTextActive,
+              isLiked && { color: VIBE_REACTION.color },
             ]}
           >
             {formatCount(post.likesCount)}
