@@ -17,21 +17,27 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useSelector } from "react-redux";
 import { getMatches, leaveMatch } from "../services/matchService";
 import { getPostsRequest } from "../services/postApi";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { TagIcon } from "../components/TagIcon";
+import { Screen } from "../components/Screen";
+import { primary } from "../theme";
+
+const ORANGE = primary.DEFAULT; // '#FF6B3D'
+const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
+const AVATAR_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FB8C00", "#8E24AA", "#00ACC1"];
 
 const SPORT_FILTERS = [
-  { key: "all", label: "Tất cả", icon: "" },
-  { key: "football", label: "Bóng đá", icon: "⚽" },
-  { key: "badminton", label: "Cầu lông", icon: "🏸" },
-  { key: "pickleball", label: "Pickleball", icon: "🏓" },
+  { key: "all", label: "Tất cả", tagName: null },
+  { key: "football", label: "Bóng đá", tagName: "Bóng đá" },
+  { key: "pickleball", label: "Pickleball", tagName: "Pickleball" },
+  { key: "badminton", label: "Cầu lông", tagName: "Cầu lông" },
 ];
 
 const SPORT_ICONS = { football: "⚽", badminton: "🏸", pickleball: "🏓" };
-const AVATAR_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FB8C00", "#8E24AA", "#00ACC1"];
-
 const formatCost = (c) => {
   if (!c || c === 0) return "Miễn phí";
-  if (c >= 1000) return `${c / 1000}K / người`;
-  return `${c} VND`;
+  const formatted = c.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formatted} vnd/ người`;
 };
 
 const getInitials = (name) => {
@@ -227,282 +233,148 @@ export default function TeamsScreen({ navigation }) {
     return matches;
   };
 
-  const renderBrowseCard = (item) => {
-    const icon = SPORT_ICONS[item.sport] || "⚽";
+  const renderFigmaCard = (item, tabType) => {
     const joined = isUserParticipant(item);
     const creator = typeof item.createdBy === "object" ? item.createdBy : null;
-
-    return (
-      <View key={item._id} style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.sportSquare}>
-            <Text style={styles.sportSquareIcon}>{icon}</Text>
-          </View>
-          <View style={styles.titleContainer}>
-            <Text style={styles.matchTitle} numberOfLines={1}>{item.title}</Text>
-          </View>
-          <View style={[styles.statusPill, styles.statusPillYellow]}>
-            <Text style={styles.statusPillText}>
-              {item.status === "full" ? "Đã đủ người" : "Tìm người"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.detailInfoList}>
-          <View style={styles.detailInfoRow}>
-            <Text style={styles.detailInfoIcon}>🕒</Text>
-            <Text style={styles.detailInfoText}>{item.startTime} • {getDayLabel(item.date)}</Text>
-          </View>
-          <View style={styles.detailInfoRow}>
-            <Text style={styles.detailInfoIcon}>📍</Text>
-            <Text style={styles.detailInfoText} numberOfLines={2}>{item.locationName}</Text>
-          </View>
-          {item.location?.lat != null && item.location?.lng != null && (
-            <View style={styles.detailInfoRow}>
-              <Text style={styles.detailInfoIcon}>🗺️</Text>
-              <Text style={styles.detailInfoTextMuted}>
-                {item.location.lat.toFixed(4)}, {item.location.lng.toFixed(4)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {creator && <CreatorProfileRow creator={creator} label="Người tạo trận" />}
-
-        <View style={styles.infoGrid}>
-          <View style={styles.infoCol}>
-            <Text style={styles.infoColText}>
-              👥 {item.currentPlayers} / {item.maxPlayers} người
-            </Text>
-          </View>
-          <View style={styles.verticalDivider} />
-          <View style={styles.infoCol}>
-            <Text style={styles.infoColText} numberOfLines={1}>🪙 {formatCost(item.costPerPerson)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.actionRow}>
-          {joined ? (
-            <View style={styles.joinedBadge}>
-              <Text style={styles.joinedBadgeText}>✓ Đã tham gia</Text>
-            </View>
-          ) : (
-            <View style={{ flex: 1 }} />
-          )}
-          <TouchableOpacity
-            style={styles.detailBlueBtn}
-            activeOpacity={0.7}
-            onPress={() => handleViewDetail(item)}
-          >
-            <Text style={styles.detailBlueBtnText}>Xem chi tiết</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  const renderJoinedCard = (item) => {
-    const icon = SPORT_ICONS[item.sport] || "⚽";
-    const creator = typeof item.createdBy === "object" ? item.createdBy : null;
-
-    return (
-      <View key={item._id} style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.sportSquare}>
-            <Text style={styles.sportSquareIcon}>{icon}</Text>
-          </View>
-          <View style={styles.titleContainer}>
-            <Text style={styles.matchTitle} numberOfLines={1}>{item.title}</Text>
-          </View>
-          <View style={[styles.statusPill, styles.statusPillYellow]}>
-            <Text style={styles.statusPillText}>
-              {item.status === "full" ? "Đã đủ người" : "Tìm người"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.detailInfoList}>
-          <View style={styles.detailInfoRow}>
-            <Text style={styles.detailInfoIcon}>🕒</Text>
-            <Text style={styles.detailInfoText}>{item.startTime} • {getDayLabel(item.date)}</Text>
-          </View>
-          <View style={styles.detailInfoRow}>
-            <Text style={styles.detailInfoIcon}>📍</Text>
-            <Text style={styles.detailInfoText} numberOfLines={2}>{item.locationName}</Text>
-          </View>
-        </View>
-
-        {creator && <CreatorProfileRow creator={creator} />}
-
-        <View style={styles.infoGrid}>
-          <View style={styles.infoCol}>
-            <Text style={styles.infoColText}>👥 {item.currentPlayers} / {item.maxPlayers} người</Text>
-          </View>
-          <View style={styles.verticalDivider} />
-          <View style={styles.infoCol}>
-            <Text style={styles.infoColText} numberOfLines={1}>🏟️ {item.locationName}</Text>
-          </View>
-          <View style={styles.verticalDivider} />
-          <View style={styles.infoCol}>
-            <Text style={styles.infoColText}>📅 {item.date}</Text>
-          </View>
-        </View>
-
-        {/* Action Row */}
-        <View style={styles.actionRow}>
-          <View style={styles.joinedBadge}>
-            <Text style={styles.joinedBadgeText}>✓ Đã tham gia</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.leaveBtn}
-            activeOpacity={0.7}
-            onPress={() => handleLeaveMatch(item)}
-          >
-            <Text style={styles.leaveBtnText}>Rút khỏi trận</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.detailBlueBtn}
-            activeOpacity={0.7}
-            onPress={() => handleViewDetail(item)}
-          >
-            <Text style={styles.detailBlueBtnText}>Xem chi tiết</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  const renderCreatedCard = (item) => {
-    const icon = SPORT_ICONS[item.sport] || "⚽";
-    const isEnded = item.status === "completed" || item.status === "cancelled";
     const currentCount = item.currentPlayers || item.participants?.length || 0;
     const maxCount = item.maxPlayers || 10;
-    const slotsLeft = maxCount - currentCount;
-    const progressPercent = Math.min(100, (currentCount / maxCount) * 100);
-    const creatorArea = user?.area || (typeof item.createdBy === "object" ? item.createdBy?.area : null);
-    const subtitle = `${creatorArea || "FC"} • Do bạn tạo`;
+    const timeLabel = item.startTime && typeof item.startTime === "string" ? item.startTime.replace(":", "g ") + "p" : "";
+    const isEnded = item.status === "completed" || item.status === "cancelled";
+
+    // Position needs (football only)
+    const positionNeeds = [];
+    if (item.sport === "football" && Array.isArray(item.selectedPositionIds)) {
+      const ROLE_LABELS = { defender: "Hậu vệ", midfielder: "Trung vệ", forward: "Tiền đạo", goalkeeper: "Thủ môn" };
+      const roleCounts = {};
+      item.selectedPositionIds.forEach(id => {
+        if (typeof id !== "string") return;
+        const role = id.replace(/^t[12]_/, "").replace(/[0-9]/g, "");
+        const mapped = role.startsWith("gk") ? "goalkeeper" : role.startsWith("lb") || role.startsWith("cb") || role.startsWith("rb") ? "defender" : role.startsWith("dm") || role.startsWith("cm") || role.startsWith("am") ? "midfielder" : role.startsWith("lw") || role.startsWith("rw") || role.startsWith("st") || role.startsWith("cf") ? "forward" : role;
+        roleCounts[mapped] = (roleCounts[mapped] || 0) + 1;
+      });
+      Object.entries(roleCounts).forEach(([role, count]) => {
+        positionNeeds.push({ label: ROLE_LABELS[role] || role, count });
+      });
+    }
 
     return (
       <View key={item._id} style={styles.card}>
+        {/* Card Header: Avatar + Title + ... menu */}
         <View style={styles.cardHeader}>
-          <View style={styles.sportSquare}>
-            <Text style={styles.sportSquareIcon}>{icon}</Text>
+          <View style={styles.avatarContainer}>
+            <View style={styles.sportSquare}>
+              <TagIcon tagName={SPORT_TAG_MAP[item.sport] || "Bóng đá"} size={26} color="#fff" />
+            </View>
+            {creator && (
+              <View style={[styles.creatorBadge, { backgroundColor: AVATAR_COLORS[0] }]}>
+                <Text style={styles.creatorAvatarText}>{getInitials(creator.name)}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.titleContainer}>
             <Text style={styles.matchTitle} numberOfLines={1}>{item.title}</Text>
-            <Text style={styles.matchSubtitle}>{subtitle}</Text>
+            {creator && (
+              <View style={styles.creatorMetaRow}>
+                <Text style={styles.creatorName}>{creator.name || "Người dùng"}</Text>
+                <Text style={styles.creatorTimeAgo}>{formatTimeAgo(item.createdAt)}</Text>
+              </View>
+            )}
           </View>
-          <View style={[styles.statusDotWrapper, isEnded ? styles.statusDotGrayBg : styles.statusDotBlueBg]}>
-            <View style={[styles.statusDotCircle, isEnded ? styles.statusDotGray : styles.statusDotBlue]} />
-            <Text style={[styles.statusDotText, isEnded ? styles.statusDotTextGray : styles.statusDotTextBlue]}>
-              {isEnded ? "Đã kết thúc" : item.status === "full" ? "Đã đủ người" : "Tìm người"}
-            </Text>
+          {tabType === "created" && (
+            <TouchableOpacity style={styles.editBtnMini} activeOpacity={0.6} onPress={() => handleEditMatch(item)}>
+               <Ionicons name="pencil" size={16} color="#888" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.moreBtn} activeOpacity={0.6}>
+            <Ionicons name="ellipsis-horizontal" size={18} color="#888" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Info rows */}
+        <View style={styles.figmaInfoList}>
+          <View style={[styles.figmaInfoRow, { borderTopWidth: 0, paddingTop: 0 }]}>
+            <View style={styles.figmaInfoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
+            <Text style={styles.figmaInfoText}>{timeLabel} - {getDayLabel(item.date)} - {item.date}</Text>
+          </View>
+          <View style={styles.figmaInfoRow}>
+            <View style={styles.figmaInfoIcon}><Ionicons name="location-outline" size={16} color="#333" /></View>
+            <Text style={styles.figmaInfoText}>{item.locationName}</Text>
+          </View>
+          {item.note ? (
+            <View style={styles.figmaInfoRow}>
+              <View style={styles.figmaInfoIcon}><Ionicons name="create-outline" size={16} color="#333" /></View>
+              <Text style={styles.figmaInfoText}>{item.note}</Text>
+            </View>
+          ) : null}
+          <View style={styles.figmaInfoRow}>
+            <View style={styles.figmaInfoIcon}><Ionicons name="grid-outline" size={16} color="#333" /></View>
+            <Text style={styles.figmaInfoText}>Loại sân : {item.sport === "football" ? `${Math.floor(maxCount/2)}vs ${Math.floor(maxCount/2)}` : `${Math.floor(maxCount/2)} vs ${Math.floor(maxCount/2)}`}</Text>
           </View>
         </View>
 
-        {!isEnded ? (
-          <>
-            <View style={styles.costStrip}>
-              <Text style={styles.costStripLabel}>🪙 Chi phí sân</Text>
-              <Text style={styles.costStripValue}>{formatCost(item.costPerPerson)}</Text>
+        {/* Grid boxes */}
+        <View style={styles.figmaGrid}>
+          <View style={styles.figmaGridCol}>
+            <Text style={styles.figmaGridLabel}>Số người đã tìm.</Text>
+            <View style={styles.figmaGridBox}>
+              <Ionicons name="people-outline" size={15} color="#333" />
+              <Text style={styles.figmaGridValue}>{currentCount}/{maxCount}</Text>
             </View>
+          </View>
+          <View style={styles.figmaGridCol}>
+            <Text style={styles.figmaGridLabel}>Tiền cọc sân.</Text>
+            <View style={styles.figmaGridBox}>
+              <Ionicons name="wallet-outline" size={15} color="#333" />
+              <Text style={styles.figmaGridValue} numberOfLines={1}>{formatCost(item.costPerPerson)}</Text>
+            </View>
+          </View>
+        </View>
 
-            <View style={styles.detailsList}>
-              <View style={styles.detailInfoRow}>
-                <Text style={styles.detailInfoIcon}>🕒</Text>
-                <Text style={styles.detailInfoText}>{item.startTime} • {getDayLabel(item.date)}</Text>
-              </View>
-              <View style={styles.detailInfoRow}>
-                <Text style={styles.detailInfoIcon}>📍</Text>
-                <Text style={styles.detailInfoText} numberOfLines={2}>{item.locationName}</Text>
-              </View>
-              {item.location?.lat != null && item.location?.lng != null && (
-                <View style={styles.detailInfoRow}>
-                  <Text style={styles.detailInfoIcon}>🗺️</Text>
-                  <Text style={styles.detailInfoTextMuted}>
-                    {item.location.lat.toFixed(4)}, {item.location.lng.toFixed(4)}
-                  </Text>
+        {/* Position tags (football only) */}
+        {positionNeeds.length > 0 && (
+          <View style={styles.positionTagsSection}>
+            <Text style={styles.positionTagsLabel}>Vị trí cần tìm.</Text>
+            <View style={styles.positionTagsRow}>
+              {positionNeeds.map((p, i) => (
+                <View key={i} style={styles.positionTag}>
+                  <Text style={styles.positionTagText}>{p.label} x{p.count}</Text>
                 </View>
-              )}
-              <View style={styles.detailInfoRow}>
-                <Text style={styles.detailInfoIcon}>{icon}</Text>
-                <Text style={styles.detailInfoText}>
-                  {item.sport === "football" ? "11 vs 11" : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.avatarRow}>
-              <View style={styles.avatarGroup}>
-                {(item.participants || []).slice(0, 3).map((p, idx) => (
-                  <View
-                    key={idx}
-                    style={[
-                      styles.avatarCircle,
-                      { backgroundColor: AVATAR_COLORS[idx % AVATAR_COLORS.length], marginLeft: idx > 0 ? -6 : 0 },
-                    ]}
-                  >
-                    <Text style={styles.avatarInitials}>{getInitials(getParticipantName(p))}</Text>
-                  </View>
-                ))}
-                {(item.participants || []).length > 3 && (
-                  <View style={[styles.avatarCircle, styles.avatarExtra, { marginLeft: -6 }]}>
-                    <Text style={styles.avatarExtraText}>+{item.participants.length - 3}</Text>
-                  </View>
-                )}
-                <Text style={styles.avatarCountText}>{currentCount}/{maxCount} người</Text>
-              </View>
-              <Text style={styles.slotsLeftText}>{slotsLeft > 0 ? `Còn ${slotsLeft} slot` : "Hết slot"}</Text>
-            </View>
-
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-            </View>
-
-            <View style={styles.createdActions}>
-              {item.location?.lat != null ? (
-                <View style={styles.distanceBadge}>
-                  <Text style={styles.distanceBadgeText}>
-                    📍 {item.location.lat.toFixed(2)}, {item.location.lng.toFixed(2)}
-                  </Text>
-                </View>
-              ) : (
-                <View style={{ flex: 1 }} />
-              )}
-              <View style={styles.createdBtns}>
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  activeOpacity={0.7}
-                  onPress={() => handleEditMatch(item)}
-                >
-                  <Text style={styles.editBtnIcon}>✏️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.detailBlueBtnLarge}
-                  activeOpacity={0.7}
-                  onPress={() => handleViewDetail(item)}
-                >
-                  <Text style={styles.detailBlueBtnText}>Xem chi tiết</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </>
-        ) : (
-          <View style={styles.endedInfoList}>
-            <View style={styles.detailInfoRow}>
-              <Text style={styles.detailInfoIcon}>🕒</Text>
-              <Text style={styles.endedInfoText}>{item.startTime} • {getDayLabel(item.date)}</Text>
-            </View>
-            <View style={styles.detailInfoRow}>
-              <Text style={styles.detailInfoIcon}>📍</Text>
-              <Text style={styles.endedInfoText} numberOfLines={2}>{item.locationName}</Text>
-            </View>
-            <View style={styles.endedInfoRow}>
-              <Text style={styles.endedInfoText}>👥 {currentCount}/{maxCount} người</Text>
-              <Text style={[styles.endedInfoText, { marginLeft: 20 }]}>🪙 {formatCost(item.costPerPerson)}</Text>
+              ))}
             </View>
           </View>
         )}
+
+        {/* Action Row */}
+        <View style={styles.figmaActionRow}>
+          {tabType === "created" ? (
+             <Text style={[styles.joinedText, { color: isEnded ? "#888" : "#22c55e" }]}>{isEnded ? "Đã kết thúc" : "Do bạn tạo"}</Text>
+          ) : tabType === "joined" ? (
+             <Text style={styles.joinedText}>Đã tham gia</Text>
+          ) : joined ? (
+             <Text style={styles.joinedText}>Đã tham gia</Text>
+          ) : (
+             <View style={{ flex: 1 }} />
+          )}
+
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {tabType === "joined" && (
+              <TouchableOpacity
+                style={[styles.viewDetailBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ef4444' }]}
+                activeOpacity={0.7}
+                onPress={() => handleLeaveMatch(item)}
+              >
+                <Text style={[styles.viewDetailBtnText, { color: '#ef4444' }]}>Rút khỏi</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.viewDetailBtn}
+              activeOpacity={0.7}
+              onPress={() => handleViewDetail(item)}
+            >
+              <Text style={styles.viewDetailBtnText}>Xem chi tiết</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     );
   };
@@ -566,9 +438,7 @@ export default function TeamsScreen({ navigation }) {
 
   const renderItem = ({ item }) => {
     if (activeSubTab === "findteam") return renderFindTeamCard(item);
-    if (activeSubTab === "created") return renderCreatedCard(item);
-    if (activeSubTab === "near") return renderBrowseCard(item);
-    return renderJoinedCard(item);
+    return renderFigmaCard(item, activeSubTab);
   };
 
   const isFindTeamTab = activeSubTab === "findteam";
@@ -576,39 +446,49 @@ export default function TeamsScreen({ navigation }) {
   const listData = isFindTeamTab ? findTeamPosts : getDisplayData();
 
   return (
-    <View style={styles.container}>
+    <Screen style={styles.container}>
       {/* ─── Header ─── */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Trận đấu</Text>
-        <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreateModal(true)}>
-          <Text style={styles.createBtnText}>+ Tạo</Text>
-        </TouchableOpacity>
+      <View style={styles.headerWrap}>
+        <View style={styles.header}>
+          <View style={styles.headerBrand}>
+            <Image source={require("../../assets/logo_vibe.png")} style={styles.headerLogo} resizeMode="contain" />
+            <Text style={styles.headerTitle}>
+              <Text style={styles.headerTitleBlack}>Tạo</Text>
+              <Text style={styles.headerTitleOrange}>Trận</Text>
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreateModal(true)}>
+            <Text style={styles.createBtnText}>Tạo</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ─── Sub Tabs ─── */}
-      <View style={styles.subTabs}>
-        {[
-          { key: "near", label: "Gần tôi" },
-          { key: "joined", label: "Đã tham gia" },
-          { key: "created", label: "Đã tạo" },
-        ].map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.subTab, activeSubTab === tab.key && styles.subTabActive]}
-            onPress={() => {
-              setActiveSubTab(tab.key);
-            }}
-          >
-            <Text style={[styles.subTabText, activeSubTab === tab.key && styles.subTabTextActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.subTabsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subTabsInner}>
+          {[
+            { key: "near", label: "Gần tôi" },
+            { key: "joined", label: "Đã tham gia" },
+            { key: "created", label: "Đã tạo" },
+          ].map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.subTab, activeSubTab === tab.key && styles.subTabActive]}
+              onPress={() => {
+                setActiveSubTab(tab.key);
+              }}
+            >
+              <Text style={[styles.subTabText, activeSubTab === tab.key && styles.subTabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* ─── Sport Filters ─── */}
       {!isFindTeamTab && (
-      <View style={styles.filters}>
+      <View style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersInner}>
           {SPORT_FILTERS.map((f) => {
             const isActive = activeSport === f.key;
@@ -618,12 +498,12 @@ export default function TeamsScreen({ navigation }) {
                 style={[styles.chip, isActive && styles.chipActive]}
                 onPress={() => setActiveSport(f.key)}
               >
-                {f.icon ? (
+                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{f.label}</Text>
+                {f.tagName ? (
                   <View style={styles.chipIconContainer}>
-                    <Text style={styles.chipIcon}>{f.icon}</Text>
+                    <TagIcon tagName={f.tagName} size={14} color={isActive ? ORANGE : "#333"} />
                   </View>
                 ) : null}
-                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{f.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -633,59 +513,46 @@ export default function TeamsScreen({ navigation }) {
 
       {/* ─── Search & Filters Bar ─── */}
       {!isFindTeamTab && (
-      <View style={styles.searchBar}>
+      <View style={styles.searchSection}>
         <View style={styles.searchWrap}>
-          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
             value={searchText}
             onChangeText={setSearchText}
-            placeholder="Tìm trận đấu, tên sân..."
+            placeholder="Tìm kiếm tên trận đấu, tên người đăng bài,..."
             placeholderTextColor="#aaa"
             returnKeyType="search"
             onSubmitEditing={handleSearch}
           />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={() => { setSearchText(""); loadMatches("", areaFilter, timeFilter, activeSubTab); }} style={styles.clearBtn}>
-              <Text style={styles.clearBtnText}>✕</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.searchSubmitBtn} onPress={handleSearch}>
+            <Ionicons name="search" size={20} color="#fff" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.filterRow}>
-          <View style={[styles.filterInputWrap, { marginRight: 8 }]}>
-            <Text style={styles.filterRowIcon}>📍</Text>
+          <View style={[styles.filterInputWrap, { marginRight: 12 }]}>
+            <Ionicons name="time-outline" size={18} color="#333" style={styles.filterRowIcon} />
             <TextInput
               style={styles.filterInput}
               value={areaFilter}
               onChangeText={setAreaFilter}
-              placeholder="Khu vực..."
+              placeholder="Khu vực"
               placeholderTextColor="#aaa"
               returnKeyType="search"
               onSubmitEditing={handleSearch}
             />
-            {areaFilter.length > 0 && (
-              <TouchableOpacity onPress={() => { setAreaFilter(""); loadMatches(searchText, "", timeFilter, activeSubTab); }} style={styles.clearBtnMini}>
-                <Text style={styles.clearBtnTextMini}>✕</Text>
-              </TouchableOpacity>
-            )}
           </View>
           <View style={styles.filterInputWrap}>
-            <Text style={styles.filterRowIcon}>🕒</Text>
+            <Ionicons name="location-outline" size={18} color="#333" style={styles.filterRowIcon} />
             <TextInput
               style={styles.filterInput}
               value={timeFilter}
               onChangeText={setTimeFilter}
-              placeholder="Giờ (19:00)..."
+              placeholder="Giờ"
               placeholderTextColor="#aaa"
               returnKeyType="search"
               onSubmitEditing={handleSearch}
             />
-            {timeFilter.length > 0 && (
-              <TouchableOpacity onPress={() => { setTimeFilter(""); loadMatches(searchText, areaFilter, "", activeSubTab); }} style={styles.clearBtnMini}>
-                <Text style={styles.clearBtnTextMini}>✕</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
       </View>
@@ -762,7 +629,7 @@ export default function TeamsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </Screen>
   );
 }
 
@@ -775,92 +642,158 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 13, color: "#999", textAlign: "center", marginTop: 4 },
 
   // Header
+  headerWrap: {
+    paddingHorizontal: 9,
+    paddingTop: 0,
+    paddingBottom: 16,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === "ios" ? 12 : 20,
-    paddingBottom: 12,
     backgroundColor: "#fff",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    height: 74,
+    borderWidth: 1,
+    borderColor: "rgba(99, 94, 94, 0.19)",
   },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: "#000" },
+  headerBrand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerLogo: { width: 32, height: 32 },
+  headerTitle: { fontSize: 22, fontWeight: "800" },
+  headerTitleBlack: { color: "#111" },
+  headerTitleOrange: { color: ORANGE },
   createBtn: {
-    backgroundColor: "#ff4d2d",
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    backgroundColor: ORANGE,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
     borderRadius: 20,
   },
-  createBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  createBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
   // Sub Tabs
-  subTabs: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    paddingHorizontal: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e8e8e8",
+  subTabsContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  subTabsInner: {
+    gap: 12,
   },
   subTab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 3,
-    borderBottomColor: "transparent",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
   },
-  subTabActive: { borderBottomColor: "#0066cc" },
-  subTabText: { fontSize: 15, fontWeight: "600", color: "#888" },
-  subTabTextActive: { color: "#0066cc", fontWeight: "800" },
+  subTabActive: {
+    borderColor: ORANGE,
+  },
+  subTabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#555",
+  },
+  subTabTextActive: {
+    color: ORANGE,
+  },
 
   // Sport Filters Chips
-  filters: {
-    backgroundColor: "#f8f9fa",
-    paddingTop: 16,
-    paddingBottom: 12,
+  filtersContainer: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
-  filtersInner: { paddingHorizontal: 16, gap: 10 },
+  filtersInner: {
+    gap: 10,
+  },
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#e5e7eb",
     gap: 6,
   },
   chipActive: {
-    backgroundColor: "#0066cc",
-    borderColor: "#0066cc",
+    backgroundColor: "#fff",
+    borderColor: ORANGE,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#333",
+  },
+  chipTextActive: {
+    color: ORANGE,
   },
   chipIconContainer: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#f0f2f5",
     alignItems: "center",
     justifyContent: "center",
   },
-  chipIcon: { fontSize: 12 },
-  chipText: { fontSize: 13, fontWeight: "600", color: "#333" },
-  chipTextActive: { color: "#fff", fontWeight: "700" },
+  chipIcon: {
+    fontSize: 13,
+  },
 
   // Search & Filters Bar
-  searchBar: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 12, backgroundColor: "#f8f9fa", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eee" },
-  searchWrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#f2f3f5", borderRadius: 12, paddingHorizontal: 12, height: 44 },
-  searchIcon: { fontSize: 14, marginRight: 8, opacity: 0.4 },
-  searchInput: { flex: 1, fontSize: 14, color: "#333", paddingVertical: 0 },
-  clearBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#ccc", alignItems: "center", justifyContent: "center" },
-  clearBtnText: { fontSize: 10, color: "#fff", fontWeight: "700" },
-
-  // Filter mini inputs
-  filterRow: { flexDirection: "row", marginTop: 8 },
-  filterInputWrap: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#f2f3f5", borderRadius: 10, paddingHorizontal: 10, height: 36 },
-  filterRowIcon: { fontSize: 12, marginRight: 6, opacity: 0.5 },
-  filterInput: { flex: 1, fontSize: 13, color: "#333", paddingVertical: 0 },
-  clearBtnMini: { width: 16, height: 16, borderRadius: 8, backgroundColor: "#ccc", alignItems: "center", justifyContent: "center" },
-  clearBtnTextMini: { fontSize: 8, color: "#fff", fontWeight: "700" },
+  searchSection: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    height: 48,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    fontSize: 14,
+    color: "#333",
+  },
+  searchSubmitBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: ORANGE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterRow: {
+    flexDirection: "row",
+  },
+  filterInputWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    height: 48,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 24,
+    paddingHorizontal: 16,
+  },
+  filterRowIcon: {
+    marginRight: 8,
+  },
+  filterInput: {
+    flex: 1,
+    fontSize: 14,
+    color: "#333",
+  },
 
   // List
   listInner: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 100 },
@@ -881,44 +814,154 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  avatarContainer: {
+    position: "relative",
+  },
   sportSquare: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 12,
-    backgroundColor: "#0d6efd", // Blue bg
+    backgroundColor: ORANGE,
     alignItems: "center",
     justifyContent: "center",
   },
-  sportSquareIcon: { fontSize: 22, color: "#fff" },
-  titleContainer: { flex: 1, marginLeft: 12 },
+  creatorBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  creatorAvatarText: { color: "#fff", fontSize: 9, fontWeight: "800" },
+
+  moreBtn: {
+    padding: 4,
+  },
+  titleContainer: { flex: 1, marginLeft: 12, justifyContent: "center" },
   matchTitle: { fontSize: 16, fontWeight: "800", color: "#111" },
-  matchSubtitle: { fontSize: 12, color: "#777", marginTop: 2 },
-
-  detailInfoList: { marginTop: 12, gap: 8 },
-  detailInfoRow: { flexDirection: "row", alignItems: "flex-start" },
-  detailInfoIcon: { fontSize: 13, width: 24, marginTop: 1 },
-  detailInfoText: { flex: 1, fontSize: 13, color: "#333", fontWeight: "500", lineHeight: 18 },
-  detailInfoTextMuted: { flex: 1, fontSize: 12, color: "#888", lineHeight: 18 },
-
-  creatorRow: {
+  creatorMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 4,
+  },
+  creatorName: { fontSize: 13, fontWeight: "600", color: "#333" },
+  creatorTimeAgo: { fontSize: 12, color: "#888", marginLeft: 6 },
+
+  figmaInfoList: {
+    marginTop: 16,
     borderTopWidth: 1,
     borderTopColor: "#f0f0f0",
   },
-  creatorAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  figmaInfoRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
   },
-  creatorAvatarText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  figmaInfoIcon: {
+    width: 24,
+    alignItems: "center",
+  },
+  figmaInfoText: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "500",
+    flex: 1,
+  },
+
+  figmaGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+  },
+  figmaGridCol: {
+    flex: 1,
+  },
+  figmaGridLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+  figmaGridBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+    backgroundColor: "#fff",
+  },
+  figmaGridValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111",
+  },
+
+  positionTagsSection: {
+    marginTop: 16,
+  },
+  positionTagsLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  positionTagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  positionTag: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+  },
+  positionTagText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111",
+  },
+
+  figmaActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+  },
+  joinedText: {
+    fontSize: 14,
+    color: "#22c55e",
+    fontWeight: "700",
+  },
+  viewDetailBtn: {
+    backgroundColor: ORANGE,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginLeft: "auto",
+  },
+  viewDetailBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   creatorAvatarImg: { width: 32, height: 32, borderRadius: 16 },
   creatorMeta: { marginLeft: 10, flex: 1 },
-  creatorName: { fontSize: 13, fontWeight: "700", color: "#222" },
   creatorSub: { fontSize: 11, color: "#888", marginTop: 1 },
 
   // Status pills
