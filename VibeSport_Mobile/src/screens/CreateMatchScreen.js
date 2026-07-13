@@ -1283,7 +1283,7 @@ export default function CreateMatchScreen({ navigation, route }) {
               text: "OK",
               onPress: () => {
                 if (navigation) {
-                  navigation.navigate("Home", { screen: "TeamsTab" });
+                  navigation.replace("CreateMatch");
                 }
               }
             }
@@ -2188,13 +2188,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ORANGE, // #FF5F3D
-    height: 74,
-    borderRadius: 20,
-    shadowColor: ORANGE,
+    height: 44,
+    borderRadius: 10,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 6, 
   },
   createButtonText: {
     color: "#fff",

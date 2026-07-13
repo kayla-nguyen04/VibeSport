@@ -21,7 +21,7 @@ import { clearAuthFeedback, loginUser, setAuthError } from '../redux/authSlice';
 import { sendOtp } from '../services/otpService';
 import { SplashScreen } from './SplashScreen';
 
-const LOGO = require('../../assets/logo_vibe.png');
+const LOGO = require('../../assets/logo_vibesport_icon.png');
 
 const FONT_SIZE = 13;
 const HEADER_TEXT = {
@@ -108,7 +108,7 @@ export function AuthScreen({ route }) {
           </View>
 
           <View style={styles.headingGroup}>
-            {mode === 'login' ? <Image source={LOGO} style={styles.logo} resizeMode="contain" /> : null}
+            <Image source={LOGO} style={styles.logo} resizeMode="contain" />
             <Text style={styles.heading}>{HEADER_TEXT[mode].title}</Text>
             <Text style={styles.subheading}>{HEADER_TEXT[mode].subtitle}</Text>
           </View>

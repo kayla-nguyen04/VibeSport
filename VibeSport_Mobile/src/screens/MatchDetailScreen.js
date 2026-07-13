@@ -73,6 +73,19 @@ const TEAM2_POSITIONS = [
 
 const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
 
+const getPositionDisplayLabel = (posId) => {
+  const pos = ALL_POSITIONS.find((item) => item.id === posId);
+  if (pos) {
+    const teamNumber = pos.id.startsWith("t1_") ? 1 : 2;
+    return `${pos.label} (Đội ${teamNumber})`;
+  }
+  if (typeof posId === "string" && posId.includes("bench")) {
+    const teamNumber = posId.startsWith("t1_") ? 1 : 2;
+    return `Dự bị (Đội ${teamNumber})`;
+  }
+  return posId;
+};
+
 const FOOTBALL_FORMATS = {
   10: { label: "5 vs 5", playerCountPerTeam: 5 },
   14: { label: "7 vs 7", playerCountPerTeam: 7 },
@@ -326,6 +339,48 @@ export default function MatchDetailScreen({ navigation, route }) {
   const pendingRequestPositions = match.pendingJoinRequestPositions || [];
   const invitedMembers = match.invitedMembers || [];
 
+  const positionOptions = useMemo(() => {
+    if (match?.sport !== "football") return [];
+
+    const takenPositionIds = new Set();
+    pendingRequestPositions.forEach((entry) => {
+      if (!entry || !Array.isArray(entry.positionIds)) return;
+      entry.positionIds.forEach((posId) => {
+        if (String(entry.userId) !== String(userId)) {
+          takenPositionIds.add(String(posId));
+        }
+      });
+    });
+
+    const options = [];
+    const addOption = (id, label, role, teamNumber, isBench = false, disabled = false) => {
+      options.push({ id, label, role, teamNumber, isBench, disabled });
+    };
+
+    (match?.selectedPositionIds || []).forEach((posId) => {
+      const pos = ALL_POSITIONS.find((item) => item.id === posId);
+      if (!pos) return;
+      const teamNumber = posId.startsWith("t1_") ? 1 : 2;
+      addOption(pos.id, pos.label, pos.role, teamNumber, false, takenPositionIds.has(String(pos.id)));
+    });
+
+    if ((match?.benchMembersTeam1 || 0) > 0) {
+      for (let index = 0; index < match.benchMembersTeam1; index += 1) {
+        const benchId = `t1_bench_${index + 1}`;
+        addOption(benchId, "Dự bị", "bench", 1, true, takenPositionIds.has(benchId));
+      }
+    }
+
+    if ((match?.benchMembersTeam2 || 0) > 0) {
+      for (let index = 0; index < match.benchMembersTeam2; index += 1) {
+        const benchId = `t2_bench_${index + 1}`;
+        addOption(benchId, "Dự bị", "bench", 2, true, takenPositionIds.has(benchId));
+      }
+    }
+
+    return options;
+  }, [match?.sport, match?.selectedPositionIds, match?.benchMembersTeam1, match?.benchMembersTeam2, pendingRequestPositions, userId]);
+
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
@@ -371,7 +426,8 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleRequestJoin = () => {
-    if (match.sport === "football" && selectedPositionIds.length > 0) {
+    if (match?.sport === "football" && positionOptions.length > 0) {
+      setSelectedPositions([]);
       setShowPositionModal(true);
       return;
     }
@@ -426,11 +482,21 @@ export default function MatchDetailScreen({ navigation, route }) {
     }
   };
 
-  const togglePositionSelection = (positionId) => {
-    setSelectedPositions(prev =>
-      prev.includes(positionId)
-        ? prev.filter(id => id !== positionId)
-        : [...prev, positionId]
+  const togglePositionSelection = (option) => {
+    if (option.disabled) return;
+
+    const isAlreadySelected = selectedPositions.includes(option.id);
+    const hasSameRoleInSameTeamSelected = selectedPositions.some((selectedId) => {
+      const selectedOption = positionOptions.find((item) => item.id === selectedId);
+      return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
+    });
+
+    if (!isAlreadySelected && hasSameRoleInSameTeamSelected) {
+      return;
+    }
+
+    setSelectedPositions((prev) =>
+      prev.includes(option.id) ? prev.filter((id) => id !== option.id) : [...prev, option.id]
     );
   };
 
@@ -795,10 +861,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                   const requestUser = typeof p === "object" ? p : { name: "Người dùng" };
                   const requestName = requestUser.name || "Người dùng";
                   const requestPositions = getRequestPositions(requestUserId);
-                  const posLabels = requestPositions.map((posId) => {
-                    const pos = ALL_POSITIONS.find((item) => item.id === posId);
-                    return pos?.label || posId;
-                  });
+                  const posLabels = requestPositions.map((posId) => getPositionDisplayLabel(posId));
                   return (
                     <View key={requestUserId || idx} style={styles.requestFigmaCard}>
                       <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }} onPress={() => openProfile(p)} activeOpacity={0.7}>
@@ -807,12 +870,21 @@ export default function MatchDetailScreen({ navigation, route }) {
                         </View>
                         <Text style={{ fontSize: 16, fontWeight: "700", color: "#111", marginLeft: 10 }}>{requestName}</Text>
                       </TouchableOpacity>
-                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#111", lineHeight: 20, marginBottom: 4 }}>
-                        {requestName} muốn tham gia với vị trí:
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#111", lineHeight: 20, marginBottom: 8 }}>
+                        {requestName} muốn tham gia ở các vị trí:
                       </Text>
-                      {posLabels.length > 0 && (
-                        <Text style={{ fontSize: 14, fontWeight: "700", color: "#111", marginBottom: 16 }}>
-                          {posLabels.join(", ")}.
+                      {posLabels.length > 0 ? (
+                        <View style={{ marginBottom: 16, gap: 6 }}>
+                          {posLabels.map((label, index) => (
+                            <View key={`${requestUserId}-${label}-${index}`} style={{ flexDirection: "row", alignItems: "center" }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: ORANGE, marginRight: 8 }} />
+                              <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>{label}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#6b7280", marginBottom: 16 }}>
+                          Không có vị trí cụ thể
                         </Text>
                       )}
                       <View style={{ flexDirection: "row", gap: 12 }}>
@@ -859,28 +931,31 @@ export default function MatchDetailScreen({ navigation, route }) {
             </View>
 
             <ScrollView style={styles.positionModalList}>
-              {selectedPositionIds.map((posId) => {
-                const pos = ALL_POSITIONS.find((p) => p.id === posId);
-                if (!pos) return null;
-                const isSelected = selectedPositions.includes(posId);
+              {positionOptions.map((option) => {
+                const isSelected = selectedPositions.includes(option.id);
+                const hasSameRoleInSameTeamSelected = selectedPositions.some((selectedId) => {
+                  const selectedOption = positionOptions.find((item) => item.id === selectedId);
+                  return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
+                });
+                const isDisabled = option.disabled || (!isSelected && hasSameRoleInSameTeamSelected);
+
                 return (
                   <TouchableOpacity
-                    key={posId}
+                    key={option.id}
                     style={[
                       styles.positionOption,
-                      isSelected && styles.positionOptionSelected
+                      isSelected && styles.positionOptionSelected,
+                      isDisabled && styles.positionOptionDisabled,
                     ]}
-                    onPress={() => {
-                      setSelectedPositions((prev) =>
-                        prev.includes(posId) ? prev.filter((id) => id !== posId) : [...prev, posId]
-                      );
-                    }}
+                    onPress={() => togglePositionSelection(option)}
+                    disabled={isDisabled}
                   >
                     <Text style={[
                       styles.positionOptionText,
-                      isSelected && styles.positionOptionTextSelected
+                      isSelected && styles.positionOptionTextSelected,
+                      isDisabled && styles.positionOptionTextDisabled,
                     ]}>
-                      {pos.label} (Đội {posId.startsWith('t1_') ? '1' : '2'})
+                      {option.label} · {option.isBench ? `Dự bị · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
                     </Text>
                     {isSelected && (
                       <Text style={styles.positionOptionCheck}>✓</Text>
@@ -1662,6 +1737,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#eff6ff",
     borderColor: "#3b82f6",
   },
+  positionOptionDisabled: {
+    opacity: 0.55,
+    backgroundColor: "#f3f4f6",
+    borderColor: "#d1d5db",
+  },
   positionOptionText: {
     fontSize: 15,
     fontWeight: "600",
@@ -1669,6 +1749,9 @@ const styles = StyleSheet.create({
   },
   positionOptionTextSelected: {
     color: "#1d4ed8",
+  },
+  positionOptionTextDisabled: {
+    color: "#6b7280",
   },
   positionOptionCheck: {
     fontSize: 18,

@@ -49,7 +49,7 @@ export function SplashScreen({ onNavigateToRegister, onNavigateToLogin }) {
             <View style={styles.logoCircle}>
               <Image
                 resizeMode="contain"
-                source={require("../../assets/logo_vibe.png")}
+                source={require("../../assets/logo_vibesport_icon.png")}
                 style={styles.logoImage}
               />
             </View>
