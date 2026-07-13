@@ -109,6 +109,7 @@ export default function TeamsScreen({ navigation }) {
   const [findTeamLoading, setFindTeamLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(true);
 
   const userId = normalizeId(user?.id || user?._id);
 
@@ -282,7 +283,7 @@ export default function TeamsScreen({ navigation }) {
           </View>
           {tabType === "created" && (
             <TouchableOpacity style={styles.editBtnMini} activeOpacity={0.6} onPress={() => handleEditMatch(item)}>
-               <Ionicons name="pencil" size={16} color="#888" />
+              <Ionicons name="pencil" size={16} color="#888" />
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.moreBtn} activeOpacity={0.6}>
@@ -308,7 +309,7 @@ export default function TeamsScreen({ navigation }) {
           ) : null}
           <View style={styles.figmaInfoRow}>
             <View style={styles.figmaInfoIcon}><Ionicons name="grid-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>Loại sân : {item.sport === "football" ? `${Math.floor(maxCount/2)}vs ${Math.floor(maxCount/2)}` : `${Math.floor(maxCount/2)} vs ${Math.floor(maxCount/2)}`}</Text>
+            <Text style={styles.figmaInfoText}>Loại sân : {item.sport === "football" ? `${Math.floor(maxCount / 2)}vs ${Math.floor(maxCount / 2)}` : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
           </View>
         </View>
 
@@ -347,13 +348,13 @@ export default function TeamsScreen({ navigation }) {
         {/* Action Row */}
         <View style={styles.figmaActionRow}>
           {tabType === "created" ? (
-             <Text style={[styles.joinedText, { color: isEnded ? "#888" : "#22c55e" }]}>{isEnded ? "Đã kết thúc" : "Do bạn tạo"}</Text>
+            <Text style={[styles.joinedText, { color: isEnded ? "#888" : "#22c55e" }]}>{isEnded ? "Đã kết thúc" : "Do bạn tạo"}</Text>
           ) : tabType === "joined" ? (
-             <Text style={styles.joinedText}>Đã tham gia</Text>
+            <Text style={styles.joinedText}>Đã tham gia</Text>
           ) : joined ? (
-             <Text style={styles.joinedText}>Đã tham gia</Text>
+            <Text style={styles.joinedText}>Đã tham gia</Text>
           ) : (
-             <View style={{ flex: 1 }} />
+            <View style={{ flex: 1 }} />
           )}
 
           <View style={{ flexDirection: "row", gap: 8 }}>
@@ -444,6 +445,10 @@ export default function TeamsScreen({ navigation }) {
   const isFindTeamTab = activeSubTab === "findteam";
   const listLoading = isFindTeamTab ? findTeamLoading : loading;
   const listData = isFindTeamTab ? findTeamPosts : getDisplayData();
+  const hasActiveFilters = activeSport !== "all" || Boolean(searchText.trim()) || Boolean(areaFilter.trim()) || Boolean(timeFilter.trim());
+  const filterSummary = activeSport === "all"
+    ? "Tất cả môn"
+    : SPORT_FILTERS.find((item) => item.key === activeSport)?.label || "Tất cả môn";
 
   return (
     <Screen style={styles.container}>
@@ -486,76 +491,96 @@ export default function TeamsScreen({ navigation }) {
         </ScrollView>
       </View>
 
-      {/* ─── Sport Filters ─── */}
+      {/* ─── Filter Toggle ─── */}
       {!isFindTeamTab && (
-      <View style={styles.filtersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersInner}>
-          {SPORT_FILTERS.map((f) => {
-            const isActive = activeSport === f.key;
-            return (
-              <TouchableOpacity
-                key={f.key}
-                style={[styles.chip, isActive && styles.chipActive]}
-                onPress={() => setActiveSport(f.key)}
-              >
-                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{f.label}</Text>
-                {f.tagName ? (
-                  <View style={styles.chipIconContainer}>
-                    <TagIcon tagName={f.tagName} size={14} color={isActive ? ORANGE : "#333"} />
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+        <View style={styles.filterToggleRow}>
+          <TouchableOpacity
+            style={styles.filterToggleButton}
+            activeOpacity={0.85}
+            onPress={() => setIsFiltersCollapsed((prev) => !prev)}
+          >
+            <View style={styles.filterToggleLeft}>
+              <Ionicons name="filter-outline" size={18} color="#333" />
+              <Text style={styles.filterToggleText}>Bộ lọc</Text>
+              {hasActiveFilters ? (
+                <Text style={styles.filterToggleHint}>{filterSummary}</Text>
+              ) : null}
+            </View>
+            <Ionicons name={isFiltersCollapsed ? "chevron-down" : "chevron-up"} size={18} color="#666" />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ─── Sport Filters ─── */}
+      {!isFindTeamTab && !isFiltersCollapsed && (
+        <View style={styles.filtersContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersInner}>
+            {SPORT_FILTERS.map((f) => {
+              const isActive = activeSport === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.chip, isActive && styles.chipActive]}
+                  onPress={() => setActiveSport(f.key)}
+                >
+                  <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{f.label}</Text>
+                  {f.tagName ? (
+                    <View style={styles.chipIconContainer}>
+                      <TagIcon tagName={f.tagName} size={14} color={isActive ? ORANGE : "#333"} />
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       {/* ─── Search & Filters Bar ─── */}
-      {!isFindTeamTab && (
-      <View style={styles.searchSection}>
-        <View style={styles.searchWrap}>
-          <TextInput
-            style={styles.searchInput}
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Tìm kiếm tên trận đấu, tên người đăng bài,..."
-            placeholderTextColor="#aaa"
-            returnKeyType="search"
-            onSubmitEditing={handleSearch}
-          />
-          <TouchableOpacity style={styles.searchSubmitBtn} onPress={handleSearch}>
-            <Ionicons name="search" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
+      {!isFindTeamTab && !isFiltersCollapsed && (
+        <View style={styles.searchSection}>
+          <View style={styles.searchWrap}>
+            <TextInput
+              style={styles.searchInput}
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Tìm kiếm tên trận đấu, tên người đăng bài,..."
+              placeholderTextColor="#aaa"
+              returnKeyType="search"
+              onSubmitEditing={handleSearch}
+            />
+            <TouchableOpacity style={styles.searchSubmitBtn} onPress={handleSearch}>
+              <Ionicons name="search" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-        <View style={styles.filterRow}>
-          <View style={[styles.filterInputWrap, { marginRight: 12 }]}>
-            <Ionicons name="time-outline" size={18} color="#333" style={styles.filterRowIcon} />
-            <TextInput
-              style={styles.filterInput}
-              value={areaFilter}
-              onChangeText={setAreaFilter}
-              placeholder="Khu vực"
-              placeholderTextColor="#aaa"
-              returnKeyType="search"
-              onSubmitEditing={handleSearch}
-            />
-          </View>
-          <View style={styles.filterInputWrap}>
-            <Ionicons name="location-outline" size={18} color="#333" style={styles.filterRowIcon} />
-            <TextInput
-              style={styles.filterInput}
-              value={timeFilter}
-              onChangeText={setTimeFilter}
-              placeholder="Giờ"
-              placeholderTextColor="#aaa"
-              returnKeyType="search"
-              onSubmitEditing={handleSearch}
-            />
+          <View style={styles.filterRow}>
+            <View style={[styles.filterInputWrap, { marginRight: 12 }]}>
+              <Ionicons name="time-outline" size={18} color="#333" style={styles.filterRowIcon} />
+              <TextInput
+                style={styles.filterInput}
+                value={areaFilter}
+                onChangeText={setAreaFilter}
+                placeholder="Khu vực"
+                placeholderTextColor="#aaa"
+                returnKeyType="search"
+                onSubmitEditing={handleSearch}
+              />
+            </View>
+            <View style={styles.filterInputWrap}>
+              <Ionicons name="location-outline" size={18} color="#333" style={styles.filterRowIcon} />
+              <TextInput
+                style={styles.filterInput}
+                value={timeFilter}
+                onChangeText={setTimeFilter}
+                placeholder="Giờ"
+                placeholderTextColor="#aaa"
+                returnKeyType="search"
+                onSubmitEditing={handleSearch}
+              />
+            </View>
           </View>
         </View>
-      </View>
       )}
 
       {/* ─── Match / Find Team List ─── */}
@@ -580,19 +605,19 @@ export default function TeamsScreen({ navigation }) {
                 {activeSubTab === "findteam"
                   ? "Chưa có bài đăng tìm đội"
                   : activeSubTab === "created"
-                  ? "Bạn chưa tạo trận nào"
-                  : activeSubTab === "joined"
-                    ? "Bạn chưa tham gia trận nào"
-                    : "Không tìm thấy trận đấu"}
+                    ? "Bạn chưa tạo trận nào"
+                    : activeSubTab === "joined"
+                      ? "Bạn chưa tham gia trận nào"
+                      : "Không tìm thấy trận đấu"}
               </Text>
               <Text style={styles.emptySubtitle}>
                 {activeSubTab === "findteam"
                   ? "Nhấn + Tạo để đăng bài tìm đội mới."
                   : activeSubTab === "near"
-                  ? "Hãy tạo trận mới hoặc thay đổi bộ lọc tìm kiếm."
-                  : activeSubTab === "created"
-                    ? "Nhấn + Tạo để bắt đầu."
-                    : "Tìm trận ở tab Gần tôi và tham gia."}
+                    ? "Hãy tạo trận mới hoặc thay đổi bộ lọc tìm kiếm."
+                    : activeSubTab === "created"
+                      ? "Nhấn + Tạo để bắt đầu."
+                      : "Tìm trận ở tab Gần tôi và tham gia."}
               </Text>
             </View>
           }
@@ -657,13 +682,19 @@ const styles = StyleSheet.create({
     height: 74,
     borderWidth: 1,
     borderColor: "rgba(99, 94, 94, 0.19)",
+    marginTop: 15,
   },
   headerBrand: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  headerLogo: { width: 32, height: 32 },
+  headerLogo: {
+    width: 44,
+    height: 44,
+    marginRight: -6,
+  },
+
   headerTitle: { fontSize: 22, fontWeight: "800" },
   headerTitleBlack: { color: "#111" },
   headerTitleOrange: { color: ORANGE },
@@ -701,6 +732,39 @@ const styles = StyleSheet.create({
   },
   subTabTextActive: {
     color: ORANGE,
+  },
+
+  // Filter Toggle
+  filterToggleRow: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  filterToggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  filterToggleLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  filterToggleText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+  },
+  filterToggleHint: {
+    fontSize: 12,
+    color: "#888",
   },
 
   // Sport Filters Chips

@@ -23,7 +23,6 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
 import { getPostsRequest } from "../services/postApi";
 import { Screen } from "../components/Screen";
-import { ScreenHeader } from "../components/ScreenHeader";
 import { TagIcon } from "../components/TagIcon";
 import { primary } from "../theme";
 
@@ -1482,7 +1481,7 @@ export default function CreateMatchScreen({ navigation, route }) {
     <Screen style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      <ScreenHeader style={styles.header}>
+      <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation && navigation.goBack()}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1492,7 +1491,7 @@ export default function CreateMatchScreen({ navigation, route }) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isEditMode ? "Sửa trận đấu" : "Tạo trận đấu"}</Text>
         <View style={{ width: 24 }} />
-      </ScreenHeader>
+      </View>
 
       <ScrollView
         style={styles.scrollView}
@@ -1836,15 +1835,23 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    marginHorizontal: 10,
-    marginTop: Platform.OS === 'ios' ? 8 : 10,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 22,
-    elevation: 0,
-    shadowOpacity: 0,
+    marginHorizontal: 9,
+    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginBottom: 0,
+    height: 74,
+    paddingHorizontal: 12,
+    paddingVertical: 0,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 94, 94, 0.19)',
+    zIndex: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
   backButton: {
     padding: 4,

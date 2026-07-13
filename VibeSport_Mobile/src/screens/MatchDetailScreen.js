@@ -329,6 +329,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
+  const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isInvited && !isEnded && !isFull;
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
@@ -616,35 +617,17 @@ export default function MatchDetailScreen({ navigation, route }) {
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
         
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          {!isOwner && !isParticipant && !hasPendingRequest && !isEnded && (
-            <TouchableOpacity
-              style={styles.joinHeaderBtn}
-              onPress={handleRequestJoin}
-              disabled={actionLoading}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.joinHeaderBtnText}>Yêu cầu tham gia</Text>
-              <View style={styles.redDot} />
-            </TouchableOpacity>
-          )}
-
           {isOwner && match.status !== "completed" && (
             <>
               <TouchableOpacity
-                style={[styles.joinHeaderBtn, { width: 90 }]}
+                style={[styles.joinHeaderBtn, { width: 110 }]}
                 onPress={() => setShowRequestModal(true)}
                 activeOpacity={0.8}
               >
                 <Text style={styles.joinHeaderBtnText}>Yêu cầu</Text>
                 {pendingRequests.length > 0 && <View style={styles.redDot} />}
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={{ padding: 4 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                onPress={() => setShowOptionsModal(true)}
-              >
-                <Ionicons name="ellipsis-horizontal" size={20} color="#333" />
-              </TouchableOpacity>
+            
             </>
           )}
         </View>
@@ -764,6 +747,28 @@ export default function MatchDetailScreen({ navigation, route }) {
                 />
               );
             })
+          )}
+
+          {canJoinMatch && (
+            <TouchableOpacity
+              style={styles.joinBottomBtn}
+              onPress={handleRequestJoin}
+              disabled={actionLoading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.joinBottomBtnText}>Tham gia</Text>
+            </TouchableOpacity>
+          )}
+
+          {hasPendingRequest && !isOwner && (
+            <TouchableOpacity
+              style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
+              onPress={handleCancelRequest}
+              disabled={actionLoading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -1095,15 +1100,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginTop: 12,
+    marginHorizontal: 9,
+    marginTop: 8,
     marginBottom: 4,
-    borderRadius: 16,
+    height: 74,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "rgba(99, 94, 94, 0.19)",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -1112,7 +1117,7 @@ const styles = StyleSheet.create({
   },
   backButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   backArrow: { fontSize: 22, color: "#333" },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: "700", color: "#111", marginLeft: 8 },
+  headerTitle: { flex: 1, fontSize: 20, fontWeight: "700", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {
     backgroundColor: "#fff",
@@ -1126,6 +1131,20 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   joinHeaderBtnText: { color: '#333', fontSize: 12, fontWeight: '700' },
+  joinBottomBtn: {
+    marginTop: 12,
+    backgroundColor: ORANGE,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  joinBottomBtnSecondary: {
+    backgroundColor: "#fff1f2",
+    borderWidth: 1,
+    borderColor: "#fecdd3",
+  },
+  joinBottomBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   redDot: {
     position: "absolute",
     top: 0,
@@ -1135,7 +1154,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: "#ff3b30",
   },
-  container: { padding: 16, paddingBottom: 40 },
+  container: { padding: 16, paddingBottom: 96 },
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
