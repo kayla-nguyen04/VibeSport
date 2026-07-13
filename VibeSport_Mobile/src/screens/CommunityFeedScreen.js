@@ -752,6 +752,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     zIndex: 10,
     elevation: 2,
+    overflow: 'hidden',
   },
   logoContainer: {
     flexDirection: 'row',
