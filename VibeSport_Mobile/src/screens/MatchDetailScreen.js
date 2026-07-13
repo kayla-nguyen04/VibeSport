@@ -304,7 +304,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleRequestJoin = () => {
-    if (match.sport === "football" && selectedPositionIds.length > 0) {
+    if (match.sport === "football" && (selectedPositionIds.length > 0 || benchTeam1 > 0 || benchTeam2 > 0)) {
       setShowPositionModal(true);
       return;
     }
@@ -365,6 +365,36 @@ export default function MatchDetailScreen({ navigation, route }) {
         ? prev.filter(id => id !== positionId)
         : [...prev, positionId]
     );
+  };
+
+  const getPositionStatus = (posId) => {
+    if (!match) return { isOccupied: false, isPending: false, label: "" };
+
+    const occupiedEntry = (match.memberPositions || []).find((mp) => {
+      const isParticipant = (match.participants || []).some((p) => {
+        const pid = typeof p === "object" ? p._id || p.id : p;
+        return String(pid) === String(mp.userId);
+      });
+      return mp.positionId === posId && isParticipant;
+    });
+
+    if (occupiedEntry) {
+      return { isOccupied: true, isPending: false, label: "Đã có người tham gia" };
+    }
+
+    const pendingEntry = (match.pendingJoinRequestPositions || []).find((entry) => {
+      const isPending = (match.pendingJoinRequests || []).some((p) => {
+        const pid = typeof p === "object" ? p._id || p.id : p;
+        return String(pid) === String(entry.userId);
+      });
+      return entry.positionIds && entry.positionIds.includes(posId) && isPending && String(entry.userId) !== String(userId);
+    });
+
+    if (pendingEntry) {
+      return { isOccupied: false, isPending: true, label: "Đã có người xin tham gia" };
+    }
+
+    return { isOccupied: false, isPending: false, label: "" };
   };
 
   const handleAcceptRequest = async (requestUserId) => {
@@ -778,10 +808,26 @@ export default function MatchDetailScreen({ navigation, route }) {
                         <Text style={styles.requestPositionLabel}>Vị trí ứng tuyển</Text>
                         <View style={styles.requestPositionTags}>
                           {requestPositions.map((posId) => {
-                            const pos = ALL_POSITIONS.find((item) => item.id === posId);
+                            let pos = ALL_POSITIONS.find((item) => item.id === posId);
+                            if (!pos && posId.includes("bench")) {
+                              const isTeam1 = posId.startsWith("t1_");
+                              const numStr = posId.split("_").pop();
+                              const benchTeam1 = match?.benchMembersTeam1 || 0;
+                              const benchTeam2 = match?.benchMembersTeam2 || 0;
+                              pos = {
+                                id: posId,
+                                label: `Dự bị${(isTeam1 ? benchTeam1 : benchTeam2) > 1 ? ` ${numStr}` : ""}`,
+                                role: "bench",
+                                isBench: true,
+                              };
+                            }
+                            if (!pos) return null;
+                            const teamText = `Đội ${posId.startsWith('t1_') ? '1' : '2'}`;
                             return (
                               <View key={posId} style={styles.requestPositionTag}>
-                                <Text style={styles.requestPositionTagText}>{pos?.label || posId}</Text>
+                                <Text style={styles.requestPositionTagText}>
+                                  {pos.label} ({teamText}){pos.isBench ? " free" : ""}
+                                </Text>
                               </View>
                             );
                           })}
@@ -841,35 +887,108 @@ export default function MatchDetailScreen({ navigation, route }) {
             </View>
 
             <ScrollView style={styles.positionModalList}>
-              {selectedPositionIds.map((posId) => {
-                const pos = ALL_POSITIONS.find((p) => p.id === posId);
-                if (!pos) return null;
-                const isSelected = selectedPositions.includes(posId);
-                return (
-                  <TouchableOpacity
-                    key={posId}
-                    style={[
-                      styles.positionOption,
-                      isSelected && styles.positionOptionSelected
-                    ]}
-                    onPress={() => {
-                      setSelectedPositions((prev) =>
-                        prev.includes(posId) ? prev.filter((id) => id !== posId) : [...prev, posId]
-                      );
-                    }}
-                  >
-                    <Text style={[
-                      styles.positionOptionText,
-                      isSelected && styles.positionOptionTextSelected
-                    ]}>
-                      {pos.label} (Đội {posId.startsWith('t1_') ? '1' : '2'})
-                    </Text>
-                    {isSelected && (
-                      <Text style={styles.positionOptionCheck}>✓</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+              {(() => {
+                const displayPositionIds = [...selectedPositionIds];
+                if (benchTeam1 > 0) {
+                  for (let i = 1; i <= benchTeam1; i++) {
+                    displayPositionIds.push(`t1_bench_${i}`);
+                  }
+                }
+                if (benchTeam2 > 0) {
+                  for (let i = 1; i <= benchTeam2; i++) {
+                    displayPositionIds.push(`t2_bench_${i}`);
+                  }
+                }
+
+                return displayPositionIds.map((posId) => {
+                  let pos = ALL_POSITIONS.find((p) => p.id === posId);
+                  if (!pos && posId.includes("bench")) {
+                    const isTeam1 = posId.startsWith("t1_");
+                    const numStr = posId.split("_").pop();
+                    pos = {
+                      id: posId,
+                      label: `Dự bị${(isTeam1 ? benchTeam1 : benchTeam2) > 1 ? ` ${numStr}` : ""}`,
+                      role: "bench",
+                      isBench: true,
+                    };
+                  }
+                  if (!pos) return null;
+
+                  const isSelected = selectedPositions.includes(posId);
+                  const status = getPositionStatus(posId);
+                  const isBlocked = status.isOccupied || status.isPending;
+
+                  return (
+                    <TouchableOpacity
+                      key={posId}
+                      style={[
+                        styles.positionOption,
+                        isSelected && styles.positionOptionSelected,
+                        isBlocked && styles.positionOptionDisabled
+                      ]}
+                      onPress={() => {
+                        if (isBlocked) return;
+                        setSelectedPositions((prev) => {
+                          if (prev.includes(posId)) {
+                            return prev.filter((id) => id !== posId);
+                          }
+
+                          const isTeam1 = posId.startsWith("t1_");
+                          const currentTeamPrefix = isTeam1 ? "t1_" : "t2_";
+                          const currentLabel = pos.label;
+
+                          const hasDuplicate = prev.some((selectedId) => {
+                            if (selectedId.startsWith(currentTeamPrefix)) {
+                              let pSelected = ALL_POSITIONS.find((p) => p.id === selectedId);
+                              if (!pSelected && selectedId.includes("bench")) {
+                                pSelected = { label: "Dự bị" };
+                              }
+                              const selectedLabel = pSelected?.label || "";
+                              const normSelected = selectedLabel.startsWith("Dự bị") ? "Dự bị" : selectedLabel;
+                              const normCurrent = currentLabel.startsWith("Dự bị") ? "Dự bị" : currentLabel;
+
+                              return normSelected === normCurrent;
+                            }
+                            return false;
+                          });
+
+                          if (hasDuplicate) {
+                            Alert.alert(
+                              "Thông báo",
+                              `Bạn đã chọn một vị trí ${currentLabel.startsWith("Dự bị") ? "Dự bị" : currentLabel} ở Đội ${isTeam1 ? "1" : "2"} rồi.`
+                            );
+                            return prev;
+                          }
+
+                          return [...prev, posId];
+                        });
+                      }}
+                      disabled={isBlocked}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[
+                          styles.positionOptionText,
+                          isSelected && styles.positionOptionTextSelected,
+                          isBlocked && styles.positionOptionTextDisabled
+                        ]}>
+                          {pos.label} (Đội {posId.startsWith('t1_') ? '1' : '2'})
+                          {pos.isBench && (
+                            <Text style={{ color: '#9ca3af', fontWeight: '400', fontSize: 13 }}> free</Text>
+                          )}
+                        </Text>
+                        {isBlocked && (
+                          <Text style={styles.positionOptionStatusText}>
+                            {status.label}
+                          </Text>
+                        )}
+                      </View>
+                      {isSelected && !isBlocked && (
+                        <Text style={styles.positionOptionCheck}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                });
+              })()}
             </ScrollView>
 
             <TouchableOpacity
@@ -1354,6 +1473,19 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#3b82f6",
+  },
+  positionOptionDisabled: {
+    opacity: 0.55,
+    backgroundColor: "#f3f4f6",
+  },
+  positionOptionTextDisabled: {
+    color: "#9ca3af",
+  },
+  positionOptionStatusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#ef4444",
+    marginTop: 2,
   },
   positionModalConfirm: {
     marginHorizontal: 16,
