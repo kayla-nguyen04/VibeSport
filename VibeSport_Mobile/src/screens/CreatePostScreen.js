@@ -334,12 +334,14 @@ export function CreatePostScreen({ navigation, route }) {
             ) : (
               <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(user?.name) }]}>
                 <Text style={styles.avatarPlaceholderText}>
-                  {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
+                  {user?.name ? ((user.name === 'Long Nguyên' || user.name === 'Long') ? 'Longabc' : user.name).charAt(0).toUpperCase() : '?'}
                 </Text>
               </View>
             )}
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>{user?.name || 'Thành viên VibeSport'}</Text>
+              <Text style={styles.userName}>
+                {(user?.name === 'Long Nguyên' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên VibeSport')}
+              </Text>
               <TouchableOpacity
                 onPress={() => setShowTagDropdown(!showTagDropdown)}
                 style={styles.tagDropdownTrigger}

@@ -123,10 +123,12 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   };
 
   const openFollowList = (initialTab) => {
+    const rawOwnerName = displayProfile?.name || user?.name;
+    const mappedOwnerName = (rawOwnerName === 'Long Nguyên' || rawOwnerName === 'Long') ? 'Longabc' : rawOwnerName;
     navigation?.navigate('FollowList', {
       initialTab,
       userId,
-      ownerName: displayProfile?.name || user?.name,
+      ownerName: mappedOwnerName,
     });
   };
 

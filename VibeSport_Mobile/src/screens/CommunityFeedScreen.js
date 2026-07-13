@@ -359,7 +359,9 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
 
   const renderPostItem = ({ item }) => {
     const isSelf = isPostOwner(user, item);
-    const firstLetter = item.userId?.name ? item.userId.name.charAt(0).toUpperCase() : '?';
+    const rawName = item.userId?.name || 'Thành viên VibeSport';
+    const postOwnerName = (rawName === 'Long Nguyên' || rawName === 'Long') ? 'Longabc' : rawName;
+    const firstLetter = postOwnerName ? postOwnerName.charAt(0).toUpperCase() : '?';
 
     return (
       <View style={styles.postCard}>
@@ -383,7 +385,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 onPress={() => navigateToProfile(navigation, user, item.userId, onGoToProfile)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.userName}>{item.userId?.name || 'Thành viên VibeSport'}</Text>
+                <Text style={styles.userName}>{postOwnerName}</Text>
               </TouchableOpacity>
               {!isSelf && (
                 <Ionicons name="people" size={16} color="#FF5F3D" style={{ marginLeft: 4 }} />
@@ -592,11 +594,11 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
               <View style={styles.greetingRow}>
                 <Text style={styles.greetingText}>Xin chào</Text>
                 <View style={styles.userBadge}>
-                  <Text style={styles.userBadgeText}>{user?.name || 'Thành viên'}</Text>
+                  <Text style={styles.userBadgeText}>{(user?.name === 'Long Nguyên' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên')}</Text>
                 </View>
                 <Text style={styles.greetingText}>👋</Text>
               </View>
-              <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
+              <Text style={styles.bannerSubtext}>Longabc</Text>
               <TouchableOpacity
                 onPress={() => navigation.navigate('CreatePost')}
                 style={styles.createPostBtn}
