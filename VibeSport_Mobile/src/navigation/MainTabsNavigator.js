@@ -8,15 +8,15 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { logoutUser, updateProfile } from '../redux/authSlice';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import TeamsScreen from '../screens/TeamsScreen';
-import MyTeamsScreen from '../screens/MyTeamsScreen';
+import FCScreen from '../screens/FCScreen';
 import { CommunityFeedScreen } from '../screens/CommunityFeedScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 
 const Tab = createBottomTabNavigator();
 
 const FONT_SIZE = 13;
-const ACTIVE_COLOR = '#0b74ff';
-const INACTIVE_COLOR = '#7c8190';
+const ACTIVE_COLOR = '#ffffff';
+const INACTIVE_COLOR = '#111111';
 const TAB_BAR_HEIGHT = 70;
 
 function CustomTabBar({ state, descriptors, navigation }) {
@@ -24,46 +24,56 @@ function CustomTabBar({ state, descriptors, navigation }) {
   const chatUnreadCount = useSelector((state) => state.chat.unreadCount);
 
   return (
-    <View style={[styles.bottomBarWrap, { paddingBottom: insets.bottom }]}>
-      <View style={styles.bottomBar}>
-        {state.routes.map((route, index) => {
-          const { options } = descriptors[route.key];
-          const isFocused = state.index === index;
+    <View style={[styles.bottomBarOuter, {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: insets.bottom + 12,
+    },]}>
+      <View style={styles.bottomBarWrap}>
+        <View style={styles.bottomBar}>
+          {state.routes.map((route, index) => {
+            const { options } = descriptors[route.key];
+            const isFocused = state.index === index;
 
-          let icon;
-          if (route.name === 'PostsTab') {
-            icon = <MaterialCommunityIcons name="home-outline" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
-          } else if (route.name === 'MatchesTab') {
-            icon = <MaterialCommunityIcons name="soccer" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
-          } else if (route.name === 'TeamsTab') {
-            icon = <MaterialCommunityIcons name="account-group" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
-          } else if (route.name === 'SocialTab') {
-            icon = <Ionicons name="chatbubble-outline" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
-          } else if (route.name === 'ProfileTab') {
-            icon = <Ionicons name="person-outline" size={24} color={isFocused ? ACTIVE_COLOR : INACTIVE_COLOR} />;
-          }
+            const iconSize = isFocused ? 28 : 22;
+            const iconColor = isFocused ? ACTIVE_COLOR : INACTIVE_COLOR;
 
-          const showChatBadge = route.name === 'SocialTab' && chatUnreadCount > 0;
+            let icon;
+            if (route.name === 'PostsTab') {
+              icon = <Ionicons name={isFocused ? "home" : "home-outline"} size={iconSize} color={iconColor} />;
+            } else if (route.name === 'MatchesTab') {
+              icon = <MaterialCommunityIcons name="soccer" size={iconSize} color={iconColor} />;
+            } else if (route.name === 'TeamsTab') {
+              icon = <MaterialCommunityIcons name={isFocused ? "account-group" : "account-group-outline"} size={iconSize} color={iconColor} />;
+            } else if (route.name === 'SocialTab') {
+              icon = <Ionicons name={isFocused ? "chatbubble" : "chatbubble-outline"} size={iconSize} color={iconColor} />;
+            } else if (route.name === 'ProfileTab') {
+              icon = <Ionicons name={isFocused ? "person" : "person-outline"} size={iconSize} color={iconColor} />;
+            }
 
-          return (
-            <Pressable
-              key={route.key}
-              onPress={() => navigation.navigate(route.name)}
-              style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
-            >
-              <View style={[styles.iconFrame, isFocused && styles.activeIconFrame]}>
-                {icon}
-                {showChatBadge ? (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        })}
+            const showChatBadge = route.name === 'SocialTab' && chatUnreadCount > 0;
+
+            return (
+              <Pressable
+                key={route.key}
+                onPress={() => navigation.navigate(route.name)}
+                style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
+              >
+                <View style={[styles.iconFrame, isFocused && styles.activeIconFrame]}>
+                  {icon}
+                  {showChatBadge ? (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>
+                        {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -83,7 +93,7 @@ function MatchesTabScreen({ navigation }) {
 }
 
 function TeamsTabScreen({ navigation }) {
-  return <MyTeamsScreen navigation={navigation} />;
+  return <FCScreen navigation={navigation} />;
 }
 
 function SocialTabScreen({ navigation }) {
@@ -143,16 +153,30 @@ export function MainTabsNavigator() {
 }
 
 const styles = StyleSheet.create({
+  bottomBarOuter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 6,
+  },
   bottomBarWrap: {
     backgroundColor: '#ffffff',
-    borderTopWidth: 1.2,
-    borderTopColor: '#e8ecf2',
+    borderRadius: 40,
+    borderWidth: 1.2,
+    borderColor: '#d1d5db',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     height: TAB_BAR_HEIGHT,
-    paddingHorizontal: 18,
+    paddingHorizontal: 8,
   },
   tabButton: {
     flex: 1,
@@ -163,14 +187,20 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   iconFrame: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
+   width: 52,
+  height: 52,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderRadius: 26,
+  overflow: 'hidden',
   },
   activeIconFrame: {
-    backgroundColor: 'rgba(11, 116, 255, 0.12)',
+    width: 52,
+  height: 52,
+  borderRadius: 26,
+  backgroundColor: '#F97316',
+  justifyContent: 'center',
+  alignItems: 'center',
   },
   tabBadge: {
     position: 'absolute',
