@@ -751,8 +751,6 @@ const styles = StyleSheet.create({
     marginTop: Platform.OS === 'ios' ? 8 : 16,
     marginBottom: 8,
     zIndex: 10,
-    elevation: 2,
-    overflow: 'hidden',
   },
   logoContainer: {
     flexDirection: 'row',
