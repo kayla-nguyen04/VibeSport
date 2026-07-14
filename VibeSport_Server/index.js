@@ -81,6 +81,7 @@ app.use('/api/tags', tagsRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/admin', require('./routes/adminAuth'));
 
 app.get('/health', (_, response) => {
   response.json({
