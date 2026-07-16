@@ -85,6 +85,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/admin', require('./routes/adminAuth'));
 app.use('/api/admin/tasks', tasksRouter);
 app.use('/api/admin/growth', require('./routes/growth'));
+app.use('/api/admin', require('./routes/adminPosts'));
 
 app.get('/health', (_, response) => {
   response.json({
