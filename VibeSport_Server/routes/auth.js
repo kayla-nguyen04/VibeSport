@@ -117,6 +117,11 @@ router.post('/login', async (request, response) => {
       return;
     }
 
+    if (user.isLocked) {
+      response.status(403).json({ message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+      return;
+    }
+
     if (!user.passwordHash) {
       response.status(400).json({ message: 'Tài khoản này đang dùng Google. Vui lòng đăng nhập bằng Google.' });
       return;
@@ -194,6 +199,11 @@ router.post('/google', async (request, response) => {
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
+
+    if (user.isLocked) {
+      response.status(403).json({ message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+      return;
+    }
 
     const payload = createSessionPayload(user);
     await Session.create({ userId: user._id, token: payload.token });
