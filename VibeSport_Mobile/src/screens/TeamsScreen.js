@@ -34,6 +34,44 @@ const SPORT_FILTERS = [
 ];
 
 const SPORT_ICONS = { football: "⚽", badminton: "🏸", pickleball: "🏓" };
+
+const TEAM1_POSITIONS = [
+  { id: "t1_gk",  label: "Thủ môn", role: "goalkeeper" },
+  { id: "t1_lb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t1_cb1", label: "Hậu vệ",  role: "defender" },
+  { id: "t1_cb2", label: "Hậu vệ",  role: "defender" },
+  { id: "t1_rb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t1_dm1", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_dm2", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_lm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_am",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_rm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_st",  label: "Tiền đạo", role: "forward" },
+];
+
+const TEAM2_POSITIONS = [
+  { id: "t2_gk",  label: "Thủ môn", role: "goalkeeper" },
+  { id: "t2_lb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t2_cb1", label: "Hậu vệ",  role: "defender" },
+  { id: "t2_cb2", label: "Hậu vệ",  role: "defender" },
+  { id: "t2_rb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t2_dm1", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_dm2", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_lm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_am",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_rm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_st",  label: "Tiền đạo", role: "forward" },
+];
+
+const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
+
+const ROLE_LABELS = { defender: "Hậu vệ", midfielder: "Tiền vệ", forward: "Tiền đạo", goalkeeper: "Thủ môn", bench: "Dự bị" };
+
+const getFootballRole = (positionId) => {
+  if (typeof positionId !== "string") return null;
+  return ALL_POSITIONS.find((item) => item.id === positionId)?.role || null;
+};
+
 const formatCost = (c) => {
   if (!c || c === 0) return "Miễn phí";
   const formatted = c.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -237,22 +275,53 @@ export default function TeamsScreen({ navigation }) {
   const renderFigmaCard = (item, tabType) => {
     const joined = isUserParticipant(item);
     const creator = typeof item.createdBy === "object" ? item.createdBy : null;
-    const currentCount = item.currentPlayers || item.participants?.length || 0;
+    const participantList = Array.isArray(item.participants) ? item.participants : [];
+    const participantsCount = participantList.length;
+    const positionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
+    const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
+    const totalNeededPositions = positionCount + benchCount;
+    const displayFound = `${participantsCount}/${totalNeededPositions || item.maxPlayers || 10}`;
     const maxCount = item.maxPlayers || 10;
     const timeLabel = item.startTime && typeof item.startTime === "string" ? item.startTime.replace(":", "g ") + "p" : "";
     const isEnded = item.status === "completed" || item.status === "cancelled";
 
     // Position needs (football only)
     const positionNeeds = [];
-    if (item.sport === "football" && Array.isArray(item.selectedPositionIds)) {
-      const ROLE_LABELS = { defender: "Hậu vệ", midfielder: "Trung vệ", forward: "Tiền đạo", goalkeeper: "Thủ môn" };
+    if (item.sport === "football") {
+      const ROLE_ALIASES = {
+        gk: "goalkeeper",
+        lb: "defender",
+        cb: "defender",
+        rb: "defender",
+        dm: "midfielder",
+        cm: "midfielder",
+        am: "midfielder",
+        lm: "midfielder",
+        rm: "midfielder",
+        lw: "forward",
+        rw: "forward",
+        st: "forward",
+        cf: "forward",
+      };
       const roleCounts = {};
-      item.selectedPositionIds.forEach(id => {
-        if (typeof id !== "string") return;
-        const role = id.replace(/^t[12]_/, "").replace(/[0-9]/g, "");
-        const mapped = role.startsWith("gk") ? "goalkeeper" : role.startsWith("lb") || role.startsWith("cb") || role.startsWith("rb") ? "defender" : role.startsWith("dm") || role.startsWith("cm") || role.startsWith("am") ? "midfielder" : role.startsWith("lw") || role.startsWith("rw") || role.startsWith("st") || role.startsWith("cf") ? "forward" : role;
-        roleCounts[mapped] = (roleCounts[mapped] || 0) + 1;
-      });
+      if (Array.isArray(item.selectedPositionIds)) {
+        item.selectedPositionIds.forEach((id) => {
+          if (typeof id !== "string") return;
+          const mappedRole = getFootballRole(id);
+          if (mappedRole) {
+            roleCounts[mappedRole] = (roleCounts[mappedRole] || 0) + 1;
+            return;
+          }
+          const rawRole = id.replace(/^t[12]_/, "").replace(/_\d+$/, "").toLowerCase();
+          const key = rawRole.replace(/\d+$/, "");
+          const fallbackRole = ROLE_ALIASES[key] || key;
+          roleCounts[fallbackRole] = (roleCounts[fallbackRole] || 0) + 1;
+        });
+      }
+      const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
+      if (benchCount > 0) {
+        roleCounts.bench = (roleCounts.bench || 0) + benchCount;
+      }
       Object.entries(roleCounts).forEach(([role, count]) => {
         positionNeeds.push({ label: ROLE_LABELS[role] || role, count });
       });
@@ -319,7 +388,7 @@ export default function TeamsScreen({ navigation }) {
             <Text style={styles.figmaGridLabel}>Số người đã tìm.</Text>
             <View style={styles.figmaGridBox}>
               <Ionicons name="people-outline" size={15} color="#333" />
-              <Text style={styles.figmaGridValue}>{currentCount}/{maxCount}</Text>
+              <Text style={styles.figmaGridValue}>{displayFound}</Text>
             </View>
           </View>
           <View style={styles.figmaGridCol}>

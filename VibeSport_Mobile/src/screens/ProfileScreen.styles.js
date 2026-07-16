@@ -50,7 +50,7 @@ export const styles = StyleSheet.create({
     marginBottom: 0,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
-    zIndex: 10,
+    position: 'relative',
   },
   headerSide: {
     width: HEADER_SIDE_WIDTH,
@@ -68,7 +68,9 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     textAlign: 'center',
     color: text.primary,
     fontSize: fontSize.title,
@@ -94,7 +96,7 @@ export const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   listContent: {
-    paddingBottom: spacing['5xl'],
+    paddingBottom:150,
   },
   profileCard: {
     marginHorizontal: spacing.base,

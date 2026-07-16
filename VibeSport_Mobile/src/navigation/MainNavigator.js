@@ -10,7 +10,7 @@ import MapPickerScreen from '../screens/MapPickerScreen';
 import AreaPickerScreen from '../screens/AreaPickerScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
-import UserProfileScreen from '../screens/UserProfileScreen';
+import { UserProfileScreen } from '../screens/UserProfileScreen';
 import SavedPostsScreen from '../screens/SavedPostsScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
@@ -42,6 +42,7 @@ export function LoadingScreen() {
 }
 
 export function MainNavigator({ initialRouteName = 'Home' }) {
+  console.log("UserProfileScreen in MainNavigator:", UserProfileScreen);
   return (
     <Stack.Navigator
       screenOptions={{

@@ -562,6 +562,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         renderItem={renderPostItem}
         onEndReached={isSearchMode ? null : handleLoadMore}
         onEndReachedThreshold={0.5}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           !isSearchMode ? (
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF6B35']} />
@@ -919,6 +920,9 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: '#FF5F3D',
+  },
+  listContent: {
+    paddingBottom: 150,
   },
   activeFilterBanner: {
     marginHorizontal: 16,

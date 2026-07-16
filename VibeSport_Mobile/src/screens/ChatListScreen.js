@@ -1718,11 +1718,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingTop: 0,
-    paddingBottom: 96,
+    paddingBottom: 30,
   },
   emptyList: {
     flexGrow: 1,
-    paddingBottom: 96,
+    paddingBottom: 30,
   },
   loadingWrap: {
     flex: 1,

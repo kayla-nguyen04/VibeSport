@@ -122,6 +122,7 @@ const ROLE_LABELS = {
   defender: "Hậu vệ",
   midfielder: "Tiền vệ",
   striker: "Tiền đạo",
+  bench: "Dự bị",
 };
 
 const ROLE_TAG_COLORS = {
@@ -250,6 +251,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [showJoinRequests, setShowJoinRequests] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showDetailsCollapsed, setShowDetailsCollapsed] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
 
@@ -292,8 +294,12 @@ export default function MatchDetailScreen({ navigation, route }) {
     };
     processTeam(teamBreakdown.teamA.roles);
     processTeam(teamBreakdown.teamB.roles);
+    const benchTotal = Number(match?.benchMembersTeam1 || 0) + Number(match?.benchMembersTeam2 || 0);
+    if (benchTotal > 0) {
+      counts.bench = (counts.bench || 0) + benchTotal;
+    }
     return Object.entries(counts).map(([role, qty]) => ({ role, qty }));
-  }, [match?.sport, teamBreakdown]);
+  }, [match?.sport, teamBreakdown, match?.benchMembersTeam1, match?.benchMembersTeam2]);
 
   const reloadMatch = async () => {
     if (!matchId) return;
@@ -317,17 +323,17 @@ export default function MatchDetailScreen({ navigation, route }) {
   }, [matchId, navigation]);
 
   const creator = typeof match?.createdBy === "object" ? match.createdBy : null;
-  const creatorId = getUserId(creator || match.createdBy);
-  const ownerRoleEntry = Array.isArray(match.memberRoles)
+  const creatorId = getUserId(creator || match?.createdBy);
+  const ownerRoleEntry = Array.isArray(match?.memberRoles)
     ? match.memberRoles.find((entry) => entry?.role === "owner")
     : null;
-  const ownerId = getUserId(ownerRoleEntry?.userId || creator || match.createdBy);
+  const ownerId = getUserId(ownerRoleEntry?.userId || creator || match?.createdBy);
   const isOwner = !!ownerId && String(ownerId) === String(userId);
-  const currentCount = match.currentPlayers || match.participants?.length || 0;
-  const maxCount = match.maxPlayers || 10;
-  const coords = match.location;
-  const participants = match.participants || [];
-  const pendingRequests = match.pendingJoinRequests || [];
+  const currentCount = match?.currentPlayers || match?.participants?.length || 0;
+  const maxCount = match?.maxPlayers || 10;
+  const coords = match?.location;
+  const participants = match?.participants || [];
+  const pendingRequests = match?.pendingJoinRequests || [];
 
   // Merge creator into participant list (always show first)
   const allParticipants = useMemo(() => {
@@ -336,8 +342,8 @@ export default function MatchDetailScreen({ navigation, route }) {
     if (creatorInList) return participants;
     return [creator, ...participants];
   }, [creator, creatorId, participants]);
-  const pendingRequestPositions = match.pendingJoinRequestPositions || [];
-  const invitedMembers = match.invitedMembers || [];
+  const pendingRequestPositions = match?.pendingJoinRequestPositions || [];
+  const invitedMembers = match?.invitedMembers || [];
 
   const positionOptions = useMemo(() => {
     if (match?.sport !== "football") return [];
@@ -709,68 +715,83 @@ export default function MatchDetailScreen({ navigation, route }) {
               <Text style={styles.title}>{match.title}</Text>
               <Text style={styles.timeAgoText}>{match.createdAt ? getRelativeTime(match.createdAt) : "Mới đăng"}</Text>
             </View>
+            <TouchableOpacity
+              style={styles.collapseBtn}
+              activeOpacity={0.7}
+              onPress={() => setShowDetailsCollapsed((prev) => !prev)}
+            >
+              <Ionicons
+                name={showDetailsCollapsed ? "chevron-down" : "chevron-up"}
+                size={20}
+                color="#666"
+              />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.infoSection}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
-              <Text style={styles.infoText}>{formatTimeLabel(match.startTime)} - {getDayLabel(match.date)} - {match.date}</Text>
-            </View>
+          {!showDetailsCollapsed && (
+            <>
+              <View style={styles.infoSection}>
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>{formatTimeLabel(match.startTime)} - {getDayLabel(match.date)} - {match.date}</Text>
+                </View>
 
-            {match.note ? (
-              <View style={styles.infoRow}>
-                <View style={styles.infoIcon}><MaterialCommunityIcons name="square-edit-outline" size={16} color="#333" /></View>
-                <Text style={styles.infoText}>{match.note}</Text>
-              </View>
-            ) : null}
-
-            <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}>
-              <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
-              <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
-            </View>
-          </View>
-
-          <View style={styles.gridContainer}>
-            <View style={styles.gridColumn}>
-              <Text style={styles.gridLabel}>Số người đã tuyển.</Text>
-              <View style={styles.gridBox}>
-                <Ionicons name="people-outline" size={16} color="#333" />
-                <Text style={styles.gridValue}>{currentCount}/{maxCount}</Text>
-              </View>
-            </View>
-            <View style={styles.gridColumn}>
-              <Text style={styles.gridLabel}>Tiền cọc sân.</Text>
-              <View style={styles.gridBox}>
-                <Ionicons name="wallet-outline" size={16} color="#333" />
-                <Text style={styles.gridValue} numberOfLines={1}>{formatCost(match.costPerPerson)}</Text>
-              </View>
-            </View>
-          </View>
-
-          {neededRolesList.length > 0 && (
-            <View style={{ marginBottom: 16 }}>
-              <Text style={styles.gridLabel}>Vị trí cần tìm.</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {neededRolesList.map(({ role, qty }) => (
-                  <View key={`needed_${role}`} style={styles.outlineRoleTag}>
-                    <Text style={styles.outlineRoleTagText}>{ROLE_LABELS[role] || role} x{qty}</Text>
+                {match.note ? (
+                  <View style={styles.infoRow}>
+                    <View style={styles.infoIcon}><MaterialCommunityIcons name="square-edit-outline" size={16} color="#333" /></View>
+                    <Text style={styles.infoText}>{match.note}</Text>
                   </View>
-                ))}
-              </View>
-            </View>
-          )}
+                ) : null}
 
-          <View style={styles.locationRowContainer}>
-            <View style={styles.locationInfoCol}>
-              <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
-              <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
-            </View>
-            {coords?.lat != null && coords?.lng != null && (
-              <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
-                <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+                <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}> 
+                  <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+                </View>
+              </View>
+
+              <View style={styles.gridContainer}>
+                <View style={styles.gridColumn}>
+                  <Text style={styles.gridLabel}>Số người đã tuyển.</Text>
+                  <View style={styles.gridBox}>
+                    <Ionicons name="people-outline" size={16} color="#333" />
+                    <Text style={styles.gridValue}>{currentCount}/{maxCount}</Text>
+                  </View>
+                </View>
+                <View style={styles.gridColumn}>
+                  <Text style={styles.gridLabel}>Tiền cọc sân.</Text>
+                  <View style={styles.gridBox}>
+                    <Ionicons name="wallet-outline" size={16} color="#333" />
+                    <Text style={styles.gridValue} numberOfLines={1}>{formatCost(match.costPerPerson)}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {neededRolesList.length > 0 && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={styles.gridLabel}>Vị trí cần tìm.</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {neededRolesList.map(({ role, qty }) => (
+                      <View key={`needed_${role}`} style={styles.outlineRoleTag}>
+                        <Text style={styles.outlineRoleTagText}>{ROLE_LABELS[role] || role} x{qty}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.locationRowContainer}>
+                <View style={styles.locationInfoCol}>
+                  <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
+                  <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
+                </View>
+                {coords?.lat != null && coords?.lng != null && (
+                  <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
+                    <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
         </View>
 
         {/* Creator is shown in participant list below with badge */}
@@ -1122,47 +1143,7 @@ export default function MatchDetailScreen({ navigation, route }) {
 
 
       {/* ─── Custom Bottom Tab Bar ─── */}
-      <View style={[styles.bottomBarOuter, {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: insets.bottom + 12,
-      }]}>
-        <View style={styles.bottomBarWrap}>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'PostsTab' })}>
-            <View style={styles.iconFrame}>
-              <Ionicons name="home-outline" size={22} color="#1F2937" />
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'MatchesTab' })}>
-            <View style={[styles.iconFrame, styles.activeIconFrame]}>
-              <MaterialCommunityIcons name="soccer" size={28} color="#FFFFFF" />
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'TeamsTab' })}>
-            <View style={styles.iconFrame}>
-              <MaterialCommunityIcons name="account-group-outline" size={22} color="#1F2937" />
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'SocialTab' })}>
-            <View style={styles.iconFrame}>
-              <Ionicons name="chatbubble-outline" size={22} color="#1F2937" />
-              {chatUnreadCount > 0 && (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>
-                    {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'ProfileTab' })}>
-            <View style={styles.iconFrame}>
-              <Ionicons name="person-outline" size={22} color="#1F2937" />
-            </View>
-          </Pressable>
-        </View>
-      </View>
+
     </Screen>
   );
 
@@ -1190,9 +1171,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
   },
-  backButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  backButton: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
   backArrow: { fontSize: 22, color: "#333" },
-  headerTitle: { flex: 1, fontSize: 20, fontWeight: "700", color: "#111", marginLeft: 8 },
+  headerTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {
     backgroundColor: "#fff",
@@ -1232,15 +1213,15 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 96 },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 2,
   },
   cardHeader: { flexDirection: "row", alignItems: "center" },
@@ -1256,6 +1237,15 @@ const styles = StyleSheet.create({
   titleBlock: { flex: 1, marginLeft: 12 },
   title: { fontSize: 18, fontWeight: "800", color: "#111" },
   timeAgoText: { fontSize: 12, color: "#888", marginTop: 4 },
+  collapseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f5f5f5",
+    marginLeft: 8,
+  },
   gridContainer: {
     flexDirection: "row",
     gap: 12,

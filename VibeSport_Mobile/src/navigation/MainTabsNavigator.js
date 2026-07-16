@@ -1,7 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 
@@ -16,10 +15,9 @@ const Tab = createBottomTabNavigator();
 
 const ACTIVE_COLOR = '#FFFFFF';
 const INACTIVE_COLOR = '#1F2937';
-const TAB_BAR_HEIGHT = 70;
+const TAB_BAR_HEIGHT = 56; // reduced 20% from 70
 
 function CustomTabBar({ state, descriptors, navigation }) {
-  const insets = useSafeAreaInsets();
   const chatUnreadCount = useSelector((state) => state.chat.unreadCount);
 
   return (
@@ -27,7 +25,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
       position: 'absolute',
       left: 0,
       right: 0,
-      bottom: insets.bottom + 12,
+      bottom: 12,
     },]}>
       <View style={styles.bottomBarWrap}>
         <View style={styles.bottomBar}>
@@ -161,7 +159,7 @@ const styles = StyleSheet.create({
   },
   bottomBarWrap: {
     backgroundColor: '#ffffff',
-    borderRadius: 40,
+    borderRadius: 32,
     borderWidth: 1.2,
     borderColor: '#d1d5db',
     shadowColor: '#000',
@@ -186,20 +184,20 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   iconFrame: {
-   width: 52,
-  height: 52,
+   width: 42,
+  height: 42,
   justifyContent: 'center',
   alignItems: 'center',
-  borderRadius: 26,
-  overflow: 'hidden',
+  borderRadius: 21,
+  overflow: 'visible',
   },
   activeIconFrame: {
     backgroundColor: '#FF5F3D',
   },
   tabBadge: {
     position: 'absolute',
-    top: 2,
-    right: 0,
+    top: -6,
+    right: -6,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
@@ -212,7 +210,7 @@ const styles = StyleSheet.create({
   },
   tabBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
 });
