@@ -44,11 +44,17 @@ async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIM
       }
 
       if (!response.ok) {
-        throw new Error(json?.message || `Lỗi ${response.status}: ${response.statusText}`);
+        const serverMessage = json?.message || `Lỗi ${response.status}: ${response.statusText}`;
+        const httpError = new Error(serverMessage);
+        httpError.isHttpError = true;
+        throw httpError;
       }
 
       return json;
     } catch (err) {
+      if (err.isHttpError) {
+        throw err;
+      }
       lastError = err;
     } finally {
       clearTimeout(timeoutId);
