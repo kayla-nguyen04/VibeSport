@@ -1223,7 +1223,7 @@ export default function ChatDetailScreen({ route, navigation }) {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 64}
+        keyboardVerticalOffset={0}
       >
         {loadingMessages && groupedMessages.length === 0 ? (
           <View style={styles.loadingWrap}>
@@ -1545,7 +1545,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     marginHorizontal: 11,
-    marginTop: 0,
+    marginTop: 10,
     height: 74,
     paddingTop: 5,
     paddingHorizontal: 12,

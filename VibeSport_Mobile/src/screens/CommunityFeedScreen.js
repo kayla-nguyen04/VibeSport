@@ -14,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
@@ -464,7 +465,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
   };
 
   return (
-    <Screen edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen edges={['top', 'left', 'right']} style={styles.safeArea}>
       {/* App Header */}
       <View style={styles.header}>
         {isSearchMode ? (
@@ -738,7 +744,8 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         }}
         onSelectReason={handleReportPost}
       />
-    </Screen>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 

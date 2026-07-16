@@ -12,15 +12,20 @@ import {
   Alert,
   Modal,
   Image,
+  Pressable,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { useSelector } from "react-redux";
-import { getMatches, leaveMatch } from "../services/matchService";
+import { useDispatch, useSelector } from "react-redux";
+import { getMatches, leaveMatch, deleteMatch } from "../services/matchService";
 import { getPostsRequest } from "../services/postApi";
+import { API_BASE_URL } from "../components/constants/api";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { TagIcon } from "../components/TagIcon";
 import { Screen } from "../components/Screen";
 import { primary } from "../theme";
+import { savePost, unsavePost, deletePost, fetchSavedPosts } from "../redux/postSlice";
+import { ReportModal } from "../components/ReportModal";
 
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
 const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
@@ -134,6 +139,7 @@ const CreatorProfileRow = ({ creator, label }) => {
 };
 
 export default function TeamsScreen({ navigation }) {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
   const token = useSelector((state) => state.auth?.token);
   const [activeSubTab, setActiveSubTab] = useState("near");
@@ -147,6 +153,9 @@ export default function TeamsScreen({ navigation }) {
   const [findTeamLoading, setFindTeamLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [optionsPost, setOptionsPost] = useState(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [postToReport, setPostToReport] = useState(null);
   const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(true);
 
   const userId = normalizeId(user?.id || user?._id);
@@ -216,6 +225,63 @@ export default function TeamsScreen({ navigation }) {
     navigation?.navigate?.("CreateMatch", { editMatch: item });
   };
 
+  const handleDeleteMatch = (item) => {
+    Alert.alert("Xóa trận đấu", "Bạn có chắc muốn xóa trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteMatch(item._id, token);
+            await loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+            Alert.alert("Thành công", "Đã xóa trận đấu");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleMatchOptions = (item) => {
+    const creator = typeof item.createdBy === "object" ? item.createdBy : item.createdBy;
+    const creatorId = normalizeId(typeof creator === "object" ? creator?._id || creator?.id : creator);
+    const isOwner = creatorId && creatorId === userId;
+
+    const options = [
+      {
+        text: "Xem chi tiết",
+        onPress: () => handleViewDetail(item),
+      },
+    ];
+
+    if (isOwner) {
+      options.push(
+        {
+          text: "Chỉnh sửa",
+          onPress: () => handleEditMatch(item),
+        },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: () => handleDeleteMatch(item),
+        }
+      );
+    }
+
+    options.push({
+      text: "Hủy",
+      style: "cancel",
+    });
+
+    Alert.alert(
+      "Quản lý trận đấu",
+      isOwner ? "Chọn hành động cho trận đấu của bạn" : "Chọn hành động",
+      options
+    );
+  };
+
   const handleLeaveMatch = (item) => {
     Alert.alert("Rút khỏi trận", "Bạn có chắc muốn rút khỏi trận này?", [
       { text: "Hủy", style: "cancel" },
@@ -237,6 +303,92 @@ export default function TeamsScreen({ navigation }) {
 
   const handleViewPostDetail = (post) => {
     navigation?.navigate?.("PostDetail", { postId: post._id, post });
+  };
+
+  const getPostAuthorId = (post) => {
+    if (!post) return "";
+    if (typeof post.userId === "object" && post.userId != null) {
+      return normalizeId(post.userId._id || post.userId.id);
+    }
+    return normalizeId(post.userId);
+  };
+
+  const isPostOwner = (post) => {
+    if (!post) return false;
+    if (post.isOwner === true || post.isMine === true || post.owner === true) return true;
+
+    const currentUserId = normalizeId(user?._id || user?.id);
+    if (!currentUserId) return false;
+
+    const authorId = getPostAuthorId(post);
+    return !!authorId && authorId === currentUserId;
+  };
+
+  const handleDeletePost = (post) => {
+    Alert.alert("Xóa bài viết", "Bạn có chắc chắn muốn xóa bài viết này không?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: () => {
+          dispatch(deletePost(post._id))
+            .unwrap()
+            .then(() => {
+              Alert.alert("Thành công", "Đã xóa bài viết.");
+            })
+            .catch((err) => {
+              Alert.alert("Lỗi", err || "Không thể xóa bài viết");
+            })
+            .finally(() => {
+              setOptionsPost(null);
+            });
+        },
+      },
+    ]);
+  };
+
+  const updateFindTeamPostSavedState = useCallback((postId, isSaved) => {
+    setFindTeamPosts((prev) => prev.map((item) => (item._id === postId ? { ...item, isSaved } : item)));
+  }, []);
+
+  const handleToggleSavePost = (post) => {
+    if (!post?._id) {
+      Alert.alert("Lỗi", "Bài viết không hợp lệ để lưu.");
+      return;
+    }
+
+    const nextSavedState = !Boolean(post.isSaved);
+    const action = nextSavedState ? savePost(post._id) : unsavePost(post._id);
+
+    dispatch(action)
+      .unwrap()
+      .then(() => {
+        updateFindTeamPostSavedState(post._id, nextSavedState);
+        setOptionsPost((prev) => (prev?._id === post._id ? { ...prev, isSaved: nextSavedState } : prev));
+        dispatch(fetchSavedPosts());
+        Alert.alert(
+          "Thành công",
+          nextSavedState ? "Đã lưu bài viết." : "Đã bỏ lưu bài viết."
+        );
+      })
+      .catch((err) => {
+        Alert.alert("Lỗi", err?.error || "Không thể cập nhật trạng thái lưu bài viết.");
+      })
+      .finally(() => {
+        setOptionsPost(null);
+      });
+  };
+
+  const handleReportPost = (reason) => {
+    setReportModalVisible(false);
+    setPostToReport(null);
+    setOptionsPost(null);
+    Alert.alert("Thành công", "Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!");
+  };
+
+  const handlePostOptions = (post) => {
+    if (!post) return;
+    setOptionsPost(post);
   };
 
   const handleCreateOption = (option) => {
@@ -355,7 +507,7 @@ export default function TeamsScreen({ navigation }) {
               <Ionicons name="pencil" size={16} color="#888" />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.moreBtn} activeOpacity={0.6}>
+          <TouchableOpacity style={styles.moreBtn} activeOpacity={0.6} onPress={() => handlePostOptions(item)}>
             <Ionicons name="ellipsis-horizontal" size={18} color="#888" />
           </TouchableOpacity>
         </View>
@@ -463,20 +615,26 @@ export default function TeamsScreen({ navigation }) {
             <Text style={styles.matchTitle} numberOfLines={1}>Tìm đội • {sportTag}</Text>
             <Text style={styles.matchSubtitle}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            activeOpacity={0.7}
+            onPress={() => handlePostOptions(item)}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color="#888" />
+          </TouchableOpacity>
         </View>
-
         {author && (
           <TouchableOpacity
             style={styles.creatorRow}
             activeOpacity={0.7}
             onPress={() => {
-              const authorId = author._id || author.id;
-              if (authorId && normalizeId(authorId) !== userId) {
+              const authorId = normalizeId(author?._id || author?.id || item.userId);
+              if (authorId && authorId !== userId) {
                 navigation?.navigate?.("UserProfile", { userId: authorId });
               }
             }}
           >
-            <View style={[styles.creatorAvatar, { backgroundColor: AVATAR_COLORS[1] }]}>
+            <View style={[styles.creatorAvatar, { backgroundColor: AVATAR_COLORS[1] }]}> 
               {author.picture ? (
                 <Image source={{ uri: author.picture }} style={styles.creatorAvatarImg} />
               ) : (
@@ -520,15 +678,20 @@ export default function TeamsScreen({ navigation }) {
     : SPORT_FILTERS.find((item) => item.key === activeSport)?.label || "Tất cả môn";
 
   return (
-    <Screen style={styles.container}>
-      {/* ─── Header ─── */}
-      <View style={styles.headerWrap}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.container}>
+        {/* ─── Header ─── */}
+        <View style={styles.headerWrap}>
         <View style={styles.header}>
           <View style={styles.headerBrand}>
             <Image source={require("../../assets/logo_vibesport_icon.png")} style={styles.headerLogo} resizeMode="contain" />
             <Text style={styles.headerTitle}>
-              <Text style={styles.headerTitleBlack}>Tạo</Text>
-              <Text style={styles.headerTitleOrange}>Trận</Text>
+              <Text style={styles.headerTitleBlack}>Trận</Text>
+              <Text style={styles.headerTitleOrange}> Đấu</Text>
             </Text>
           </View>
           <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreateModal(true)}>
@@ -544,6 +707,7 @@ export default function TeamsScreen({ navigation }) {
             { key: "near", label: "Gần tôi" },
             { key: "joined", label: "Đã tham gia" },
             { key: "created", label: "Đã tạo" },
+            { key: "findteam", label: "Tìm đội" },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.key}
@@ -723,7 +887,80 @@ export default function TeamsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </Screen>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={optionsPost !== null}
+        onRequestClose={() => setOptionsPost(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOptionsPost(null)} />
+          <View style={styles.bottomSheetContainer}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>Tùy chọn bài viết</Text>
+
+            {optionsPost && isPostOwner(optionsPost) ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    if (post) {
+                      navigation.navigate("CreatePost", { editPost: post });
+                    }
+                  }}
+                  style={styles.bottomSheetOption}
+                >
+                  <Text style={styles.bottomSheetOptionText}>Sửa bài viết</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => optionsPost && handleDeletePost(optionsPost)}
+                  style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                >
+                  <Text style={[styles.bottomSheetOptionText, { color: "#EF4444" }]}>Xóa bài viết</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={() => optionsPost && handleToggleSavePost(optionsPost)}
+                  style={styles.bottomSheetOption}
+                >
+                  <Text style={styles.bottomSheetOptionText}>
+                    {optionsPost?.isSaved ? "Bỏ lưu bài viết" : "Lưu bài viết"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    if (optionsPost) {
+                      setPostToReport(optionsPost);
+                      setReportModalVisible(true);
+                      setOptionsPost(null);
+                    }
+                  }}
+                  style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                >
+                  <Text style={[styles.bottomSheetOptionText, { color: "#EF4444" }]}>Báo cáo bài viết</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <ReportModal
+        visible={reportModalVisible}
+        onClose={() => {
+          setReportModalVisible(false);
+          setPostToReport(null);
+        }}
+        onSelectReason={handleReportPost}
+      />
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1343,4 +1580,37 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalCancelText: { fontSize: 15, color: "#888", fontWeight: "600" },
+  bottomSheetContainer: {
+    marginTop: "auto",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: "#fff",
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+  },
+  bottomSheetHandle: {
+    width: 60,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#D1D5DB",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    color: "#111",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  bottomSheetOption: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    paddingVertical: 16,
+  },
+  bottomSheetOptionText: {
+    fontSize: 16,
+    color: "#111",
+  },
 });

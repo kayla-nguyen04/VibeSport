@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -1012,7 +1013,12 @@ export default function ChatListScreen({ navigation }) {
         : renderEmptyBlocked;
 
   return (
-    <Screen style={styles.screen}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.screen}>
       <View style={styles.logoHeaderCard}>
         {isSearching ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -1569,7 +1575,8 @@ export default function ChatListScreen({ navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </Screen>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1718,7 +1725,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingTop: 0,
-    paddingBottom: 30,
+    paddingBottom: 150,
   },
   emptyList: {
     flexGrow: 1,

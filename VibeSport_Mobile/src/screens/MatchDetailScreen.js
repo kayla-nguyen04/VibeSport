@@ -13,6 +13,7 @@ import {
   Modal,
   TextInput,
   Pressable,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -437,26 +438,39 @@ export default function MatchDetailScreen({ navigation, route }) {
       setShowPositionModal(true);
       return;
     }
-    handleConfirmJoin();
+    Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn gửi yêu cầu tham gia trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: () => handleConfirmJoin(),
+      },
+    ]);
   };
 
   const handleCancelRequest = async () => {
-    try {
-      setActionLoading(true);
-      const data = await cancelJoinRequest(match._id, userId);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã hủy yêu cầu tham gia");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn hủy yêu cầu tham gia này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await cancelJoinRequest(match._id, userId);
+            setMatch(data);
+            Alert.alert("Thành công", "Đã hủy yêu cầu tham gia");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleConfirmJoin = async () => {
     try {
       setActionLoading(true);
-      // Currently the API does not accept positions; we just send join request
       const data = await requestJoinMatch(match._id, userId);
       setMatch(data);
       Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
@@ -470,64 +484,109 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleConfirmJoinWithPositions = async () => {
-    if (selectedPositions.length === 0) {
-      Alert.alert("Thông báo", "Vui lòng chọn ít nhất một vị trí");
+    if (selectedPositions.length !== 1) {
+      Alert.alert("Thông báo", "Vui lòng chọn đúng 1 vị trí để tham gia");
       return;
     }
-    try {
-      setActionLoading(true);
-      setShowPositionModal(false);
-      const data = await requestJoinMatch(match._id, userId, selectedPositions);
-      setMatch(data);
-      setSelectedPositions([]);
-      Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+
+    Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn gửi yêu cầu với vị trí đã chọn?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            setShowPositionModal(false);
+            const data = await requestJoinMatch(match._id, userId, selectedPositions);
+            setMatch(data);
+            setSelectedPositions([]);
+            Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const togglePositionSelection = (option) => {
     if (option.disabled) return;
 
     const isAlreadySelected = selectedPositions.includes(option.id);
-    const hasSameRoleInSameTeamSelected = selectedPositions.some((selectedId) => {
-      const selectedOption = positionOptions.find((item) => item.id === selectedId);
-      return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
-    });
-
-    if (!isAlreadySelected && hasSameRoleInSameTeamSelected) {
+    if (isAlreadySelected) {
+      setSelectedPositions([]);
       return;
     }
 
-    setSelectedPositions((prev) =>
-      prev.includes(option.id) ? prev.filter((id) => id !== option.id) : [...prev, option.id]
-    );
+    if (selectedPositions.length >= 1) {
+      return;
+    }
+
+    setSelectedPositions([option.id]);
+  };
+
+  const handleChangePositionRequest = () => {
+    Alert.alert("Thay đổi vị trí", "Bạn có chắc muốn hủy yêu cầu cũ và tạo yêu cầu mới?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await cancelJoinRequest(match._id, userId);
+            setMatch(data);
+            setSelectedPositions([]);
+            setShowPositionModal(true);
+          } catch (err) {
+            Alert.alert("Lỗi", err.message || "Không thể đổi vị trí");
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleAcceptRequest = async (requestUserId) => {
-    try {
-      setActionLoading(true);
-      const data = await acceptJoinMatch(match._id, userId, requestUserId);
-      setMatch(data);
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn đồng ý yêu cầu này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await acceptJoinMatch(match._id, userId, requestUserId);
+            setMatch(data);
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleRejectRequest = async (requestUserId) => {
-    try {
-      setActionLoading(true);
-      const data = await rejectJoinMatch(match._id, userId, requestUserId);
-      setMatch(data);
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn từ chối yêu cầu này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await rejectJoinMatch(match._id, userId, requestUserId);
+            setMatch(data);
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleLeave = () => {
@@ -567,7 +626,7 @@ export default function MatchDetailScreen({ navigation, route }) {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteMatch(match._id);
+              await deleteMatch(match._id, token);
               Alert.alert("Thành công", "Đã xóa trận đấu");
               navigation.navigate("Home", { screen: "MatchesTab" });
             } catch (err) {
@@ -603,20 +662,28 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleInviteUser = async (targetUserId) => {
-    try {
-      setActionLoading(true);
-      const data = await inviteTeamMember(match._id, userId, targetUserId);
-      setMatch(data);
-      const message = String(ownerId) === String(userId)
-        ? "Người được mời có thể chấp nhận ngay."
-        : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
-      Alert.alert("Đã gửi lời mời", message);
-      setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể mời");
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận mời", "Bạn có chắc muốn mời người này vào trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await inviteTeamMember(match._id, userId, targetUserId);
+            setMatch(data);
+            const message = String(ownerId) === String(userId)
+              ? "Người được mời có thể chấp nhận ngay."
+              : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
+            Alert.alert("Đã gửi lời mời", message);
+            setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
+          } catch (err) {
+            Alert.alert("Lỗi", err.message || "Không thể mời");
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleAcceptInvite = async () => {
@@ -654,20 +721,28 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   const handleKickUser = async () => {
     if (!kickTarget) return;
-    try {
-      setActionLoading(true);
-      const targetId = getUserId(kickTarget);
-      const data = await kickTeamMember(match._id, ownerId, targetId, kickReason);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã kích thành viên ra khỏi trận");
-      setShowKickModal(false);
-      setKickTarget(null);
-      setKickReason("");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể kích");
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn kích thành viên này khỏi trận?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const targetId = getUserId(kickTarget);
+            const data = await kickTeamMember(match._id, ownerId, targetId, kickReason);
+            setMatch(data);
+            Alert.alert("Thành công", "Đã kích thành viên ra khỏi trận");
+            setShowKickModal(false);
+            setKickTarget(null);
+            setKickReason("");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message || "Không thể kích");
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const content = loading || !match ? (
@@ -848,14 +923,24 @@ export default function MatchDetailScreen({ navigation, route }) {
           )}
 
           {hasPendingRequest && !isOwner && (
-            <TouchableOpacity
-              style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
-              onPress={handleCancelRequest}
-              disabled={actionLoading}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
-            </TouchableOpacity>
+            <View style={styles.actionStack}>
+              <TouchableOpacity
+                style={styles.joinBottomBtn}
+                onPress={handleChangePositionRequest}
+                disabled={actionLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.joinBottomBtnText}>Thay đổi vị trí</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
+                onPress={handleCancelRequest}
+                disabled={actionLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -958,7 +1043,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                   const selectedOption = positionOptions.find((item) => item.id === selectedId);
                   return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
                 });
-                const isDisabled = option.disabled || (!isSelected && hasSameRoleInSameTeamSelected);
+                const isDisabled = option.disabled || (!isSelected && selectedPositions.length >= 1);
 
                 return (
                   <TouchableOpacity
@@ -989,16 +1074,16 @@ export default function MatchDetailScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.positionModalConfirm,
-                selectedPositions.length === 0 && styles.positionModalConfirmDisabled
+                selectedPositions.length !== 1 && styles.positionModalConfirmDisabled
               ]}
               onPress={handleConfirmJoinWithPositions}
-              disabled={selectedPositions.length === 0 || actionLoading}
+              disabled={selectedPositions.length !== 1 || actionLoading}
             >
               {actionLoading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.positionModalConfirmText}>
-                  Xác nhận tham gia ({selectedPositions.length} vị trí)
+                  Xác nhận tham gia (1 vị trí)
                 </Text>
               )}
             </TouchableOpacity>
@@ -1147,7 +1232,15 @@ export default function MatchDetailScreen({ navigation, route }) {
     </Screen>
   );
 
-  return content;
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      {content}
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -1196,11 +1289,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   joinBottomBtnSecondary: {
-    backgroundColor: "#fff1f2",
+    backgroundColor: "#fa0414",
     borderWidth: 1,
-    borderColor: "#fecdd3",
+    borderColor: "#fa0414",
+
   },
-  joinBottomBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  joinBottomBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   redDot: {
     position: "absolute",
     top: 0,

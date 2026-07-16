@@ -16,6 +16,7 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  KeyboardAvoidingView,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -1262,7 +1263,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       const payload = buildPayload();
 
       if (isEditMode) {
-        await updateMatch(editMatch._id, payload);
+        await updateMatch(editMatch._id, payload, token);
         Alert.alert("Thành công", "Cập nhật trận đấu thành công", [
           {
             text: "OK",
@@ -1274,7 +1275,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           }
         ]);
       } else {
-        await createMatch(payload);
+        await createMatch(payload, token);
         Alert.alert(
           "Thành công",
           "Đã tạo đội của bạn thành công và đồng bộ với trận đấu!",
@@ -1283,7 +1284,7 @@ export default function CreateMatchScreen({ navigation, route }) {
               text: "OK",
               onPress: () => {
                 if (navigation) {
-                  navigation.replace("CreateMatch");
+                  navigation.navigate("Home", { screen: "TeamsTab" });
                 }
               }
             }
@@ -1306,7 +1307,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteMatch(editMatch._id);
+              await deleteMatch(editMatch._id, token);
               Alert.alert("Thành công", "Đã xóa trận đấu");
               navigation.navigate("Home", { screen: "MatchesTab" });
             } catch (error) {
@@ -1478,7 +1479,12 @@ export default function CreateMatchScreen({ navigation, route }) {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <Screen style={styles.safeArea}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <View style={styles.header}>
@@ -1821,7 +1827,8 @@ export default function CreateMatchScreen({ navigation, route }) {
 
       {/* Pitch selection modal */}
       {renderPitchModal()}
-    </Screen>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
