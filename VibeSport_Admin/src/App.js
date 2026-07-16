@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux';
 import MainLayout from './layouts/MainLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import TasksDashboard from './pages/TasksDashboard';
+import Growth from './pages/Growth';
 
 function App() {
   const { isAuthenticated } = useSelector((state) => state.auth);
@@ -13,6 +15,8 @@ function App() {
       <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
       <Route path="/*" element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" />}>
         <Route index element={<Dashboard />} />
+        <Route path="growth" element={<Growth />} />
+        <Route path="tasks" element={<TasksDashboard />} />
       </Route>
     </Routes>
   );
