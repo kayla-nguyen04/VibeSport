@@ -76,6 +76,11 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    role: {
+      type: String,
+      enum: ['Developer', 'Admin', 'Designer', 'Tester', 'QA', 'Manager', 'User'],
+      default: 'Developer',
+    },
     lastSeenAt: {
       type: Date,
       default: null,

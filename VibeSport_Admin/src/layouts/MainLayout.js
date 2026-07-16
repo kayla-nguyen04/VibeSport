@@ -67,6 +67,12 @@ const icons = {
       <path d="M21 11.5a8.4 8.4 0 01-9 8.4A8.4 8.4 0 013 11.5a8.4 8.4 0 019-8.4 8.4 8.4 0 019 8.4z" />
     </svg>
   ),
+  tasks: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+    </svg>
+  ),
 };
 
 const navGroups = [
@@ -84,6 +90,7 @@ const navGroups = [
       { key: '/posts', icon: icons.posts, label: 'Bài viết' },
       { key: '/reputation', icon: icons.reputation, label: 'Đánh giá & uy tín' },
       { key: '/calls', icon: icons.calls, label: 'Cuộc gọi video/thoại' },
+      { key: '/tasks', icon: icons.tasks, label: 'Sprint & Tasks' },
     ],
   },
   {
