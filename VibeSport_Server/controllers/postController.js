@@ -6,7 +6,9 @@ const CommentLike = require('../models/CommentLike');
 const User = require('../models/User');
 const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
+const Report = require('../models/Report');
 const { API_BASE_URL } = require('../utils/config');
+const { incrementReportCount } = require('../utils/reportHelpers');
 const {
   parseTagsInput,
   enrichPostTags,
@@ -134,6 +136,8 @@ exports.getPosts = async (req, res) => {
     }
 
     const filter = {};
+    // Hide removed posts from public feed
+    filter.status = { $ne: 'removed_by_admin' };
     if (tag) {
       if (tag === 'Tìm đội') {
         filter.$or = [{ tags: tag }, { sportType: tag }];
@@ -216,6 +220,9 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
     );
 
     const matchFilter = { $or: orConditions };
+
+    // Hide removed posts from public feed
+    matchFilter.status = { $ne: 'removed_by_admin' };
 
     // Thêm filter tag (bộ lọc môn) nếu có
     if (tag) {
@@ -434,6 +441,9 @@ exports.getPostById = async (req, res) => {
       }
     });
 
+    // Mark removed posts so the client can show a proper notice
+    const isRemoved = post.status === 'removed_by_admin';
+
     res.status(200).json({
       success: true,
       data: {
@@ -443,6 +453,9 @@ exports.getPostById = async (req, res) => {
         topReactions,
         isSaved,
         isFollowing,
+        isRemoved,
+        removalReason: isRemoved ? post.removalReason : undefined,
+        removalCategory: isRemoved ? post.removalCategory : undefined,
         comments: topLevelComments,
       },
     });
@@ -843,5 +856,53 @@ exports.likeComment = async (req, res) => {
   } catch (error) {
     console.error('Like comment error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi thích/bỏ thích bình luận' });
+  }
+};
+
+// 9. Report a post (user)
+exports.reportPost = async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const { reason } = req.body;
+    const reporterId = req.userId;
+
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'Lý do báo cáo là bắt buộc' });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    // Không cho report bài của chính mình
+    if (post.userId.toString() === reporterId.toString()) {
+      return res.status(400).json({ success: false, message: 'Bạn không thể báo cáo bài viết của chính mình' });
+    }
+
+    // Unique index ngăn chặn report trùng — bắt lỗi MongoDB duplicate key
+    try {
+      await Report.create({ postId, reporterId, reason: reason.trim() });
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(409).json({ success: false, message: 'Bạn đã báo cáo bài viết này rồi' });
+      }
+      throw err;
+    }
+
+    // Tăng reportCount trên Post (dùng shared helper)
+    const updatedPost = await incrementReportCount(postId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Đã gửi báo cáo thành công',
+      data: {
+        reportCount: updatedPost.reportCount,
+        status: updatedPost.status,
+      },
+    });
+  } catch (error) {
+    console.error('Report post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi báo cáo' });
   }
 };

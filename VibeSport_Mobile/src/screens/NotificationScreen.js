@@ -97,6 +97,14 @@ export function NotificationScreen({ navigation }) {
       return;
     }
 
+    if (item.type === 'post_restored' || item.type === 'violation_removed') {
+      const postId = item.postId?._id || item.postId;
+      if (postId) {
+        navigation.navigate('PostDetail', { postId });
+      }
+      return;
+    }
+
     const postId = item.postId?._id || item.postId;
     if (postId) {
       navigation.navigate('PostDetail', { postId });
@@ -153,7 +161,15 @@ export function NotificationScreen({ navigation }) {
           onPress={() => handleAvatarPress(fromUser)}
           activeOpacity={0.8}
         >
-          {fromUser?.picture ? (
+          {item.type === 'violation_removed' ? (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: '#DC2626' }]}>
+              <Ionicons name="shield-checkmark" size={22} color="#FFFFFF" />
+            </View>
+          ) : item.type === 'post_restored' ? (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: '#059669' }]}>
+              <Ionicons name="refresh" size={22} color="#FFFFFF" />
+            </View>
+          ) : fromUser?.picture ? (
             <Image source={{ uri: fixMediaUrl(fromUser.picture) }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(senderName) }]}>

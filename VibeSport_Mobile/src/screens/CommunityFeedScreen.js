@@ -29,7 +29,7 @@ import {
 import { fetchUnreadCount } from '../redux/notificationSlice';
 import { TagIcon } from '../components/TagIcon';
 import { getTagsRequest } from '../services/tagApi';
-import { getPostLikesRequest, searchPostsRequest } from '../services/postApi';
+import { getPostLikesRequest, searchPostsRequest, reportPostRequest } from '../services/postApi';
 import { API_BASE_URL } from '../components/constants/api';
 import { Screen } from '../components/Screen';
 import {
@@ -307,10 +307,22 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     ]);
   };
 
-  const handleReportPost = (reason) => {
-    setReportModalVisible(false);
-    setPostToReport(null);
-    Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+  const handleReportPost = async (reason) => {
+    if (!token) {
+      setReportModalVisible(false);
+      setPostToReport(null);
+      Alert.alert('Lỗi', 'Vui lòng đăng nhập để báo cáo bài viết');
+      return;
+    }
+    try {
+      setReportModalVisible(false);
+      await reportPostRequest(postToReport._id, reason, token);
+      setPostToReport(null);
+      Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+    } catch (error) {
+      const msg = error?.message || 'Không thể gửi báo cáo. Vui lòng thử lại.';
+      Alert.alert('Lỗi', msg);
+    }
   };
 
   const handleMoreOptions = (post) => {
