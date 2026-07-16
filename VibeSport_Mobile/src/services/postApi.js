@@ -49,6 +49,9 @@ async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIM
 
       return json;
     } catch (err) {
+      if (err.isHttpError) {
+        throw err;
+      }
       lastError = err;
       // Chỉ thử IP khác nếu là lỗi mạng thật sự (không có response từ server).
       // HTTP error (400, 409, 401...) có response → throw ngay, không loop tiếp.

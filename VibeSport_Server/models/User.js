@@ -78,12 +78,16 @@ const userSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ['Developer', 'Admin', 'Designer', 'Tester', 'QA', 'Manager', 'User'],
-      default: 'Developer',
+      enum: ['Admin', 'User'],
+      default: 'User',
     },
     lastSeenAt: {
       type: Date,
       default: null,
+    },
+    isLocked: {
+      type: Boolean,
+      default: false,
     },
   },
   {
