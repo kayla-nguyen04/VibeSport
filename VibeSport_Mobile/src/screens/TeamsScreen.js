@@ -91,6 +91,8 @@ const getInitials = (name) => {
 
 const normalizeId = (id) => (id == null ? "" : String(id));
 
+const getUserIdValue = (value) => normalizeId(typeof value === "object" ? value?._id || value?.id : value);
+
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
   const parts = dateStr.split("/");
@@ -427,8 +429,12 @@ export default function TeamsScreen({ navigation }) {
   const renderFigmaCard = (item, tabType) => {
     const joined = isUserParticipant(item);
     const creator = typeof item.createdBy === "object" ? item.createdBy : null;
+    const creatorId = getUserIdValue(item.createdBy);
     const participantList = Array.isArray(item.participants) ? item.participants : [];
-    const participantsCount = participantList.length;
+    const participantsCount = participantList.filter((participant) => {
+      const participantId = getUserIdValue(participant);
+      return Boolean(participantId) && participantId !== creatorId;
+    }).length;
     const positionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
     const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
     const totalNeededPositions = positionCount + benchCount;

@@ -330,10 +330,13 @@ export default function MatchDetailScreen({ navigation, route }) {
     : null;
   const ownerId = getUserId(ownerRoleEntry?.userId || creator || match?.createdBy);
   const isOwner = !!ownerId && String(ownerId) === String(userId);
-  const currentCount = match?.currentPlayers || match?.participants?.length || 0;
   const maxCount = match?.maxPlayers || 10;
   const coords = match?.location;
   const participants = match?.participants || [];
+  const currentCount = participants.filter((participant) => {
+    const participantId = getUserId(participant);
+    return Boolean(participantId) && participantId !== ownerId;
+  }).length;
   const pendingRequests = match?.pendingJoinRequests || [];
 
   // Merge creator into participant list (always show first)
@@ -391,13 +394,14 @@ export default function MatchDetailScreen({ navigation, route }) {
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
+  const displayTotalNeeded = totalNeeded > 0 ? totalNeeded : maxCount;
   const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isInvited && !isEnded && !isFull;
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
     return Array.isArray(entry?.positionIds) ? entry.positionIds : [];
   };
-  const isFull = match?.status === "full" || currentCount >= maxCount;
+  const isFull = match?.status === "full" || currentCount >= displayTotalNeeded;
   const isEnded = match?.status === "completed" || match?.status === "cancelled";
 
   useEffect(() => {
@@ -675,7 +679,15 @@ export default function MatchDetailScreen({ navigation, route }) {
               ? "Người được mời có thể chấp nhận ngay."
               : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
             Alert.alert("Đã gửi lời mời", message);
-            setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
+            setFollowingUsers((prev) =>
+              prev.map((user) => {
+                const userIdValue = String(user._id || user.id);
+                if (userIdValue === String(targetUserId)) {
+                  return { ...user, isInvited: true };
+                }
+                return user;
+              })
+            );
           } catch (err) {
             Alert.alert("Lỗi", err.message || "Không thể mời");
           } finally {
@@ -829,7 +841,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                   <Text style={styles.gridLabel}>Số người đã tuyển.</Text>
                   <View style={styles.gridBox}>
                     <Ionicons name="people-outline" size={16} color="#333" />
-                    <Text style={styles.gridValue}>{currentCount}/{maxCount}</Text>
+                    <Text style={styles.gridValue}>{currentCount}/{displayTotalNeeded}</Text>
                   </View>
                 </View>
                 <View style={styles.gridColumn}>
@@ -891,7 +903,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                 <UserRow
                   key={pid || idx}
                   user={typeof p === "object" ? p : { name: "Người chơi" }}
-                  badge={isCreatorParticipant ? "Người tạo trận" : "Người tham gia"}
+                  badge={isCreatorParticipant ? "Người tạo trận" : null}
                   isMe={isMe}
                   showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
@@ -1130,6 +1142,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                 contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
                 renderItem={({ item }) => {
                   const uName = item.name || "Người dùng";
+                  const isInvited = Boolean(item.isInvited);
                   return (
                     <View style={styles.inviteUserCard}>
                       <View style={[styles.userAvatar, { backgroundColor: '#ef4444' }]}>
@@ -1143,12 +1156,12 @@ export default function MatchDetailScreen({ navigation, route }) {
                         <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
                       </View>
                       <TouchableOpacity
-                        style={styles.inviteActionBtn}
+                        style={[styles.inviteActionBtn, isInvited && styles.inviteActionBtnDisabled]}
                         onPress={() => handleInviteUser(String(item._id || item.id))}
-                        disabled={actionLoading}
+                        disabled={actionLoading || isInvited}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.inviteActionBtnText}>Mời</Text>
+                        <Text style={styles.inviteActionBtnText}>{isInvited ? "Đã mời" : "Mời"}</Text>
                       </TouchableOpacity>
                     </View>
                   );
