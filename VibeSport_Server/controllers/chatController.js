@@ -2347,6 +2347,66 @@ exports.unpinMessage = async (req, res) => {
   }
 };
 
+// ─── Gửi tin nhắn hệ thống khi kết thúc cuộc gọi ──────────────────────────
+// Được gọi từ socket 'leave_channel', 'call_rejected', 'call_busy' handler trong index.js
+// isMissed: true = cuộc gọi nhỡ (rejected/busy/timeout, duration=0)
+// isMissed: false = cuộc gọi kết thúc bình thường
+exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds, isMissed = false) => {
+  try {
+    let content;
+    if (isMissed || durationSeconds === 0) {
+      content = callType === 'video'
+        ? 'Cuộc gọi video nhỡ'
+        : 'Cuộc gọi thoại nhỡ';
+    } else {
+      const durationMinutes = Math.floor(durationSeconds / 60);
+      const durationText =
+        durationMinutes > 0
+          ? `${durationMinutes} phút`
+          : `${durationSeconds} giây`;
+      content = callType === 'video'
+        ? `Cuộc gọi video đã kết thúc (${durationText})`
+        : `Cuộc gọi thoại đã kết thúc (${durationText})`;
+    }
+
+    const message = await Message.create({
+      conversationId,
+      senderId: null, // null = system message
+      type: 'call',
+      content,
+      readBy: [],
+    });
+
+    const populatedMessage = await Message.findById(message._id);
+
+    const conversation = await Conversation.findById(conversationId);
+    if (conversation) {
+      conversation.lastMessage = content;
+      conversation.lastMessageAt = message.createdAt;
+      conversation.lastMessageSenderId = null;
+      await conversation.save();
+
+      // Broadcast tới tất cả participant đang online
+      if (global.io) {
+        conversation.participants.forEach((pId) => {
+          const pIdStr = String(pId);
+          global.io.to(pIdStr).emit('new_message', {
+            conversationId,
+            message: populatedMessage,
+            lastMessage: content,
+            lastMessageAt: message.createdAt,
+          });
+        });
+      }
+    }
+
+    return populatedMessage;
+  } catch (error) {
+    console.error('[ChatController] sendSystemCallMessage error:', error);
+    return null;
+  }
+};
+
 exports.recallMessage = async (req, res) => {
   try {
     const { messageId } = req.params;

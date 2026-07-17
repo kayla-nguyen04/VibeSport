@@ -5,8 +5,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { hydrateSession } from '../redux/authSlice';
 import { usePresenceHeartbeat } from '../hooks/usePresenceHeartbeat';
 import { useSocket } from '../hooks/useSocket';
+import { IncomingCallModal } from '../components/IncomingCallModal';
 import { AuthNavigator } from './AuthNavigator';
 import { MainNavigator, LoadingScreen, linking } from './MainNavigator';
+import { navigationRef } from './navigationRef';
 
 export function RootNavigator() {
   const dispatch = useDispatch();
@@ -38,12 +40,13 @@ export function RootNavigator() {
     : 'Auth';
 
   return (
-    <NavigationContainer key={navigatorKey} linking={linking}>
+    <NavigationContainer key={navigatorKey} linking={linking} ref={navigationRef}>
       {isAuthenticated ? (
         <MainNavigator initialRouteName={initialRouteName} />
       ) : (
         <AuthNavigator />
       )}
+      <IncomingCallModal />
     </NavigationContainer>
   );
 }

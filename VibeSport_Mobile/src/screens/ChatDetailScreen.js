@@ -14,7 +14,6 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
-  Linking,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,6 +40,8 @@ import {
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
+import { socketEmitter } from '../hooks/useSocket';
+import { generateAgoraTokenRequest } from '../services/agoraApi';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -88,6 +89,44 @@ export default function ChatDetailScreen({ route, navigation }) {
 
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
+
+  // ============================
+  // Hàm khởi tạo cuộc gọi Agora
+  // ============================
+  const handleStartCall = async (callType) => {
+    if (!token || !currentUserId) return;
+
+    const channelName = `call_${conversationId}`;
+
+    // Lấy peerId để emit socket tới đúng người
+    let peerId = null;
+    let memberIds = [];
+    if (isGroup) {
+      peerId = null;
+      // Lấy danh sách tất cả thành viên trong nhóm (trừ caller)
+      const participants = conversationMeta?.participants || [];
+      memberIds = participants
+        .map((p) => String(p._id || p))
+        .filter((id) => id !== String(currentUserId));
+    } else {
+      peerId = String(peer?._id || peer);
+    }
+
+    const payload = {
+      channelName,
+      callType,
+      isGroup,
+      callerId: currentUserId,
+      callerName: user?.name || 'Người dùng',
+      memberIds,
+    };
+
+    // Bước 1: Emit sự kiện cuộc gọi tới người nhận (peerId = null → server emit tới tất cả memberIds)
+    socketEmitter.emit('start_call', { ...payload, peerId });
+
+    // Bước 2: Navigate caller vào CallScreen và join channel luôn
+    navigation.navigate('Call', { channelName, callType, isGroup, peer });
+  };
 
   const conversationMeta = conversations.find((item) => item._id === conversationId);
 
@@ -1191,21 +1230,18 @@ export default function ChatDetailScreen({ route, navigation }) {
 
         <TouchableOpacity
           style={styles.headerCallBtn}
-          onPress={() => {
-            if (isGroup) {
-              Alert.alert('Gọi điện nhóm', 'Tính năng gọi thoại nhóm đang được phát triển.');
-            } else {
-              const phone = peer?.phone || peer?.phoneNumber;
-              if (phone) {
-                Linking.openURL(`tel:${phone}`);
-              } else {
-                Alert.alert('Gọi điện', 'Người dùng này chưa cập nhật số điện thoại.');
-              }
-            }
-          }}
+          onPress={() => handleStartCall('voice')}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Ionicons name="call-outline" size={20} color="#374151" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.headerVideoBtn}
+          onPress={() => handleStartCall('video')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="videocam-outline" size={20} color="#374151" />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1605,6 +1641,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerCallBtn: {
+    padding: 8,
+    marginRight: -2,
+  },
+  headerVideoBtn: {
     padding: 8,
     marginRight: -2,
   },

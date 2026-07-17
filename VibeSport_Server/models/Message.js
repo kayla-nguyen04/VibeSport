@@ -11,12 +11,14 @@ const messageSchema = new Schema(
     senderId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: function () {
+        return this.type !== 'call';
+      },
     },
-    // Loại tin nhắn: 'text' (mặc định) hoặc 'image'
+    // Loại tin nhắn: 'text' (mặc định), 'image', hoặc 'call' (tin nhắn hệ thống cuộc gọi)
     type: {
       type: String,
-      enum: ['text', 'image'],
+      enum: ['text', 'image', 'call'],
       default: 'text',
     },
     content: {
