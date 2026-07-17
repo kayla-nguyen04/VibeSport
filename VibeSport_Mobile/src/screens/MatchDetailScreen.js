@@ -33,6 +33,7 @@ import {
   rejectTeamInvite,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
+import { getSocket } from "../hooks/useSocket";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -237,6 +238,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const token = useSelector((state) => state.auth?.token);
   const matchId = routeMatchId || route?.params?.matchId;
   const initialMatch = route?.params?.match;
+  const socket = getSocket();
   const [match, setMatch] = useState(initialMatch || null);
   const [loading, setLoading] = useState(!initialMatch);
   const [actionLoading, setActionLoading] = useState(false);
@@ -322,6 +324,28 @@ export default function MatchDetailScreen({ navigation, route }) {
       }
     })();
   }, [matchId, navigation]);
+
+  useEffect(() => {
+    if (!socket || !matchId) return;
+
+    const handleMatchUpdated = (data) => {
+      if (data && String(data.matchId) === String(matchId)) {
+        console.log('[SOCKET] Match updated real-time:', matchId);
+        if (data.isDeleted) {
+          Alert.alert("Thông báo", "Trận đấu này đã bị hủy hoặc xóa.");
+          navigation.goBack();
+        } else {
+          reloadMatch();
+        }
+      }
+    };
+
+    socket.on('match_updated', handleMatchUpdated);
+
+    return () => {
+      socket.off('match_updated', handleMatchUpdated);
+    };
+  }, [matchId, socket]);
 
   const creator = typeof match?.createdBy === "object" ? match.createdBy : null;
   const creatorId = getUserId(creator || match?.createdBy);

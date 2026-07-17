@@ -12,7 +12,7 @@ export function RootNavigator() {
   const dispatch = useDispatch();
   const { isAuthenticated, isHydrating, user } = useSelector((state) => state.auth);
 
-  const isProfileComplete = Boolean(user?.favoriteSport && user?.position && user?.area);
+  const isProfileComplete = Boolean(user?.profileCompleted || (user?.favoriteSport && user?.position && user?.area));
 
   usePresenceHeartbeat();
   useSocket();
@@ -25,17 +25,9 @@ export function RootNavigator() {
     return <LoadingScreen />;
   }
 
-  const navigatorKey = isAuthenticated
-    ? isProfileComplete
-      ? 'authenticated-complete'
-      : 'authenticated-incomplete'
-    : 'guest';
+  const navigatorKey = isAuthenticated ? 'authenticated' : 'guest';
 
-  const initialRouteName = isAuthenticated
-    ? isProfileComplete
-      ? 'Home'
-      : 'CompleteProfile'
-    : 'Auth';
+  const initialRouteName = isAuthenticated ? 'Home' : 'Auth';
 
   return (
     <NavigationContainer key={navigatorKey} linking={linking}>

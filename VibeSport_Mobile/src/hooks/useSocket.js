@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../components/constants/api';
@@ -19,18 +19,24 @@ import {
   joinRequestUpdated,
   messageRecalled,
 } from '../redux/chatSlice';
+import { updatePostLikes, updateCommentCount } from '../redux/postSlice';
+
+let socketInstance = null;
+
+export function getSocket() {
+  return socketInstance;
+}
 
 export function useSocket() {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
-  const socketRef = useRef(null);
 
   useEffect(() => {
     if (!token || !user) {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
+      if (socketInstance) {
+        socketInstance.disconnect();
+        socketInstance = null;
       }
       return;
     }
@@ -38,99 +44,108 @@ export function useSocket() {
     const userId = user.id || user._id;
     if (!userId) return;
 
-    console.log('[SOCKET] Connecting to:', API_BASE_URL);
-    const socket = io(API_BASE_URL, {
-      transports: ['websocket'],
-    });
+    if (!socketInstance) {
+      console.log('[SOCKET] Connecting to:', API_BASE_URL);
+      socketInstance = io(API_BASE_URL, {
+        transports: ['websocket'],
+      });
 
-    socketRef.current = socket;
+      socketInstance.on('connect', () => {
+        console.log('[SOCKET] Connected with socket ID:', socketInstance.id);
+        socketInstance.emit('join', userId);
+        dispatch(fetchChatUnreadCount());
+      });
 
-    socket.on('connect', () => {
-      console.log('[SOCKET] Connected with socket ID:', socket.id);
-      socket.emit('join', userId);
-      dispatch(fetchChatUnreadCount());
-    });
+      socketInstance.on('new_notification', (notification) => {
+        if (notification?.type === 'message') return;
+        console.log('[SOCKET] Received new notification:', notification);
+        dispatch(addNotification(notification));
+      });
 
-    socket.on('new_notification', (notification) => {
-      if (notification?.type === 'message') return;
-      console.log('[SOCKET] Received new notification:', notification);
-      dispatch(addNotification(notification));
-    });
+      socketInstance.on('unread_count', ({ unreadCount }) => {
+        console.log('[SOCKET] Received unread count:', unreadCount);
+        dispatch(setUnreadCount(unreadCount));
+      });
 
-    socket.on('unread_count', ({ unreadCount }) => {
-      console.log('[SOCKET] Received unread count:', unreadCount);
-      dispatch(setUnreadCount(unreadCount));
-    });
+      socketInstance.on('new_message', (payload) => {
+        dispatch(receiveMessage({ ...payload, currentUserId: userId }));
+      });
 
-    socket.on('new_message', (payload) => {
-      dispatch(receiveMessage({ ...payload, currentUserId: userId }));
-    });
+      socketInstance.on('new_pending_message', (payload) => {
+        dispatch(receivePendingMessage({ ...payload, currentUserId: userId }));
+      });
 
-    socket.on('new_pending_message', (payload) => {
-      dispatch(receivePendingMessage({ ...payload, currentUserId: userId }));
-    });
+      socketInstance.on('unread_messages_count', ({ unreadCount }) => {
+        dispatch(setChatUnreadCount(unreadCount));
+      });
 
-    socket.on('unread_messages_count', ({ unreadCount }) => {
-      dispatch(setChatUnreadCount(unreadCount));
-    });
+      socketInstance.on('conversation_accepted', (payload) => {
+        dispatch(conversationAccepted({ ...payload, currentUserId: userId }));
+      });
 
-    socket.on('conversation_accepted', (payload) => {
-      dispatch(conversationAccepted({ ...payload, currentUserId: userId }));
-    });
+      socketInstance.on('conversation_blocked', (payload) => {
+        dispatch(conversationBlocked(payload));
+      });
 
-    socket.on('conversation_blocked', (payload) => {
-      dispatch(conversationBlocked(payload));
-    });
+      socketInstance.on('conversation_unblocked', (payload) => {
+        dispatch(conversationUnblocked(payload));
+      });
 
-    socket.on('conversation_unblocked', (payload) => {
-      dispatch(conversationUnblocked(payload));
-    });
+      socketInstance.on('pending_messages_deleted', (payload) => {
+        dispatch(pendingMessagesDeletedByOther(payload));
+      });
 
-    socket.on('pending_messages_deleted', (payload) => {
-      dispatch(pendingMessagesDeletedByOther(payload));
-    });
+      socketInstance.on('group_updated', (payload) => {
+        dispatch(groupUpdated(payload));
+      });
 
-    socket.on('group_updated', (payload) => {
-      dispatch(groupUpdated(payload));
-    });
+      socketInstance.on('member_muted', (payload) => {
+        dispatch(memberMuted(payload));
+      });
 
-    socket.on('member_muted', (payload) => {
-      dispatch(memberMuted(payload));
-    });
+      socketInstance.on('member_unmuted', (payload) => {
+        dispatch(memberUnmuted(payload));
+      });
 
-    socket.on('member_unmuted', (payload) => {
-      dispatch(memberUnmuted(payload));
-    });
+      socketInstance.on('pinned_message', (payload) => {
+        dispatch(groupUpdated(payload));
+      });
 
-    socket.on('pinned_message', (payload) => {
-      dispatch(groupUpdated(payload));
-    });
+      socketInstance.on('unpinned_message', (payload) => {
+        dispatch(groupUpdated(payload));
+      });
 
-    socket.on('unpinned_message', (payload) => {
-      dispatch(groupUpdated(payload));
-    });
+      socketInstance.on('join_request_approved', (payload) => {
+        dispatch(joinRequestUpdated(payload));
+      });
 
-    socket.on('join_request_approved', (payload) => {
-      dispatch(joinRequestUpdated(payload));
-    });
+      socketInstance.on('join_request_rejected', (payload) => {
+        dispatch(joinRequestUpdated(payload));
+      });
 
-    socket.on('join_request_rejected', (payload) => {
-      dispatch(joinRequestUpdated(payload));
-    });
+      socketInstance.on('message_recalled', (payload) => {
+        dispatch(messageRecalled(payload));
+      });
 
-    socket.on('message_recalled', (payload) => {
-      dispatch(messageRecalled(payload));
-    });
+      socketInstance.on('post_reaction_updated', (payload) => {
+        console.log('[SOCKET] Post reaction updated:', payload);
+        dispatch(updatePostLikes(payload));
+      });
 
-    socket.on('disconnect', () => {
-      console.log('[SOCKET] Disconnected');
-    });
+      socketInstance.on('post_comment_updated', (payload) => {
+        console.log('[SOCKET] Post comment updated:', payload);
+        dispatch(updateCommentCount(payload));
+      });
+
+      socketInstance.on('disconnect', () => {
+        console.log('[SOCKET] Disconnected');
+      });
+    }
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      // Keep open globally
     };
   }, [token, user, dispatch]);
 
-  return socketRef.current;
+  return socketInstance;
 }
