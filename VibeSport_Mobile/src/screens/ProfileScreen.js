@@ -281,21 +281,21 @@ export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
   const managementCards = useMemo(() => [
     {
       key: 'profile-management',
-      title: 'Quản lý trang cá nhân',
+      title: 'Bài viết của tôi',
       subtitle: 'Xem, chỉnh sửa thông tin chi tiết cá nhân',
       iconName: 'person-outline',
       routeName: 'ProfileManagementScreen',
     },
     {
       key: 'club-management',
-      title: 'Quản lý FC',
-      subtitle: 'Quản lý câu lạc bộ thể thao của bạn',
+      title: 'FC của tôi',
+      subtitle: 'Xem các câu lạc bộ thể thao bạn đã tham gia',
       iconName: 'people-outline',
       routeName: 'ClubManagementScreen',
     },
     {
       key: 'match-history',
-      title: 'Lịch sử trận đấu',
+      title: 'Lịch sử hoạt động',
       subtitle: 'Thống kê kết quả các trận đấu đã chơi',
       iconName: 'time-outline',
       routeName: 'MatchHistoryScreen',

@@ -1851,7 +1851,10 @@ exports.sendImageMessage = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn đã bị cấm chat trong nhóm này' });
     }
 
-    const mediaUrl = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+    let mediaUrl = null;
+    if (req.file) {
+      mediaUrl = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+    }
 
     const message = await Message.create({
       conversationId: id,

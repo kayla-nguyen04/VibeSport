@@ -2,6 +2,7 @@ const express = require("express");
 const Match = require("../models/Match");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
+const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -22,8 +23,9 @@ const getPositionLabel = (posId) => {
   return "";
 };
 
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
   try {
+    const userId = req.userId;
     const {
       sport,
       formation,
@@ -36,7 +38,6 @@ router.post("/", async (req, res) => {
       locationName,
       location,
       note,
-      createdBy,
       selectedPositionIds,
       benchMembersTeam1,
       benchMembersTeam2,
@@ -86,11 +87,11 @@ router.post("/", async (req, res) => {
       locationName,
       location: location || {},
       note: note || "",
-      createdBy: createdBy || undefined,
-      participants: createdBy ? [createdBy] : [],
-      currentPlayers: createdBy ? 1 : 0,
-      memberRoles: createdBy ? [{ userId: createdBy, role: "owner" }] : [],
-      memberPositions: createdBy ? [{ userId: createdBy, positionId: "" }] : [],
+      createdBy: userId,
+      participants: [userId],
+      currentPlayers: 1,
+      memberRoles: [{ userId, role: "owner" }],
+      memberPositions: [{ userId, positionId: "" }],
     });
 
     return res.status(201).json({
@@ -111,7 +112,7 @@ router.post("/", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { sport, q, area, startTime, createdBy } = req.query;
+    const { sport, q, area, startTime, createdBy, participantId } = req.query;
 
     const filter = {};
 
@@ -121,6 +122,10 @@ router.get("/", async (req, res) => {
 
     if (createdBy && String(createdBy).trim()) {
       filter.createdBy = String(createdBy).trim();
+    }
+
+    if (participantId && String(participantId).trim()) {
+      filter.participants = String(participantId).trim();
     }
 
     // Search by keyword (title or locationName)
@@ -271,8 +276,9 @@ router.post("/:id/leave", async (req, res) => {
 });
 
 // Update a match
-router.put("/:id", async (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
   try {
+    const userId = req.userId;
     const {
       sport,
       title,
@@ -288,11 +294,16 @@ router.put("/:id", async (req, res) => {
       benchMembersTeam1,
       benchMembersTeam2,
       footballFormation,
+      formation,
     } = req.body;
 
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (String(match.createdBy) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể chỉnh sửa trận đấu" });
     }
 
     if (sport && !["football", "badminton", "pickleball"].includes(sport)) {
@@ -319,6 +330,7 @@ router.put("/:id", async (req, res) => {
     }
 
     if (sport) match.sport = sport;
+    if (footballFormation !== undefined) match.footballFormation = footballFormation;
     if (formation !== undefined) match.formation = formation;
     if (title) match.title = title.trim();
     if (date) match.date = date;
@@ -359,12 +371,17 @@ router.put("/:id", async (req, res) => {
 });
 
 // Delete a match
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    const match = await Match.findByIdAndDelete(req.params.id);
+    const userId = req.userId;
+    const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
+    if (String(match.createdBy) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể xóa trận đấu" });
+    }
+    await Match.findByIdAndDelete(req.params.id);
     return res.json({ success: true, message: "Xóa trận đấu thành công" });
   } catch (error) {
     console.error("Delete match error:", error);

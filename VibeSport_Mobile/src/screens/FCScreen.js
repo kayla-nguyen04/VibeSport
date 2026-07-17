@@ -257,10 +257,21 @@ function PostCard({ post }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function FCScreen({ navigation }) {
+  const [showDevDialog, setShowDevDialog] = useState(true);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <AppHeader navigation={navigation} />
+
+      {showDevDialog && (
+        <View style={styles.devOverlay} pointerEvents="box-none">
+          <View style={styles.modalContainer} pointerEvents="none">
+            <Text style={styles.modalTitle}>Tính năng đang phát triển</Text>
+            <Text style={styles.modalText}>Tính năng đang trong giai đoạn phát triển</Text>
+          </View>
+        </View>
+      )}
 
       <ScrollView
         style={styles.scroll}
@@ -295,7 +306,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 30,
   },
 
   // App Header
@@ -338,6 +349,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: -2,
   },
+
+  devBox: {
+    backgroundColor: '#fff8f3',
+    borderLeftWidth: 4,
+    borderLeftColor: '#f97316',
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+    alignItems: 'flex-start',
+  },
+  devTitle: { fontSize: 18, fontWeight: '900', color: '#111', marginBottom: 10 },
+  devText: { fontSize: 15, color: '#444', marginBottom: 12, textAlign: 'center' },
+  devLabel: { fontSize: 15, color: '#f97316', fontWeight: '800' },
+  devOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 55,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  devBoxFixed: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    top: '50%',
+    marginTop: -90,
+    backgroundColor: '#fff8f3',
+    borderLeftWidth: 6,
+    borderLeftColor: '#f97316',
+    padding: 20,
+    borderRadius: 16,
+    zIndex: 60,
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 40,
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  modalText: { fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 16 },
+  modalBtn: { backgroundColor: '#f97316', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 },
+  modalBtnText: { color: '#fff', fontWeight: '700' },
   headerIconBtn: {
     width: 36,
     height: 36,

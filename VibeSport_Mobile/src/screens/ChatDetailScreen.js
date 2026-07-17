@@ -22,7 +22,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   acceptConversation,
   blockConversation,
@@ -1152,7 +1151,7 @@ export default function ChatDetailScreen({ route, navigation }) {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <Screen style={[styles.screen, { paddingBottom: 5 }]}>
       <ScreenHeader style={styles.header}>
         <BackButton name="arrow-back" onPress={() => navigation.goBack()} />
 
@@ -1223,7 +1222,7 @@ export default function ChatDetailScreen({ route, navigation }) {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
         {loadingMessages && groupedMessages.length === 0 ? (
@@ -1236,7 +1235,10 @@ export default function ChatDetailScreen({ route, navigation }) {
             data={groupedMessages}
             keyExtractor={(item) => item._id}
             renderItem={renderMessage}
-            contentContainerStyle={styles.messagesContent}
+            contentContainerStyle={[
+              styles.messagesContent,
+              { paddingBottom: 100, paddingTop: 5 },
+            ]}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           />
         )}
@@ -1457,7 +1459,7 @@ export default function ChatDetailScreen({ route, navigation }) {
                                 }
                               }}
                             >
-                              <Ionicons name="pin-outline" size={22} color="#DC2626" />
+                              <Ionicons name="pin-outline" size={14} color="#DC2626" />
                               <Text style={[styles.menuItemText, styles.menuItemDanger]}>Bỏ ghim</Text>
                             </TouchableOpacity>
                           )}
@@ -1543,8 +1545,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     marginHorizontal: 11,
-    marginTop: 0,
+    marginTop: 10,
     height: 74,
+    paddingTop: 5,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
@@ -1797,6 +1800,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     gap: 8,
+    paddingBottom: 5,
   },
   inputBarDisabled: {
     paddingHorizontal: 16,
@@ -1812,15 +1816,15 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     maxHeight: 100,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 22,
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 14 : 10,
-    paddingBottom: Platform.OS === 'ios' ? 6 : 10,
-    textAlignVertical: 'center',
+    paddingTop: Platform.OS === 'ios' ? 12 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 10,
+    textAlignVertical: 'top',
     fontSize: 15,
     color: '#1F2937',
     backgroundColor: '#F3F4F6',
