@@ -410,10 +410,10 @@ export default function TeamsScreen({ navigation }) {
 
   const getDisplayData = () => {
     if (activeSubTab === "near") {
-      return matches;
+      return matches.filter((m) => m.status !== "completed" && m.status !== "cancelled");
     }
     if (activeSubTab === "joined") {
-      return matches.filter(isUserParticipant);
+      return matches.filter(isUserParticipant).filter((m) => m.status !== "completed" && m.status !== "cancelled");
     }
     if (activeSubTab === "created") {
       return matches.filter((m) => {
@@ -422,6 +422,9 @@ export default function TeamsScreen({ navigation }) {
           typeof creator === "object" ? creator?._id || creator?.id : creator;
         return normalizeId(creatorId) === userId;
       });
+    }
+    if (activeSubTab === "ended") {
+      return matches.filter((m) => m.status === "completed" || m.status === "cancelled");
     }
     return matches;
   };
@@ -713,7 +716,7 @@ export default function TeamsScreen({ navigation }) {
             { key: "near", label: "Gần tôi" },
             { key: "joined", label: "Đã tham gia" },
             { key: "created", label: "Đã tạo" },
-            { key: "findteam", label: "Tìm đội" },
+            { key: "ended", label: "Đã kết thúc" },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.key}
@@ -839,10 +842,10 @@ export default function TeamsScreen({ navigation }) {
           onRefresh={() => (isFindTeamTab ? loadFindTeamPosts() : loadMatches(searchText, areaFilter, timeFilter, activeSubTab))}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>{isFindTeamTab ? "👥" : "⚽"}</Text>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>⚽</Text>
               <Text style={styles.emptyTitle}>
-                {activeSubTab === "findteam"
-                  ? "Chưa có bài đăng tìm đội"
+                {activeSubTab === "ended"
+                  ? "Chưa có trận đấu đã kết thúc"
                   : activeSubTab === "created"
                     ? "Bạn chưa tạo trận nào"
                     : activeSubTab === "joined"
@@ -850,8 +853,8 @@ export default function TeamsScreen({ navigation }) {
                       : "Không tìm thấy trận đấu"}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {activeSubTab === "findteam"
-                  ? "Nhấn + Tạo để đăng bài tìm đội mới."
+                {activeSubTab === "ended"
+                  ? "Các trận đấu đã hoàn thành hoặc bị hủy sẽ xuất hiện tại đây."
                   : activeSubTab === "near"
                     ? "Hãy tạo trận mới hoặc thay đổi bộ lọc tìm kiếm."
                     : activeSubTab === "created"

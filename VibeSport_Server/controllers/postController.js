@@ -50,8 +50,9 @@ async function createAndSendNotification({ userId, fromUserId, type, message, po
 }
 
 // Helper to construct media absolute URLs
-function getAbsoluteUrl(req, filename) {
-  return `${API_BASE_URL}/uploads/posts/${filename}`;
+function getAbsoluteUrl(req, file) {
+  if (!file) return '';
+  return file.path || `${API_BASE_URL}/uploads/posts/${file.filename}`;
 }
 
 // ─── POST CONTROLLER HANDLERS ─────────────────────────────────
@@ -80,7 +81,7 @@ exports.createPost = async (req, res) => {
 
     let mediaUrls = [];
     if (req.files && req.files.length > 0) {
-      mediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
+      mediaUrls = req.files.map((file) => getAbsoluteUrl(req, file));
     }
 
     const resolvedTags = await buildPostTags({
@@ -529,6 +530,14 @@ exports.likePost = async (req, res) => {
     ]);
     const topReactions = reactionsCount.map(r => r._id);
 
+    if (global.io) {
+      global.io.emit('post_reaction_updated', {
+        postId: post._id.toString(),
+        likesCount: post.likesCount,
+        topReactions,
+      });
+    }
+
     res.status(200).json({
       success: true,
       isLiked: liked,
@@ -568,6 +577,14 @@ exports.unlikePost = async (req, res) => {
       { $limit: 2 }
     ]);
     const topReactions = reactionsCount.map(r => r._id);
+
+    if (global.io) {
+      global.io.emit('post_reaction_updated', {
+        postId: post._id.toString(),
+        likesCount: post.likesCount,
+        topReactions,
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -641,7 +658,7 @@ exports.commentPost = async (req, res) => {
 
     let mediaUrl = null;
     if (req.file) {
-      mediaUrl = getAbsoluteUrl(req, req.file.filename);
+      mediaUrl = getAbsoluteUrl(req, req.file);
     }
 
     if ((!content || !content.trim()) && !mediaUrl) {
@@ -701,6 +718,13 @@ exports.commentPost = async (req, res) => {
           postThumbnail,
         });
       }
+    }
+
+    if (global.io) {
+      global.io.emit('post_comment_updated', {
+        postId: post._id.toString(),
+        commentsCount: post.commentsCount,
+      });
     }
 
     res.status(201).json({
@@ -802,7 +826,7 @@ exports.updatePost = async (req, res) => {
       keptUrls = keepList.filter((url) => typeof url === 'string' && url.trim() !== '');
     }
     const newMediaUrls = req.files && req.files.length > 0
-      ? req.files.map((file) => getAbsoluteUrl(req, file.filename))
+      ? req.files.map((file) => getAbsoluteUrl(req, file))
       : [];
     post.mediaUrls = [...keptUrls, ...newMediaUrls];
 

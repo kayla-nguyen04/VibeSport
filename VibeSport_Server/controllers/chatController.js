@@ -1057,7 +1057,7 @@ exports.updateGroupInfo = async (req, res) => {
     }
 
     if (req.file) {
-      conversation.avatar = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+      conversation.avatar = req.file.path || `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
     }
 
     await conversation.save();
@@ -1853,7 +1853,7 @@ exports.sendImageMessage = async (req, res) => {
 
     let mediaUrl = null;
     if (req.file) {
-      mediaUrl = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+      mediaUrl = req.file.path || `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
     }
 
     const message = await Message.create({

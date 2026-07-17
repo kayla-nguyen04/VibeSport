@@ -224,4 +224,16 @@ const matchSchema = new Schema(
   }
 );
 
+matchSchema.post('save', function (doc) {
+  if (global.io) {
+    global.io.emit('match_updated', { matchId: doc._id.toString() });
+  }
+});
+
+matchSchema.post('findOneAndDelete', function (doc) {
+  if (doc && global.io) {
+    global.io.emit('match_updated', { matchId: doc._id.toString(), isDeleted: true });
+  }
+});
+
 module.exports = model("Match", matchSchema);
