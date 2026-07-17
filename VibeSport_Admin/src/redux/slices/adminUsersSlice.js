@@ -5,10 +5,10 @@ const API_URL = 'http://localhost:4000/api/admin/users';
 
 export const fetchUsers = createAsyncThunk(
   'adminUsers/fetchUsers',
-  async ({ page = 1, limit = 10, search = '' }, { getState, rejectWithValue }) => {
+  async ({ page = 1, limit = 10, search = '', status = '', sortBy = '' }, { getState, rejectWithValue }) => {
     try {
       const { token } = getState().auth;
-      const response = await axios.get(`${API_URL}?page=${page}&limit=${limit}&search=${search}`, {
+      const response = await axios.get(`${API_URL}?page=${page}&limit=${limit}&search=${search}&status=${status}&sortBy=${sortBy}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;
@@ -44,6 +44,36 @@ export const lockUnlockUser = createAsyncThunk(
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Lỗi khi khóa/mở khóa người dùng');
+    }
+  }
+);
+
+export const fetchUserReports = createAsyncThunk(
+  'adminUsers/fetchUserReports',
+  async ({ id }, { getState, rejectWithValue }) => {
+    try {
+      const { token } = getState().auth;
+      const response = await axios.get(`${API_URL}/${id}/reports`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Lỗi khi tải danh sách báo cáo');
+    }
+  }
+);
+
+export const resolveUserReports = createAsyncThunk(
+  'adminUsers/resolveUserReports',
+  async ({ id }, { getState, rejectWithValue }) => {
+    try {
+      const { token } = getState().auth;
+      const response = await axios.patch(`${API_URL}/${id}/resolve-reports`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Lỗi khi xử lý báo cáo');
     }
   }
 );
@@ -92,6 +122,14 @@ const adminUsersSlice = createSlice({
       })
       // Lock/Unlock User
       .addCase(lockUnlockUser.fulfilled, (state, action) => {
+        const updatedUser = action.payload.data;
+        const index = state.users.findIndex(u => u._id === updatedUser._id);
+        if (index !== -1) {
+          state.users[index] = updatedUser;
+        }
+      })
+      // Resolve Reports
+      .addCase(resolveUserReports.fulfilled, (state, action) => {
         const updatedUser = action.payload.data;
         const index = state.users.findIndex(u => u._id === updatedUser._id);
         if (index !== -1) {

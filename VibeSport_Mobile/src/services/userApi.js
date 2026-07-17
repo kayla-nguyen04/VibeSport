@@ -40,3 +40,14 @@ export const getFollowingListRequest = (token, userId = null) =>
 
 export const getFollowersListRequest = (token, userId = null) =>
   request(userId ? `/api/users/${userId}/followers` : '/api/users/followers', {}, token);
+
+export const reportUserRequest = (userId, reason, token) =>
+  request(
+    `/api/users/${userId}/report`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    },
+    token
+  );

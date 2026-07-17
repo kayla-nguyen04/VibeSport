@@ -1071,14 +1071,14 @@ export default function ChatListScreen({ navigation }) {
                 style={styles.logoHeaderIconBtn}
                 onPress={() => setIsSearching(true)}
               >
-                <Ionicons name="search-outline" size={20} color="#000000" />
+                <Ionicons name="search-outline" size={26} color="#1F2937" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.logoHeaderIconBtn}
                 onPress={() => setShowHeaderMenu(true)}
               >
-                <Ionicons name="ellipsis-vertical" size={20} color="#000000" />
+                <Ionicons name="ellipsis-vertical" size={26} color="#1F2937" />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1086,7 +1086,7 @@ export default function ChatListScreen({ navigation }) {
                 onPress={() => navigation.navigate('Notification')}
               >
                 <View style={{ position: 'relative' }}>
-                  <Ionicons name="notifications-outline" size={20} color="#000000" />
+                  <Ionicons name="notifications-outline" size={26} color="#1F2937" />
                   {unreadNotificationCount > 0 && (
                     <View style={styles.bellRedDot} />
                   )}
@@ -1744,11 +1744,22 @@ const styles = StyleSheet.create({
     marginHorizontal: 9,
     marginVertical: 6,
     height: 78,
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 0,
-    elevation: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 4, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 0,
+      },
+      android: {
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.08)',
+        borderRightWidth: 4,
+        borderBottomWidth: 4,
+        borderRightColor: 'rgba(0, 0, 0, 0.25)',
+        borderBottomColor: 'rgba(0, 0, 0, 0.25)',
+      },
+    }),
   },
   conversationItemTouchable: {
     flex: 1,

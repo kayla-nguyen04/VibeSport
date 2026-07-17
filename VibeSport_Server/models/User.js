@@ -89,6 +89,14 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    reportCount: {
+      type: Number,
+      default: 0,
+    },
+    lastReportedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

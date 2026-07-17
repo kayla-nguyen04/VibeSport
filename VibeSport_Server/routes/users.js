@@ -11,6 +11,7 @@ const {
   getMutualFriends,
   getFollowingList,
   getFollowersList,
+  reportUser,
 } = require('../controllers/userController');
 
 const router = express.Router();
@@ -29,5 +30,6 @@ router.get('/:id/followers', getFollowersList);
 router.get('/:id', getUserProfile);
 router.post('/:id/follow', toggleFollow);
 router.get('/:id/teams', getUserTeams);
+router.post('/:id/report', reportUser);
 
 module.exports = router;

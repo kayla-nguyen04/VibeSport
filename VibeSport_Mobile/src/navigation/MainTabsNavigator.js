@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, Text, View, Keyboard } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { logoutUser, updateProfile } from '../redux/authSlice';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -20,6 +21,7 @@ const TAB_BAR_HEIGHT = 56; // reduced 20% from 70
 function CustomTabBar({ state, descriptors, navigation }) {
   const chatUnreadCount = useSelector((state) => state.chat.unreadCount);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
@@ -32,12 +34,14 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
   if (keyboardVisible) return null;
 
+  const bottomPosition = insets.bottom > 0 ? Math.max(insets.bottom - 8, 12) : 12;
+
   return (
     <View style={[styles.bottomBarOuter, {
       position: 'absolute',
       left: 0,
       right: 0,
-      bottom: 12,
+      bottom: bottomPosition,
     },]}>
       <View style={styles.bottomBarWrap}>
         <View style={styles.bottomBar}>
@@ -69,8 +73,10 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 onPress={() => navigation.navigate(route.name)}
                 style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
               >
-                <View style={[styles.iconFrame, isFocused && styles.activeIconFrame]}>
-                  {icon}
+                <View style={styles.iconFrameOuter}>
+                  <View style={[styles.iconFrameInner, isFocused && styles.activeIconFrame]}>
+                    {icon}
+                  </View>
                   {showChatBadge ? (
                     <View style={styles.tabBadge}>
                       <Text style={styles.tabBadgeText}>
@@ -196,13 +202,20 @@ const styles = StyleSheet.create({
   tabButtonPressed: {
     opacity: 0.7,
   },
-  iconFrame: {
-   width: 42,
-  height: 42,
-  justifyContent: 'center',
-  alignItems: 'center',
-  borderRadius: 21,
-  overflow: 'visible',
+  iconFrameOuter: {
+    width: 42,
+    height: 42,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconFrameInner: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
   activeIconFrame: {
     backgroundColor: '#FF5F3D',
