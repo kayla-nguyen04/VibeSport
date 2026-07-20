@@ -89,6 +89,48 @@ const getInitials = (name) => {
   return p.length > 1 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
 };
 
+const getMatchStatusInfo = (m) => {
+  if (!m) return { label: "⏳ CHƯA BẮT ĐẦU", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
+  const isEnded = m.teamStatus === "ended" || m.status === "completed";
+  const isOngoing = m.teamStatus === "ongoing";
+  const isCancelled = m.status === "cancelled";
+
+  if (isCancelled) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ HỦY",
+      icon: "close-circle-outline",
+      bg: "#FEE2E2",
+      color: "#B91C1C",
+      borderColor: "#FCA5A5",
+    };
+  }
+  if (isEnded) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ KẾT THÚC 🏁",
+      icon: "flag-outline",
+      bg: "#F3F4F6",
+      color: "#4B5563",
+      borderColor: "#E5E7EB",
+    };
+  }
+  if (isOngoing) {
+    return {
+      label: "🔴 TRẬN ĐẤU ĐANG DIỄN RA (LIVE)",
+      icon: "radio-button-on-outline",
+      bg: "#DCFCE7",
+      color: "#15803D",
+      borderColor: "#86EFAC",
+    };
+  }
+  return {
+    label: "⏳ CHƯA BẮT ĐẦU",
+    icon: "time-outline",
+    bg: "#FFF7ED",
+    color: "#C2410C",
+    borderColor: "#FFD8A8",
+  };
+};
+
 const normalizeId = (id) => (id == null ? "" : String(id));
 
 const getUserIdValue = (value) => normalizeId(typeof value === "object" ? value?._id || value?.id : value);
@@ -490,6 +532,17 @@ export default function TeamsScreen({ navigation }) {
 
     return (
       <View key={item._id} style={styles.card}>
+        {/* Match Status Bar */}
+        {(() => {
+          const statusInfo = getMatchStatusInfo(item);
+          return (
+            <View style={[styles.matchStatusBarContainer, { backgroundColor: statusInfo.bg, borderColor: statusInfo.borderColor }]}>
+              <Ionicons name={statusInfo.icon} size={15} color={statusInfo.color} style={{ marginRight: 6 }} />
+              <Text style={[styles.matchStatusBarText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            </View>
+          );
+        })()}
+
         {/* Card Header: Avatar + Title + ... menu */}
         <View style={styles.cardHeader}>
           <View style={styles.avatarContainer}>
@@ -1621,5 +1674,20 @@ const styles = StyleSheet.create({
   bottomSheetOptionText: {
     fontSize: 16,
     color: "#111",
+  },
+  matchStatusBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  matchStatusBarText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });

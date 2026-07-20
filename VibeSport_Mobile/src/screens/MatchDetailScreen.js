@@ -31,6 +31,7 @@ import {
   approveInvite,
   acceptTeamInvite,
   rejectTeamInvite,
+  updateTeamStatus,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
 import { getSocket } from "../hooks/useSocket";
@@ -75,17 +76,30 @@ const TEAM2_POSITIONS = [
 
 const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
 
-const getPositionDisplayLabel = (posId) => {
+const getSinglePositionLabel = (posId) => {
+  if (!posId) return "";
   const pos = ALL_POSITIONS.find((item) => item.id === posId);
   if (pos) {
     const teamNumber = pos.id.startsWith("t1_") ? 1 : 2;
-    return `${pos.label} (Đội ${teamNumber})`;
+    return `${pos.label} Đội ${teamNumber}`;
   }
   if (typeof posId === "string" && posId.includes("bench")) {
     const teamNumber = posId.startsWith("t1_") ? 1 : 2;
-    return `Dự bị (Đội ${teamNumber})`;
+    return `Dự bị Đội ${teamNumber}`;
   }
   return posId;
+};
+
+const getPositionDisplayLabel = (posId) => {
+  if (!posId) return "";
+  if (typeof posId === "string" && posId.includes(",")) {
+    const labels = posId
+      .split(",")
+      .map((id) => getSinglePositionLabel(id.trim()))
+      .filter(Boolean);
+    return Array.from(new Set(labels)).join(", ");
+  }
+  return getSinglePositionLabel(posId);
 };
 
 const FOOTBALL_FORMATS = {
@@ -230,6 +244,48 @@ function UserRow({ user, label, badge, onPress, rightAction, isMe, showTeammates
   );
 }
 
+const getMatchStatusInfo = (m) => {
+  if (!m) return { label: "⏳ CHƯA BẮT ĐẦU", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
+  const isEnded = m.teamStatus === "ended" || m.status === "completed";
+  const isOngoing = m.teamStatus === "ongoing";
+  const isCancelled = m.status === "cancelled";
+
+  if (isCancelled) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ HỦY",
+      icon: "close-circle-outline",
+      bg: "#FEE2E2",
+      color: "#B91C1C",
+      borderColor: "#FCA5A5",
+    };
+  }
+  if (isEnded) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ KẾT THÚC 🏁",
+      icon: "flag-outline",
+      bg: "#F3F4F6",
+      color: "#4B5563",
+      borderColor: "#E5E7EB",
+    };
+  }
+  if (isOngoing) {
+    return {
+      label: "🔴 TRẬN ĐẤU ĐANG DIỄN RA (LIVE)",
+      icon: "radio-button-on-outline",
+      bg: "#DCFCE7",
+      color: "#15803D",
+      borderColor: "#86EFAC",
+    };
+  }
+  return {
+    label: "⏳ TRẬN ĐẤU CHƯA BẮT ĐẦU",
+    icon: "time-outline",
+    bg: "#FFF7ED",
+    color: "#C2410C",
+    borderColor: "#FFD8A8",
+  };
+};
+
 export default function MatchDetailScreen({ navigation, route }) {
   const { matchId: routeMatchId } = route.params;
   const insets = useSafeAreaInsets();
@@ -310,6 +366,46 @@ export default function MatchDetailScreen({ navigation, route }) {
     setMatch(data);
   };
 
+  const handleToggleTeamStatus = async (newStatus) => {
+    try {
+      setActionLoading(true);
+      await updateTeamStatus(matchId, newStatus);
+      Alert.alert(
+        "Thành công",
+        newStatus === "ongoing"
+          ? "Trận đấu đã BẮT ĐẦU!"
+          : "Trận đấu đã KẾT THÚC!"
+      );
+      await reloadMatch();
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể cập nhật trạng thái trận đấu");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStartMatch = () => {
+    Alert.alert(
+      "Xác nhận bắt đầu",
+      "Bạn có chắc chắn muốn BẮT ĐẦU trận đấu này ngay bây giờ?",
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Bắt đầu", onPress: () => handleToggleTeamStatus("ongoing") },
+      ]
+    );
+  };
+
+  const handleEndMatch = () => {
+    Alert.alert(
+      "Xác nhận kết thúc",
+      "Bạn có chắc chắn muốn KẾT THÚC trận đấu này?",
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Kết thúc", style: "destructive", onPress: () => handleToggleTeamStatus("ended") },
+      ]
+    );
+  };
+
   useEffect(() => {
     if (!matchId) return;
     (async () => {
@@ -370,6 +466,62 @@ export default function MatchDetailScreen({ navigation, route }) {
     if (creatorInList) return participants;
     return [creator, ...participants];
   }, [creator, creatorId, participants]);
+
+  const getParticipantPositionLabel = (pid) => {
+    const pStr = String(pid);
+
+    if (pStr === String(creatorId) || pStr === String(ownerId)) {
+      return "Người tạo trận";
+    }
+
+    // 1. Check memberPositions for assigned/saved playing position
+    const memberPosEntry = (match?.memberPositions || []).find(
+      (m) => getUserId(m.userId) === pStr
+    );
+    if (memberPosEntry && memberPosEntry.positionId && memberPosEntry.positionId.trim() !== "") {
+      const label = getPositionDisplayLabel(memberPosEntry.positionId);
+      if (label) return label;
+    }
+
+    // 2. Check pendingJoinRequestPositions for positions selected when applying
+    const pendingPosEntry = (match?.pendingJoinRequestPositions || []).find(
+      (entry) => getUserId(entry.userId) === pStr
+    );
+    if (pendingPosEntry && Array.isArray(pendingPosEntry.positionIds) && pendingPosEntry.positionIds.length > 0) {
+      const labels = pendingPosEntry.positionIds
+        .map((posId) => getPositionDisplayLabel(posId))
+        .filter(Boolean);
+      if (labels.length > 0) {
+        return Array.from(new Set(labels)).join(", ");
+      }
+    }
+
+    // 3. Smart resolution for football matches: Assign from match's selectedPositionIds or default formation by index
+    if (match?.sport === "football" || !match?.sport) {
+      const nonOwnerParticipants = (match?.participants || []).filter((p) => {
+        const id = getUserId(p);
+        return id && id !== creatorId && id !== ownerId;
+      });
+
+      const participantIndex = nonOwnerParticipants.findIndex((p) => getUserId(p) === pStr);
+      const posIds = match?.selectedPositionIds && match.selectedPositionIds.length > 0
+        ? match.selectedPositionIds
+        : ["t1_st", "t1_lb", "t1_dm1", "t2_st", "t2_lb", "t2_dm1"];
+
+      const validIndex = participantIndex >= 0 ? participantIndex : 0;
+      if (validIndex < posIds.length) {
+        return getPositionDisplayLabel(posIds[validIndex]);
+      }
+
+      const teamNo = (validIndex % 2 === 0) ? 1 : 2;
+      return `Tiền đạo Đội ${teamNo}`;
+    }
+
+    if (match?.sport === "badminton") return "VĐV Cầu lông";
+    if (match?.sport === "pickleball") return "VĐV Pickleball";
+    return "Thành viên";
+  };
+
   const pendingRequestPositions = match?.pendingJoinRequestPositions || [];
   const invitedMembers = match?.invitedMembers || [];
 
@@ -818,6 +970,17 @@ export default function MatchDetailScreen({ navigation, route }) {
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
+          {/* Match Status Bar */}
+          {(() => {
+            const statusInfo = getMatchStatusInfo(match);
+            return (
+              <View style={[styles.statusBarContainer, { backgroundColor: statusInfo.bg, borderColor: statusInfo.borderColor }]}>
+                <Ionicons name={statusInfo.icon} size={16} color={statusInfo.color} style={{ marginRight: 6 }} />
+                <Text style={[styles.statusBarText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+              </View>
+            );
+          })()}
+
           <View style={styles.cardHeader}>
             <View style={styles.sportSquare}>
               <TagIcon tagName={SPORT_TAG_MAP[match.sport] || "Bóng đá"} size={28} color="#fff" />
@@ -907,7 +1070,7 @@ export default function MatchDetailScreen({ navigation, route }) {
 
         {/* Creator is shown in participant list below with badge */}
 
-        <View style={styles.sectionCard}>
+        
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
             {isOwner && (
@@ -927,21 +1090,11 @@ export default function MatchDetailScreen({ navigation, route }) {
                 <UserRow
                   key={pid || idx}
                   user={typeof p === "object" ? p : { name: "Người chơi" }}
-                  badge={isCreatorParticipant ? "Người tạo trận" : null}
+                  badge={getParticipantPositionLabel(pid)}
                   isMe={isMe}
                   showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
-                  rightAction={
-                    isOwner && !isCreatorParticipant && !isEnded ? (
-                      <TouchableOpacity
-                        style={styles.kickSmallBtn}
-                        onPress={() => handleOpenKick(p)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.kickSmallBtnText}>Kích</Text>
-                      </TouchableOpacity>
-                    ) : null
-                  }
+                 
                 />
               );
             })
@@ -978,7 +1131,39 @@ export default function MatchDetailScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
           )}
-        </View>
+
+          {/* Owner Match Status Control Buttons */}
+          {isOwner && (
+            <View style={styles.ownerMatchStatusContainer}>
+              {match.teamStatus === "ongoing" ? (
+                <TouchableOpacity
+                  style={[styles.statusControlBtn, styles.statusControlEndBtn]}
+                  onPress={handleEndMatch}
+                  disabled={actionLoading}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="stop-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.statusControlBtnText}>Kết thúc trận đấu</Text>
+                </TouchableOpacity>
+              ) : match.teamStatus === "ended" || match.status === "completed" ? (
+                <View style={[styles.statusControlBtn, styles.statusControlEndedBadge]}>
+                  <Ionicons name="flag-outline" size={20} color="#6B7280" style={{ marginRight: 8 }} />
+                  <Text style={[styles.statusControlBtnText, { color: "#4B5563" }]}>Trận đấu đã kết thúc</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.statusControlBtn, styles.statusControlStartBtn]}
+                  onPress={handleStartMatch}
+                  disabled={actionLoading}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="play-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.statusControlBtnText}>Bắt đầu trận đấu</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+      
 
         
 
@@ -1316,7 +1501,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  joinHeaderBtnText: { color: '#333', fontSize: 12, fontWeight: '700' },
+  joinHeaderBtnText: { color: '#333', fontSize: 17, fontWeight: '700' },
   joinBottomBtn: {
     marginTop: 12,
     backgroundColor: ORANGE,
@@ -1573,7 +1758,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  sectionTitle: { fontSize: 14, fontWeight: "800", color: "#333", marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#333", marginBottom: 12 },
   helperInfoText: { fontSize: 12, color: "#888", fontStyle: "italic", marginLeft: 4, flex: 1 },
   emptyText: { fontSize: 13, color: "#999" },
   userRowCard: {
@@ -1901,6 +2086,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
+    marginTop: 8,
   },
   inviteSmallBtn: {
     backgroundColor: "#fff",
@@ -1912,7 +2098,7 @@ const styles = StyleSheet.create({
   },
   inviteSmallBtnText: {
     color: "#333",
-    fontSize: 12,
+    fontSize: 17,
     fontWeight: "700",
   },
   kickSmallBtn: {
@@ -2185,5 +2371,48 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  statusBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  statusBarText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  ownerMatchStatusContainer: {
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  statusControlBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  statusControlStartBtn: {
+    backgroundColor: "#16A34A",
+  },
+  statusControlEndBtn: {
+    backgroundColor: "#DC2626",
+  },
+  statusControlEndedBadge: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  statusControlBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

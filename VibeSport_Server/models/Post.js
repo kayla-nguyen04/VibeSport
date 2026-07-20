@@ -8,6 +8,12 @@ const postSchema = new Schema(
       required: true,
       index: true,
     },
+    fcId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FC',
+      default: null,
+      index: true,
+    },
     content: {
       type: String,
       default: '',

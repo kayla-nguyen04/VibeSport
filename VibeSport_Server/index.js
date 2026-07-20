@@ -28,6 +28,7 @@ const notificationsRouter = require('./routes/notifications');
 const chatRouter = require('./routes/chat');
 const tasksRouter = require('./routes/tasks');
 const adminUsersRouter = require('./routes/adminUsers');
+const fcRouter = require('./routes/fc');
 const seedTags = require('./scripts/seedTags');
 const { startMatchNotificationCron } = require('./utils/matchNotificationCron');
 
@@ -83,6 +84,7 @@ app.use('/api/tags', tagsRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/fc', fcRouter);
 app.use('/api/admin', require('./routes/adminAuth'));
 app.use('/api/admin/tasks', tasksRouter);
 app.use('/api/admin/users', adminUsersRouter);

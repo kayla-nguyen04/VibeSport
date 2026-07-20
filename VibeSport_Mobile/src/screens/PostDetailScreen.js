@@ -704,27 +704,49 @@ export default function PostDetailScreen({ route, navigation }) {
             navigateToProfile(authorId);
           }}
         >
-          {post.userId?.picture ? (
-            <Image source={{ uri: post.userId.picture }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatarPlaceholder, { backgroundColor: posterAvatarColor }]}>
-              <Text style={styles.headerAvatarText}>{getInitials(post.userId?.name)}</Text>
-            </View>
-          )}
-          <View style={styles.headerNameCol}>
-            <View style={styles.headerNameRow}>
-              <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
-              {post.isFollowing ? (
-                <View style={styles.headerFollowBadge}>
-                  <Text style={styles.headerFollowBadgeText}>Đang theo dõi</Text>
+          {post.fcId && typeof post.fcId === 'object' ? (
+            <>
+              {post.fcId.avatar ? (
+                <Image source={{ uri: post.fcId.avatar }} style={styles.headerAvatar} />
+              ) : (
+                <View style={[styles.headerAvatarPlaceholder, { backgroundColor: '#f97316' }]}>
+                  <Text style={styles.headerAvatarText}>{post.fcId.name?.charAt(0).toUpperCase() || 'F'}</Text>
                 </View>
-              ) : null}
-            </View>
-            <Text style={styles.headerSubtext}>
-              {post.sportType ? `⚽ ${post.sportType} • ` : ''}
-              {formatTime(post.createdAt)}
-            </Text>
-          </View>
+              )}
+              <View style={styles.headerNameCol}>
+                <View style={styles.headerNameRow}>
+                  <Text style={styles.headerName} numberOfLines={1}>{post.fcId.name}</Text>
+                </View>
+                <Text style={styles.headerSubtext}>
+                  Đăng bởi {post.userId?.name || 'Thành viên'} • {formatTime(post.createdAt)}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              {post.userId?.picture ? (
+                <Image source={{ uri: post.userId.picture }} style={styles.headerAvatar} />
+              ) : (
+                <View style={[styles.headerAvatarPlaceholder, { backgroundColor: posterAvatarColor }]}>
+                  <Text style={styles.headerAvatarText}>{getInitials(post.userId?.name)}</Text>
+                </View>
+              )}
+              <View style={styles.headerNameCol}>
+                <View style={styles.headerNameRow}>
+                  <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
+                  {post.isFollowing ? (
+                    <View style={styles.headerFollowBadge}>
+                      <Text style={styles.headerFollowBadgeText}>Đang theo dõi</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.headerSubtext}>
+                  {post.sportType ? `⚽ ${post.sportType} • ` : ''}
+                  {formatTime(post.createdAt)}
+                </Text>
+              </View>
+            </>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
