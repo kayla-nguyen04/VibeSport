@@ -385,39 +385,111 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     const postOwnerName = (rawName === 'Long Nguyên' || rawName === 'Long Nguyễn' || rawName === 'Long') ? 'Longabc' : rawName;
     const firstLetter = postOwnerName ? postOwnerName.charAt(0).toUpperCase() : '?';
 
+    const hasFC = item.fcId && typeof item.fcId === 'object';
+    const fcName = hasFC ? item.fcId.name : '';
+    const fcAvatar = hasFC ? item.fcId.avatar : '';
+    const fcFirstLetter = fcName ? fcName.charAt(0).toUpperCase() : '?';
+
     return (
       <View style={styles.postCard}>
         {/* Header */}
         <View style={styles.postHeader}>
-          <TouchableOpacity
-            onPress={() => navigateToProfile(navigation, user, item.userId, onGoToProfile)}
-            activeOpacity={0.8}
-          >
-            {item.userId?.picture ? (
-              <Image source={{ uri: item.userId.picture }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarPlaceholderText}>{firstLetter}</Text>
+          {hasFC ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              {/* Overlapping Avatars: Club Avatar with User Avatar Badge */}
+              <View style={{ width: 44, height: 44, position: 'relative' }}>
+                {fcAvatar ? (
+                  <Image source={{ uri: fixMediaUrl(fcAvatar) }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: '#f97316' }]}>
+                    <Text style={styles.avatarPlaceholderText}>{fcFirstLetter}</Text>
+                  </View>
+                )}
+                {/* Overlapping User Avatar Badge */}
+                {item.userId?.picture ? (
+                  <Image
+                    source={{ uri: item.userId.picture }}
+                    style={{
+                      position: 'absolute',
+                      bottom: -2,
+                      right: -2,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: '#FFFFFF',
+                      backgroundColor: '#E5E7EB',
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: -2,
+                      right: -2,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      borderWidth: 1.5,
+                      borderColor: '#FFFFFF',
+                      backgroundColor: getAvatarColor(postOwnerName),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: 'bold' }}>
+                      {firstLetter}
+                    </Text>
+                  </View>
+                )}
               </View>
-            )}
-          </TouchableOpacity>
-          <View style={styles.postInfo}>
-            <View style={styles.nameRow}>
+              <View style={styles.postInfo}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.userName}>{fcName}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4, flexWrap: 'wrap' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#4B5563' }}>{postOwnerName}</Text>
+                  <Ionicons name="people" size={14} color="#FF6B35" />
+                  <Text style={[styles.timeText, { marginTop: 0 }]}>
+                    • {formatTime(item.createdAt)}
+                    {item.location ? ` • ở ${item.location}` : ''}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <>
               <TouchableOpacity
                 onPress={() => navigateToProfile(navigation, user, item.userId, onGoToProfile)}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
               >
-                <Text style={styles.userName}>{postOwnerName}</Text>
+                {item.userId?.picture ? (
+                  <Image source={{ uri: item.userId.picture }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarPlaceholderText}>{firstLetter}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
-              {!isSelf && (
-                <Ionicons name="people" size={16} color="#FF5F3D" style={{ marginLeft: 4 }} />
-              )}
-            </View>
-            <Text style={styles.timeText}>
-              {formatTime(item.createdAt)}
-              {item.location ? ` • ở ${item.location}` : ''}
-            </Text>
-          </View>
+              <View style={styles.postInfo}>
+                <View style={styles.nameRow}>
+                  <TouchableOpacity
+                    onPress={() => navigateToProfile(navigation, user, item.userId, onGoToProfile)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.userName}>{postOwnerName}</Text>
+                  </TouchableOpacity>
+                  {!isSelf && (
+                    <Ionicons name="people" size={16} color="#FF5F3D" style={{ marginLeft: 4 }} />
+                  )}
+                </View>
+                <Text style={styles.timeText}>
+                  {formatTime(item.createdAt)}
+                  {item.location ? ` • ở ${item.location}` : ''}
+                </Text>
+              </View>
+            </>
+          )}
           <TouchableOpacity
             onPress={() => setOptionsPost(item)}
             style={styles.moreOptionsBtn}

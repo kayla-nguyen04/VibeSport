@@ -1,4 +1,5 @@
 const Post = require('../models/Post');
+const FC = require('../models/FC');
 const PostLike = require('../models/PostLike');
 const SavedPost = require('../models/SavedPost');
 const Comment = require('../models/Comment');
@@ -73,10 +74,19 @@ async function buildPostTags({ tagsInput, sportType, content }) {
 
 exports.createPost = async (req, res) => {
   try {
-    let { content, location, sportType, tags } = req.body;
+    let { content, location, sportType, tags, fcId } = req.body;
     if (sportType === 'Không chọn' || sportType === 'Không') {
       sportType = '';
     }
+
+    // Nếu bài viết thuộc một FC, tự động kế thừa sportType của FC
+    if (fcId && !sportType) {
+      const fcDoc = await FC.findById(fcId).select('sportType').lean();
+      if (fcDoc && fcDoc.sportType) {
+        sportType = fcDoc.sportType;
+      }
+    }
+
     const finalSportType = sportType;
 
     let mediaUrls = [];
@@ -92,6 +102,7 @@ exports.createPost = async (req, res) => {
 
     const post = new Post({
       userId: req.userId,
+      fcId: fcId || null,
       content: content || '',
       mediaUrls,
       location: location || '',
@@ -102,7 +113,9 @@ exports.createPost = async (req, res) => {
     await post.save();
     await updateTagUsageCounts([], resolvedTags);
 
-    const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
+    const populatedPost = await Post.findById(post._id)
+      .populate('userId', 'name picture favoriteSport')
+      .populate('fcId', 'name avatar description isPrivate');
 
     res.status(201).json({
       success: true,
@@ -163,6 +176,32 @@ exports.getPosts = async (req, res) => {
       }
     }
 
+    // Lấy danh sách FC mà user đang là thành viên để lọc bài viết của FC riêng tư
+    let memberFcIds = [];
+    if (req.userId) {
+      const memberFcs = await FC.find({ members: req.userId, isPrivate: true }).select('_id').lean();
+      memberFcIds = memberFcs.map((f) => f._id);
+    }
+    // Lấy danh sách tất cả FC riêng tư
+    const allPrivateFcs = await FC.find({ isPrivate: true }).select('_id').lean();
+    const allPrivateFcIds = allPrivateFcs.map((f) => f._id);
+    // Chỉ bao gồm bài viết không thuộc FC riêng tư, hoặc thuộc FC riêng tư mà user là thành viên
+    const excludedPrivateFcIds = allPrivateFcIds.filter(
+      (fcId) => !memberFcIds.some((mId) => String(mId) === String(fcId))
+    );
+    if (excludedPrivateFcIds.length > 0) {
+      const privateFcFilter = {
+        $or: [
+          { fcId: null },
+          { fcId: { $exists: false } },
+          { fcId: { $nin: excludedPrivateFcIds } },
+        ],
+      };
+      filter.$and = filter.$and
+        ? [...filter.$and, privateFcFilter]
+        : [privateFcFilter];
+    }
+
     const aggregatePipeline = [
       { $match: filter },
       {
@@ -187,7 +226,11 @@ exports.getPosts = async (req, res) => {
     const populatedPosts = await Promise.all(
       posts.map(async (post) => {
         const user = await User.findById(post.userId).select('name picture favoriteSport').lean();
-        return { ...post, userId: user };
+        let fc = null;
+        if (post.fcId) {
+          fc = await FC.findById(post.fcId).select('name avatar description isPrivate').lean();
+        }
+        return { ...post, userId: user, fcId: fc };
       })
     );
 
@@ -319,7 +362,20 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
       {
         $addFields: { userId: { $arrayElemAt: ['$_userArr', 0] } },
       },
-      { $project: { _userArr: 0, _searchScore: 0 } },
+      // Populate fcId
+      {
+        $lookup: {
+          from: 'fcs',
+          localField: 'fcId',
+          foreignField: '_id',
+          pipeline: [{ $project: { name: 1, avatar: 1, description: 1, isPrivate: 1 } }],
+          as: '_fcArr',
+        },
+      },
+      {
+        $addFields: { fcId: { $arrayElemAt: ['$_fcArr', 0] } },
+      },
+      { $project: { _userArr: 0, _fcArr: 0, _searchScore: 0 } },
     ];
 
     const rawPosts = await Post.aggregate(pipeline);
@@ -375,7 +431,9 @@ async function mapPostInteractions(posts, currentUserId, followingIds = []) {
 exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
-    const post = await Post.findById(id).populate('userId', 'name picture favoriteSport');
+    const post = await Post.findById(id)
+      .populate('userId', 'name picture favoriteSport')
+      .populate('fcId', 'name avatar description isPrivate');
     if (!post) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
     }
