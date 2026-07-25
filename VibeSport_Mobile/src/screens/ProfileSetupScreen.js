@@ -154,8 +154,20 @@ export default function ProfileSetupScreen({ navigation, route }) {
     });
   };
 
-  const handleSkip = () => {
-    navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+  const handleSkip = async () => {
+    try {
+      await dispatch(
+        updateProfile({
+          userId: user?.id || user?._id,
+          profileCompleted: true,
+        })
+      ).unwrap();
+      await dispatch(hydrateSession());
+    } catch (error) {
+      console.warn('Skip profile setup error:', error);
+    } finally {
+      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+    }
   };
 
   const handleSubmit = async () => {

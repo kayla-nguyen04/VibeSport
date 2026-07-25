@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,10 +8,11 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { getUserProfileRequest, toggleFollowRequest } from '../services/userApi';
+import { getUserProfileRequest, toggleFollowRequest, reportUserRequest } from '../services/userApi';
 import { openConversation } from '../redux/chatSlice';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -34,6 +35,8 @@ export function UserProfileScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
+  const [isOptionsSheetVisible, setIsOptionsSheetVisible] = useState(false);
+  const [isReportSheetVisible, setIsReportSheetVisible] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -109,14 +112,33 @@ export function UserProfileScreen({ route, navigation }) {
     }
   }, [dispatch, navigation, profile, userId]);
 
-  const followLabel = profile?.isFollowing ? 'Đang theo dõi' : 'Theo dõi';
-  const followSummary = profile?.isFollowing && profile?.isFollowedBy
-    ? 'Hai chiều theo dõi'
+  const handleReportReason = useCallback(async (reason) => {
+    setIsReportSheetVisible(false);
+    try {
+      const res = await reportUserRequest(userId, reason, token);
+      Alert.alert(
+        'Báo cáo thành công',
+        `Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét lý do "${reason}" đối với trang cá nhân này và tiến hành xử lý nếu có vi phạm.`,
+        [{ text: 'Đóng' }]
+      );
+      if (res.data?.reportCount !== undefined) {
+        setProfile((current) => ({
+          ...current,
+          reportCount: res.data.reportCount,
+        }));
+      }
+    } catch (error) {
+      Alert.alert('Lỗi', error?.message || 'Không thể gửi báo cáo');
+    }
+  }, [userId, token]);
+
+  const followLabel = profile?.isFollowing && profile?.isFollowedBy
+    ? 'Bạn bè'
     : profile?.isFollowing
-      ? 'Bạn đang theo dõi'
+      ? 'Đang theo dõi'
       : profile?.isFollowedBy
-        ? 'Đang theo dõi bạn'
-        : '';
+        ? 'Theo dõi lại'
+        : 'Theo dõi';
 
   if (loading && !profile) {
     return (
@@ -136,7 +158,9 @@ export function UserProfileScreen({ route, navigation }) {
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={profileStyles.headerTitle}>Hồ Sơ</Text>
-        <View style={profileStyles.headerSide} />
+        <TouchableOpacity onPress={() => setIsOptionsSheetVisible(true)} style={styles.headerBack}>
+          <Ionicons name="ellipsis-horizontal" size={24} color="#111827" />
+        </TouchableOpacity>
       </ScreenHeader>
 
       <ScrollView
@@ -173,14 +197,141 @@ export function UserProfileScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {followSummary ? (
-          <Text style={[styles.followSummaryText, { marginHorizontal: 16 }]}>{followSummary}</Text>
-        ) : null}
-
         <StatsCard profile={profile} onOpenFollowList={openFollowList} />
         <InfoCard profile={profile} />
       </ScrollView>
+
+      <OptionsSheet
+        visible={isOptionsSheetVisible}
+        onClose={() => setIsOptionsSheetVisible(false)}
+        onReport={() => setIsReportSheetVisible(true)}
+      />
+
+      <ReportSheet
+        visible={isReportSheetVisible}
+        onClose={() => setIsReportSheetVisible(false)}
+        onBack={() => {
+          setIsReportSheetVisible(false);
+          setIsOptionsSheetVisible(true);
+        }}
+        onSelectReason={handleReportReason}
+      />
     </Screen>
+  );
+}
+
+function OptionsSheet({ visible, onClose, onReport }) {
+  return (
+    <Modal
+      animationType="slide"
+      transparent
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={onClose}
+        style={profileStyles.sheetOverlay}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={profileStyles.sheetContainer}
+        >
+          <View style={profileStyles.sheetHandle} />
+          <Text style={profileStyles.sheetTitle}>Tùy chọn</Text>
+          
+          <TouchableOpacity
+            activeOpacity={0.78}
+            onPress={() => {
+              onClose();
+              onReport();
+            }}
+            style={[profileStyles.sheetOption, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 }]}
+          >
+            <Text style={[profileStyles.sheetOptionText, { color: ACCENT, fontWeight: '600' }]}>
+              Báo cáo trang cá nhân
+            </Text>
+            <Ionicons name="flag-outline" size={20} color={ACCENT} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const REPORT_REASONS = [
+  'Vấn đề liên quan đến người dưới 18 tuổi',
+  'Bắt nạt, quấy rối hoặc lăng mạ/lạm dụng/ngược đãi',
+  'Tự tử hoặc tự hại bản thân',
+  'Nội dung mang tính bạo lực, thù ghét hoặc gây phiền toái',
+  'Bán hoặc quảng bá mặt hàng bị hạn chế',
+  'Nội dung người lớn',
+  'Thông tin sai sự thật, lừa đảo hoặc gian lận',
+  'Trang cá nhân giả',
+  'Quyền sở hữu trí tuệ',
+];
+
+function ReportSheet({ visible, onClose, onSelectReason, onBack }) {
+  return (
+    <Modal
+      animationType="slide"
+      transparent
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={onClose}
+        style={profileStyles.sheetOverlay}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[profileStyles.sheetContainer, { maxHeight: '80%' }]}
+        >
+          <View style={profileStyles.sheetHandle} />
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(99, 94, 94, 0.19)' }}>
+            <TouchableOpacity onPress={onBack} style={{ padding: 4 }}>
+              <Ionicons name="chevron-back" size={24} color={ACCENT} />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', color: ACCENT }}>Báo cáo</Text>
+            <View style={{ width: 32 }} />
+          </View>
+
+          <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginTop: 16, marginBottom: 8 }}>
+            Tại sao bạn báo cáo trang cá nhân này?
+          </Text>
+          <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+            Báo cáo của bạn là ẩn danh. Nếu ai đó đang gặp nguy hiểm, hãy gọi cho dịch vụ khẩn cấp tại địa phương.
+          </Text>
+
+          <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 10 }}>
+            {REPORT_REASONS.map((reason, index) => (
+              <View key={index}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => onSelectReason(reason)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 14,
+                  }}
+                >
+                  <Text style={{ flex: 1, fontSize: 14, color: '#1F2937', paddingRight: 8 }}>
+                    {reason}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={ACCENT} />
+                </TouchableOpacity>
+                {index < REPORT_REASONS.length - 1 && (
+                  <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(99, 94, 94, 0.19)' }} />
+                )}
+              </View>
+            ))}
+          </ScrollView>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   );
 }
 
@@ -235,11 +386,5 @@ const styles = StyleSheet.create({
   },
   messageBtn: {
     backgroundColor: '#FFFFFF',
-  },
-  followSummaryText: {
-    textAlign: 'center',
-    marginTop: 10,
-    color: '#6B7280',
-    fontSize: 13,
   },
 });

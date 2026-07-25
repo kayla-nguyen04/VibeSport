@@ -574,6 +574,14 @@ router.post("/:id/accept-join", async (req, res) => {
       return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
     }
 
+    // Extract position entry requested by user BEFORE clearing pendingJoinRequestPositions
+    const reqPosEntry = (match.pendingJoinRequestPositions || []).find(
+      (entry) => String(entry.userId) === String(userId)
+    );
+    const positionToAssign = reqPosEntry && reqPosEntry.positionIds && reqPosEntry.positionIds.length > 0
+      ? reqPosEntry.positionIds.join(",")
+      : "";
+
     match.pendingJoinRequests.splice(requestIndex, 1);
     match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
       (entry) => String(entry.userId) !== String(userId)
@@ -588,12 +596,6 @@ router.post("/:id/accept-join", async (req, res) => {
       match.memberRoles.push({ userId, role: "member" });
     }
     if (!match.memberPositions) match.memberPositions = [];
-    const reqPosEntry = (match.pendingJoinRequestPositions || []).find(
-      (entry) => String(entry.userId) === String(userId)
-    );
-    const positionToAssign = reqPosEntry && reqPosEntry.positionIds && reqPosEntry.positionIds.length > 0
-      ? reqPosEntry.positionIds[0]
-      : "";
 
     const existingPosIndex = match.memberPositions.findIndex((p) => String(p.userId) === String(userId));
     if (existingPosIndex > -1) {
@@ -602,10 +604,6 @@ router.post("/:id/accept-join", async (req, res) => {
       match.memberPositions.push({ userId, positionId: positionToAssign });
     }
 
-    // Clean up this user's entry from pendingJoinRequestPositions
-    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
-      (entry) => String(entry.userId) !== String(userId)
-    );
     await match.save();
 
     const owner = await User.findById(ownerId).select("name");

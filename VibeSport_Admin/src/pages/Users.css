@@ -308,3 +308,344 @@
   from { transform: translateY(100%) scale(0.9); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
+
+/* Filters Bar style */
+.filters-bar {
+  display: flex;
+  gap: 20px;
+  background: white;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a4a4a;
+}
+
+.filter-group select {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  background: white;
+  outline: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  transition: all 0.2s;
+}
+
+.filter-group select:hover {
+  border-color: var(--orange);
+}
+
+/* Report Badges in table */
+.report-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.report-badge.reported {
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+
+.report-badge.reported:hover {
+  background: rgba(255, 59, 48, 0.2);
+}
+
+.report-badge-zero {
+  color: #aaa;
+  font-weight: 500;
+}
+
+/* Action button detail style */
+.action-buttons-cell {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn.detail-btn {
+  color: #007aff;
+  border-color: var(--line);
+}
+
+.action-btn.detail-btn:hover {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: rgba(0, 122, 255, 0.2);
+}
+
+/* Modal style */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  animation: fadeInModal 0.2s ease-out;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  width: 550px;
+  max-width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+  animation: slideUpModal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpModal {
+  from { transform: translateY(30px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: #1a1a1a;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: color 0.15s;
+}
+
+.close-btn:hover {
+  color: #1a1a1a;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* User identity inside Modal */
+.detail-user-profile {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  background: #fcfcfc;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.detail-user-profile img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-placeholder-large {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #eaeaea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #666;
+}
+
+.detail-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+}
+
+.detail-email {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.detail-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  gap: 15px;
+}
+
+.detail-meta p {
+  margin: 0;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.detail-section label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4a4a4a;
+  margin-bottom: 8px;
+}
+
+.modal-loading, .no-reports-msg {
+  padding: 20px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Report lists in Modal */
+.report-history-list {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.report-item {
+  padding: 14px 16px;
+  background: white;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-item:last-child {
+  border-bottom: none;
+}
+
+.report-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.report-reporter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-reporter img, .report-reporter .avatar-placeholder {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.report-reporter .avatar-placeholder {
+  background: #eaeaea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+}
+
+.reporter-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.report-time {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.report-reason-content {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.4;
+  background: #fafafa;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid var(--orange);
+}
+
+/* Modal Button styles */
+.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background: white;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: #f5f5f5;
+}
+
+.btn-resolve {
+  background: var(--orange);
+  color: white;
+}
+
+.btn-resolve:hover {
+  background: #e65c19;
+}

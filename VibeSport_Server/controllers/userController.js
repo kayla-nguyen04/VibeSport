@@ -3,6 +3,7 @@ const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
 const Team = require('../models/Team');
 const Match = require('../models/Match');
+const ReportUser = require('../models/ReportUser');
 const { getPresenceFromLastSeen } = require('../utils/presence');
 
 function formatUserPublic(user) {
@@ -352,5 +353,55 @@ exports.getFollowersList = async (req, res) => {
   } catch (error) {
     console.error('getFollowersList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách người theo dõi' });
+  }
+};
+
+exports.reportUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reporterId = req.userId;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, message: 'Lý do báo cáo không được trống' });
+    }
+
+    if (String(id) === String(reporterId)) {
+      return res.status(400).json({ success: false, message: 'Bạn không thể tự báo cáo chính mình' });
+    }
+
+    const reportedUser = await User.findById(id);
+    if (!reportedUser) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng được báo cáo' });
+    }
+
+    // Kiểm tra xem đã báo cáo chưa
+    const existingReport = await ReportUser.findOne({ reportedUserId: id, reporterId });
+    if (existingReport) {
+      return res.status(400).json({ success: false, message: 'Bạn đã gửi báo cáo tài khoản này trước đó rồi' });
+    }
+
+    // Tạo báo cáo
+    await ReportUser.create({
+      reportedUserId: id,
+      reporterId,
+      reason: reason.trim(),
+    });
+
+    // Cập nhật người dùng bị báo cáo
+    reportedUser.reportCount = (reportedUser.reportCount || 0) + 1;
+    reportedUser.lastReportedAt = new Date();
+    await reportedUser.save();
+
+    res.json({
+      success: true,
+      message: 'Báo cáo người dùng thành công',
+      data: {
+        reportCount: reportedUser.reportCount,
+      },
+    });
+  } catch (error) {
+    console.error('reportUser error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi báo cáo người dùng' });
   }
 };

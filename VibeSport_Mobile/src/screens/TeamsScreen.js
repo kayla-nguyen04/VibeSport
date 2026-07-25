@@ -89,6 +89,48 @@ const getInitials = (name) => {
   return p.length > 1 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
 };
 
+const getMatchStatusInfo = (m) => {
+  if (!m) return { label: "⏳ CHƯA BẮT ĐẦU", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
+  const isEnded = m.teamStatus === "ended" || m.status === "completed";
+  const isOngoing = m.teamStatus === "ongoing";
+  const isCancelled = m.status === "cancelled";
+
+  if (isCancelled) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ HỦY",
+      icon: "close-circle-outline",
+      bg: "#FEE2E2",
+      color: "#B91C1C",
+      borderColor: "#FCA5A5",
+    };
+  }
+  if (isEnded) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ KẾT THÚC 🏁",
+      icon: "flag-outline",
+      bg: "#F3F4F6",
+      color: "#4B5563",
+      borderColor: "#E5E7EB",
+    };
+  }
+  if (isOngoing) {
+    return {
+      label: "🔴 TRẬN ĐẤU ĐANG DIỄN RA (LIVE)",
+      icon: "radio-button-on-outline",
+      bg: "#DCFCE7",
+      color: "#15803D",
+      borderColor: "#86EFAC",
+    };
+  }
+  return {
+    label: "⏳ CHƯA BẮT ĐẦU",
+    icon: "time-outline",
+    bg: "#FFF7ED",
+    color: "#C2410C",
+    borderColor: "#FFD8A8",
+  };
+};
+
 const normalizeId = (id) => (id == null ? "" : String(id));
 
 const getUserIdValue = (value) => normalizeId(typeof value === "object" ? value?._id || value?.id : value);
@@ -410,10 +452,10 @@ export default function TeamsScreen({ navigation }) {
 
   const getDisplayData = () => {
     if (activeSubTab === "near") {
-      return matches;
+      return matches.filter((m) => m.status !== "completed" && m.status !== "cancelled");
     }
     if (activeSubTab === "joined") {
-      return matches.filter(isUserParticipant);
+      return matches.filter(isUserParticipant).filter((m) => m.status !== "completed" && m.status !== "cancelled");
     }
     if (activeSubTab === "created") {
       return matches.filter((m) => {
@@ -422,6 +464,9 @@ export default function TeamsScreen({ navigation }) {
           typeof creator === "object" ? creator?._id || creator?.id : creator;
         return normalizeId(creatorId) === userId;
       });
+    }
+    if (activeSubTab === "ended") {
+      return matches.filter((m) => m.status === "completed" || m.status === "cancelled");
     }
     return matches;
   };
@@ -487,6 +532,17 @@ export default function TeamsScreen({ navigation }) {
 
     return (
       <View key={item._id} style={styles.card}>
+        {/* Match Status Bar */}
+        {(() => {
+          const statusInfo = getMatchStatusInfo(item);
+          return (
+            <View style={[styles.matchStatusBarContainer, { backgroundColor: statusInfo.bg, borderColor: statusInfo.borderColor }]}>
+              <Ionicons name={statusInfo.icon} size={15} color={statusInfo.color} style={{ marginRight: 6 }} />
+              <Text style={[styles.matchStatusBarText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            </View>
+          );
+        })()}
+
         {/* Card Header: Avatar + Title + ... menu */}
         <View style={styles.cardHeader}>
           <View style={styles.avatarContainer}>
@@ -713,7 +769,7 @@ export default function TeamsScreen({ navigation }) {
             { key: "near", label: "Gần tôi" },
             { key: "joined", label: "Đã tham gia" },
             { key: "created", label: "Đã tạo" },
-            { key: "findteam", label: "Tìm đội" },
+            { key: "ended", label: "Đã kết thúc" },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.key}
@@ -839,10 +895,10 @@ export default function TeamsScreen({ navigation }) {
           onRefresh={() => (isFindTeamTab ? loadFindTeamPosts() : loadMatches(searchText, areaFilter, timeFilter, activeSubTab))}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>{isFindTeamTab ? "👥" : "⚽"}</Text>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>⚽</Text>
               <Text style={styles.emptyTitle}>
-                {activeSubTab === "findteam"
-                  ? "Chưa có bài đăng tìm đội"
+                {activeSubTab === "ended"
+                  ? "Chưa có trận đấu đã kết thúc"
                   : activeSubTab === "created"
                     ? "Bạn chưa tạo trận nào"
                     : activeSubTab === "joined"
@@ -850,8 +906,8 @@ export default function TeamsScreen({ navigation }) {
                       : "Không tìm thấy trận đấu"}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {activeSubTab === "findteam"
-                  ? "Nhấn + Tạo để đăng bài tìm đội mới."
+                {activeSubTab === "ended"
+                  ? "Các trận đấu đã hoàn thành hoặc bị hủy sẽ xuất hiện tại đây."
                   : activeSubTab === "near"
                     ? "Hãy tạo trận mới hoặc thay đổi bộ lọc tìm kiếm."
                     : activeSubTab === "created"
@@ -1618,5 +1674,20 @@ const styles = StyleSheet.create({
   bottomSheetOptionText: {
     fontSize: 16,
     color: "#111",
+  },
+  matchStatusBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  matchStatusBarText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });

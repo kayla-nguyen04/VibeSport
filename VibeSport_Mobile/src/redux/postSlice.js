@@ -249,6 +249,13 @@ const postSlice = createSlice({
         post.commentsCount = commentsCount;
       });
     },
+    updatePostLikes: (state, action) => {
+      const { postId, likesCount, topReactions } = action.payload;
+      updatePostInCollections(state, postId, (post) => {
+        post.likesCount = likesCount;
+        post.topReactions = topReactions;
+      });
+    },
     updatePostFollowStatus: (state, action) => {
       const { userId, isFollowing } = action.payload;
       if (!userId) return;
@@ -501,5 +508,5 @@ const postSlice = createSlice({
   },
 });
 
-export const { resetFeed, setActiveTag, updateCommentCount, updatePostFollowStatus } = postSlice.actions;
+export const { resetFeed, setActiveTag, updateCommentCount, updatePostLikes, updatePostFollowStatus } = postSlice.actions;
 export default postSlice.reducer;
