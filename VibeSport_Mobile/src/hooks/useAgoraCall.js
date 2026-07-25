@@ -8,12 +8,13 @@ import {
   RenderModeType,
   LocalAudioStreamState,
   LocalAudioStreamReason,
+  RemoteVideoState,
   AudioProfileType,
   AudioScenarioType,
 } from 'react-native-agora';
 
 const APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID;
-const DEBUG = false;
+const DEBUG = true;
 
 async function requestAudioPermission() {
   if (Platform.OS !== 'android') return true;
@@ -128,32 +129,46 @@ export function useAgoraCall() {
 
           // ---- Event listeners ----
           engine.addListener('onJoinChannelSuccess', (connection, elapsed) => {
-            DEBUG && console.log('[DEBUG] onJoinChannelSuccess', { connection, elapsed });
+            console.log('[AGORA] ✅ onJoinChannelSuccess', { channel: connection?.channelId, elapsed });
             setIsJoined(true);
           });
 
           engine.addListener('onUserJoined', (connection, remoteUid, elapsed) => {
-            DEBUG && console.log('[DEBUG] onUserJoined', { remoteUid, connection });
+            console.log('[AGORA] 👤 onUserJoined', {
+              remoteUid,
+              uidType: typeof remoteUid,
+              callType,
+              connection: connection?.channelId,
+            });
             // Dùng setupRemoteVideo (single-channel) — không cần RtcConnection
             if (callType === 'video') {
-              engine.setupRemoteVideo({
-                uid: remoteUid,
-                renderMode: RenderModeType.RenderModeHidden,
+              // Bắt buộc cast remoteUid về number vì SDK yêu cầu uid kiểu số
+              const uidNum = Number(remoteUid);
+              console.log('[AGORA] 📺 setupRemoteVideo (lần 1, trong onUserJoined) với uid =', uidNum);
+              const result = engine.setupRemoteVideo({
+                uid: uidNum,
+                renderMode: RenderModeType.RenderModeFit,
               });
+              console.log('[AGORA] 📺 setupRemoteVideo result =', result);
             }
-            setRemoteUsers((prev) =>
-              prev.some((u) => u.uid === remoteUid)
-                ? prev
-                : [...prev, { uid: remoteUid, hasVideo: true, hasAudio: true }]
-            );
+            // Mặc định hasVideo = false; chỉ set true khi nhận
+            // onRemoteVideoStateChanged với state === Decoding.
+            // Nếu set true ngay tại đây mà remote chưa bật camera thì
+            // RtcSurfaceView sẽ render nền đen/avatar, gây hiểu nhầm.
+            setRemoteUsers((prev) => {
+              const exists = prev.some((u) => u.uid === remoteUid);
+              if (exists) return prev;
+              return [...prev, { uid: remoteUid, hasVideo: false, hasAudio: true }];
+            });
           });
 
           engine.addListener('onUserOffline', (connection, remoteUid, reason) => {
-            DEBUG && console.log('[DEBUG] onUserOffline', { remoteUid });
+            console.log('[AGORA] 🚪 onUserOffline', { remoteUid, reason });
             setRemoteUsers((prev) => prev.filter((u) => u.uid !== remoteUid));
           });
 
           engine.addListener('onUserMuteVideo', (connection, remoteUid, muted) => {
+            console.log('[AGORA] 🔇 onUserMuteVideo', { remoteUid, muted });
             setRemoteUsers((prev) =>
               prev.map((u) =>
                 u.uid === remoteUid ? { ...u, hasVideo: !muted } : u
@@ -162,6 +177,7 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onUserMuteAudio', (connection, remoteUid, muted) => {
+            console.log('[AGORA] 🔇 onUserMuteAudio', { remoteUid, muted });
             setRemoteUsers((prev) =>
               prev.map((u) =>
                 u.uid === remoteUid ? { ...u, hasAudio: !muted } : u
@@ -170,15 +186,83 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onLocalAudioStateChanged', (connection, state, reason) => {
-            DEBUG && console.log('[DEBUG] onLocalAudioStateChanged', {
+            console.log('[AGORA] onLocalAudioStateChanged', {
               state: LocalAudioStreamState[state],
               reason: LocalAudioStreamReason[reason],
             });
           });
 
+          // Remote video state — nguồn sự thật DUY NHẤT để biết remote có
+          // đang phát video hay không. Trước đây hook này chỉ lắng nghe
+          // onRemoteAudioStateChanged, khiến hasVideo bị hardcode = true
+          // ngay khi remote join (dù chưa bật camera), gây hiện tượng
+          // RtcSurfaceView render nền đen.
+          engine.addListener('onRemoteVideoStateChanged', (connection, remoteUid, state, reason, elapsed) => {
+            const stateName = RemoteVideoState[state] ?? `unknown(${state})`;
+            console.log('[AGORA] 🎥 onRemoteVideoStateChanged', {
+              remoteUid,
+              state: stateName,
+              stateRaw: state,
+              reason,
+              elapsed,
+            });
+            // state:
+            //  0 = Stopped  (remote chưa bật video / đã tắt)
+            //  1 = Starting (đang bắt đầu nhận frame đầu tiên)
+            //  2 = Decoding (đã nhận frame và đang decode bình thường)
+            //  3 = Frozen   (mạng chập chờn, video bị đóng băng)
+            //  4 = Failed   (lỗi)
+            // → hasVideo = true chỉ khi đang decode hoặc đang khởi động
+            //   (Starting) để UI không bị giật về avatar.
+            const isVideoPlaying = state === RemoteVideoState.RemoteVideoStateDecoding
+                                || state === RemoteVideoState.RemoteVideoStateStarting;
+            setRemoteUsers((prev) => {
+              const exists = prev.some((u) => u.uid === remoteUid);
+              // Nếu chưa có trong state (event đến trước onUserJoined) thì
+              // thêm mới với hasVideo đúng trạng thái
+              if (!exists) {
+                return [...prev, { uid: remoteUid, hasVideo: isVideoPlaying, hasAudio: true }];
+              }
+              return prev.map((u) =>
+                u.uid === remoteUid ? { ...u, hasVideo: isVideoPlaying } : u
+              );
+            });
+
+            // === BƯỚC 2 WORKAROUND: gọi lại setupRemoteVideo() khi state chuyển
+            // sang Starting hoặc Decoding. ===
+            // Lý do: native RtcSurfaceView mount có thể bị chậm hơn so với
+            // onUserJoined event (đặc biệt khi RtcSurfaceView mount trong FlatList
+            // — virtualization delay). Khi đó setupRemoteVideo() trong onUserJoined
+            // sẽ bind vào native surface chưa ready, frame buffer không được route
+            // đúng → màn hình đen. Gọi LẠI khi surface chắc chắn đã mount + render
+            // xong (sau khi có frame thực tế báo về) sẽ ép SDK rebind buffer.
+            // Workaround được cộng đồng react-native-agora confirm trong issue
+            // tương tự (SO #64441672, Agora docs FAQ).
+            if (
+              callType === 'video' &&
+              (state === RemoteVideoState.RemoteVideoStateStarting ||
+               state === RemoteVideoState.RemoteVideoStateDecoding)
+            ) {
+              const uidNum = Number(remoteUid);
+              console.log('[AGORA] 🔁 setupRemoteVideo RE-CALL (workaround for black screen)', {
+                uid: uidNum,
+                state: stateName,
+              });
+              try {
+                const result = engine.setupRemoteVideo({
+                  uid: uidNum,
+                  renderMode: RenderModeType.RenderModeFit,
+                });
+                console.log('[AGORA] 🔁 setupRemoteVideo RE-CALL result =', result);
+              } catch (err) {
+                console.warn('[AGORA] ⚠️ setupRemoteVideo RE-CALL failed:', err?.message);
+              }
+            }
+          });
+
           // Debug: remote audio state — xác nhận remote có stream audio hay bị drop
           engine.addListener('onRemoteAudioStateChanged', (connection, remoteUid, state, reason) => {
-            DEBUG && console.log('[DEBUG] onRemoteAudioStateChanged', { remoteUid, state, reason });
+            console.log('[AGORA] onRemoteAudioStateChanged', { remoteUid, state, reason });
             // state: 0=Stopped, 1=Starting, 2=Running, 3=Stopping, 4=Frozen
             if (state === 0) {
               setRemoteUsers((prev) =>
@@ -194,7 +278,7 @@ export function useAgoraCall() {
           // Debug: volume indication — xác nhận audio đang được decode/playback
           engine.addListener('onAudioVolumeIndication', (connection, speakers, speakerNumber, totalVolume) => {
             if (speakerNumber > 0) {
-              DEBUG && console.log('[DEBUG] onAudioVolumeIndication', {
+              console.log('[AGORA] onAudioVolumeIndication', {
                 speakers: speakers.map((s) => ({ uid: s.uid, volume: s.volume })),
                 totalVolume,
               });

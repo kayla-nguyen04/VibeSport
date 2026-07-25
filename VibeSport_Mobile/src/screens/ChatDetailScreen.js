@@ -42,6 +42,7 @@ import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
 import { socketEmitter } from '../hooks/useSocket';
 import { generateAgoraTokenRequest } from '../services/agoraApi';
+import { getUserProfileRequest } from '../services/userApi';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -91,25 +92,67 @@ export default function ChatDetailScreen({ route, navigation }) {
   const currentUserId = user?.id || user?._id;
 
   // ============================
+  // Follow status (cho phép gọi thoại/video chỉ khi MUTUAL follow)
+  // - isFollowing: currentUser đang follow peer
+  // - isFollowedBy: peer đang follow currentUser
+  // - mutualFollow = isFollowing && isFollowedBy
+  // ============================
+  const [followStatus, setFollowStatus] = useState({
+    isFollowing: false,
+    isFollowedBy: false,
+    loading: true,
+  });
+
+  // ============================
   // Hàm khởi tạo cuộc gọi Agora
   // ============================
   const handleStartCall = async (callType) => {
     if (!token || !currentUserId) return;
+
+    // Gate: 1-1 call yêu cầu cả 2 bên follow nhau (mutual)
+    if (!isGroup && !canCall) {
+      Alert.alert(
+        'Chưa thể gọi',
+        followStatus.loading
+          ? 'Đang kiểm tra trạng thái theo dõi...'
+          : 'Cả hai bạn cần follow lẫn nhau để gọi thoại/video.',
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    console.log('[CALL] 📞 handleStartCall', { callType, isGroup, conversationId, peerId: peer?._id, canCall, mutualFollow });
 
     const channelName = `call_${conversationId}`;
 
     // Lấy peerId để emit socket tới đúng người
     let peerId = null;
     let memberIds = [];
+    // Danh sách participants tối giản để CallScreen map agoraUid → tên hiển thị.
+    // - 1-1: truyền [peer] (nếu có).
+    // - Group: truyền toàn bộ participants (đã populate name/_id từ server).
+    let callParticipants = [];
     if (isGroup) {
       peerId = null;
-      // Lấy danh sách tất cả thành viên trong nhóm (trừ caller)
+      // Lấy danh sách tất cả thành viên trong nhóm (trở caller)
       const participants = conversationMeta?.participants || [];
       memberIds = participants
         .map((p) => String(p._id || p))
         .filter((id) => id !== String(currentUserId));
+      callParticipants = participants.map((p) => ({
+        _id: String(p._id || p),
+        name: p.name || 'Thành viên',
+        picture: p.picture || null,
+      }));
     } else {
       peerId = String(peer?._id || peer);
+      if (peer?._id || peer?.name) {
+        callParticipants = [{
+          _id: peerId,
+          name: peer?.name || 'Người dùng',
+          picture: peer?.picture || null,
+        }];
+      }
     }
 
     const payload = {
@@ -124,8 +167,16 @@ export default function ChatDetailScreen({ route, navigation }) {
     // Bước 1: Emit sự kiện cuộc gọi tới người nhận (peerId = null → server emit tới tất cả memberIds)
     socketEmitter.emit('start_call', { ...payload, peerId });
 
-    // Bước 2: Navigate caller vào CallScreen và join channel luôn
-    navigation.navigate('Call', { channelName, callType, isGroup, peer });
+    // Bước 2: Navigate caller vào CallScreen và join channel luôn.
+    // Truyền kèm `participants` để CallScreen có thể map agoraUid → tên thật
+    // khi hiển thị tile (vì Agora chỉ trả về uid dạng số, không trả tên).
+    navigation.navigate('Call', {
+      channelName,
+      callType,
+      isGroup,
+      peer,
+      participants: callParticipants,
+    });
   };
 
   const conversationMeta = conversations.find((item) => item._id === conversationId);
@@ -202,6 +253,36 @@ export default function ChatDetailScreen({ route, navigation }) {
   } = conversationMeta || {};
 
   const isGroup = route.params.isGroup || isGroupFromMeta;
+
+  const peerIdForFollow = !isGroup ? String(peer?._id || peer || '') : '';
+
+  useEffect(() => {
+    if (isGroup || !peerIdForFollow || !token) {
+      setFollowStatus({ isFollowing: false, isFollowedBy: false, loading: false });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getUserProfileRequest(peerIdForFollow, token);
+        const data = res?.data || res;
+        if (cancelled) return;
+        setFollowStatus({
+          isFollowing: !!data?.isFollowing,
+          isFollowedBy: !!data?.isFollowedBy,
+          loading: false,
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setFollowStatus({ isFollowing: false, isFollowedBy: false, loading: false });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [peerIdForFollow, token, isGroup]);
+
+  const mutualFollow = followStatus.isFollowing && followStatus.isFollowedBy;
+  const canCall = isGroup || (!followStatus.loading && mutualFollow);
 
   const [presenceTick, setPresenceTick] = useState(0);
 
@@ -1210,14 +1291,21 @@ export default function ChatDetailScreen({ route, navigation }) {
               {`${conversationMeta?.participants?.length || 0} thành viên`}
             </Text>
           ) : (
-            <Text 
+            <Text
               style={[
-                styles.headerMeta, 
+                styles.headerMeta,
                 presence?.isOnline && { color: '#22C55E', fontWeight: '600' }
               ]}
               numberOfLines={1}
             >
               {presence ? presence.label : (isFriend ? 'Bạn bè' : (peer?.area || ''))}
+            </Text>
+          )}
+          {!isGroup && !followStatus.loading && !mutualFollow && (
+            <Text style={styles.headerMetaWarn} numberOfLines={1}>
+              {followStatus.isFollowing
+                ? 'Hãy chờ đối phương follow lại để gọi'
+                : 'Cả hai cần follow nhau để gọi'}
             </Text>
           )}
         </View>
@@ -1229,19 +1317,29 @@ export default function ChatDetailScreen({ route, navigation }) {
         )}
 
         <TouchableOpacity
-          style={styles.headerCallBtn}
+          style={[styles.headerCallBtn, !canCall && styles.headerCallBtnDisabled]}
           onPress={() => handleStartCall('voice')}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          disabled={!canCall}
         >
-          <Ionicons name="call-outline" size={20} color="#374151" />
+          <Ionicons
+            name="call-outline"
+            size={20}
+            color={canCall ? '#374151' : '#9ca3af'}
+          />
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.headerVideoBtn}
+          style={[styles.headerVideoBtn, !canCall && styles.headerCallBtnDisabled]}
           onPress={() => handleStartCall('video')}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          disabled={!canCall}
         >
-          <Ionicons name="videocam-outline" size={20} color="#374151" />
+          <Ionicons
+            name="videocam-outline"
+            size={20}
+            color={canCall ? '#374151' : '#9ca3af'}
+          />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1648,6 +1746,9 @@ const styles = StyleSheet.create({
     padding: 8,
     marginRight: -2,
   },
+  headerCallBtnDisabled: {
+    opacity: 0.4,
+  },
   headerInfo: {
     flex: 1,
     marginLeft: 10,
@@ -1662,6 +1763,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '300',
     color: '#7C7C7C',
+  },
+  headerMetaWarn: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#DC2626',
+    fontWeight: '500',
   },
   blockedBanner: {
     backgroundColor: '#FEE2E2',

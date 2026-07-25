@@ -15,7 +15,8 @@
           "NSAllowsLocalNetworking": true
         },
         "NSCameraUsageDescription": "Ứng dụng cần quyền camera để thực hiện cuộc gọi video",
-        "NSMicrophoneUsageDescription": "Ứng dụng cần quyền micro để thực hiện cuộc gọi thoại/video"
+        "NSMicrophoneUsageDescription": "Ứng dụng cần quyền micro để thực hiện cuộc gọi thoại/video",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

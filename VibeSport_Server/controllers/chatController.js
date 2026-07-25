@@ -2351,7 +2351,13 @@ exports.unpinMessage = async (req, res) => {
 // Được gọi từ socket 'leave_channel', 'call_rejected', 'call_busy' handler trong index.js
 // isMissed: true = cuộc gọi nhỡ (rejected/busy/timeout, duration=0)
 // isMissed: false = cuộc gọi kết thúc bình thường
-exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds, isMissed = false) => {
+//
+// callerId (REQUIRED): MongoDB ObjectId (string) của người bấm nút gọi ban đầu.
+// Được dùng làm senderId / lastMessageSenderId để:
+// - Caller mở chat: thấy message bên PHẢI (tin nhắn của mình).
+// - Callee mở chat: thấy message bên TRÁI (tin nhắn nhận được từ caller).
+// Nếu không truyền callerId, fallback về null như cũ (không khuyến khích).
+exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds, isMissed = false, callerId = null) => {
   try {
     let content;
     if (isMissed || durationSeconds === 0) {
@@ -2369,21 +2375,25 @@ exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds
         : `Cuộc gọi thoại đã kết thúc (${durationText})`;
     }
 
+    console.log(`[ChatController] sendSystemCallMessage: callerId=${callerId}, convId=${conversationId}, callType=${callType}, duration=${durationSeconds}s, isMissed=${isMissed}`);
+
     const message = await Message.create({
       conversationId,
-      senderId: null, // null = system message
+      senderId: callerId || null, // ƯU TIÊN callerId để hiển thị đúng phía (mine vs peer)
       type: 'call',
       content,
       readBy: [],
     });
 
-    const populatedMessage = await Message.findById(message._id);
+    // Populate senderId để client nhận được object sender (giống các message khác)
+    const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
 
     const conversation = await Conversation.findById(conversationId);
     if (conversation) {
       conversation.lastMessage = content;
       conversation.lastMessageAt = message.createdAt;
-      conversation.lastMessageSenderId = null;
+      // lastMessageSenderId = callerId để last message preview cũng hiển thị đúng phía
+      conversation.lastMessageSenderId = callerId || null;
       await conversation.save();
 
       // Broadcast tới tất cả participant đang online

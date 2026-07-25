@@ -31,6 +31,7 @@ const tasksRouter = require('./routes/tasks');
 const adminUsersRouter = require('./routes/adminUsers');
 const Conversation = require('./models/Conversation');
 const Session = require('./models/Session');
+const Follow = require('./models/Follow');
 const seedTags = require('./scripts/seedTags');
 const { startMatchNotificationCron } = require('./utils/matchNotificationCron');
 const { sendSystemCallMessage } = require('./controllers/chatController');
@@ -77,6 +78,11 @@ const MAX_PARTICIPANTS_PER_CHANNEL = 8;
 // Cập nhật MỖI LẦN có user join, xóa khi channel empty
 const lastJoinTimes = new Map();
 
+// Key: channelName → Date (thời điểm user ĐẦU TIÊN join — bắt đầu cuộc gọi thật sự).
+// Set 1 lần khi channel chuyển từ 0 → ≥1 participant, KHÔNG bị ghi đè
+// khi user khác join sau. Dùng để tính duration cuộc gọi chính xác.
+const callStartTimes = new Map();
+
 // Key: channelName → { conversationId, callType, callerId, timerId }
 // Lưu cuộc gọi đang chờ (start_call gửi rồi nhưng chưa ai join)
 // Dùng cho: call_rejected / call_busy / timeout 30s
@@ -107,14 +113,40 @@ function addParticipant(channelName, uid) {
   channelParticipants.get(channelName).add(uid);
 }
 
+// Key: channelName → number (số participant tối đa đã từng có trong channel).
+// Dùng để quyết định CÓ GỬI system message "Cuộc gọi kết thúc (X phút)" hay không.
+// Nếu peak = 1, nghĩa là chỉ có 1 người từng join (thường là caller tự join rồi cancel)
+// → cuộc gọi không thật sự diễn ra → ĐÃ được xử lý bởi call_cancelled / timeout / ...
+// → KHÔNG gửi thêm system message để tránh trùng.
+const peakParticipants = new Map();
+
+function updatePeakParticipants(channelName) {
+  const current = channelParticipants.get(channelName)?.size ?? 0;
+  const peak = peakParticipants.get(channelName) ?? 0;
+  if (current > peak) {
+    peakParticipants.set(channelName, current);
+  }
+}
+
+// Key: channelName → callerId (string, MongoDB ObjectId của người bấm nút gọi).
+// Tồn tại xuyên suốt vòng đời của channel (từ start_call → tất cả thành viên rời).
+// Dùng để gán senderId cho system message "Cuộc gọi nhỡ" / "Cuộc gọi kết thúc"
+// — đảm bảo message hiển thị bên PHẢI trên UI của caller, bên TRÁI với callee.
+// pendingCalls không đủ vì nó bị DELETE ngay khi có người đầu tiên join channel,
+// trong khi handleLeaveChannel (chạy khi user rời) có thể xảy ra sau đó.
+const callCallerIds = new Map();
+
 function removeParticipant(channelName, uid) {
   channelParticipants.get(channelName)?.delete(uid);
   if (channelParticipants.get(channelName)?.size === 0) {
     channelParticipants.delete(channelName);
     // Clean up orphaned call state when channel becomes empty
     lastJoinTimes.delete(channelName);
+    callStartTimes.delete(channelName);
     pendingCalls.delete(channelName);
     activeCallTypes.delete(channelName);
+    peakParticipants.delete(channelName);
+    callCallerIds.delete(channelName);
   }
 }
 
@@ -134,11 +166,30 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
   const agoraUid = socket.data?.agoraUid;
   const userId = socket.data?.userId;
   if (!agoraUid) return;
-  console.log('[SOCKET] handleLeaveChannel:', { channelName, agoraUid });
+  console.log('[SOCKET] handleLeaveChannel:', { channelName, agoraUid, userId });
 
   // Kiểm tra user có trong channel không (an toàn cho disconnect race condition)
   const participants = channelParticipants.get(channelName);
   if (!participants || !participants.has(agoraUid)) return;
+
+  // Tính duration từ callStartTimes TRƯỚC khi xóa participant.
+  // Ưu tiên callStartTimes (chính xác từ lúc user đầu tiên join).
+  // Fallback về lastJoinTimes nếu không có (edge case).
+  const startTime = callStartTimes.get(channelName) ?? lastJoinTimes.get(channelName);
+  const callType = activeCallTypes.get(channelName) ?? callTypeFallback;
+  const durationSeconds = startTime
+    ? Math.max(0, Math.floor((Date.now() - startTime) / 1000))
+    : 0;
+  // Số participant tối đa từng có trong channel.
+  // peakParticipants có thể đã bị xóa nếu channel đã rỗng từ trước,
+  // nên check ?? 0.
+  const peak = peakParticipants.get(channelName) ?? 0;
+
+  // === FIX: Đọc callerId TRƯỚC khi removeParticipant ===
+  // removeParticipant sẽ delete callCallerIds khi channel về rỗng
+  // (trường hợp caller là người rời cuối cùng). Nếu đọc sau, callerId = null
+  // → senderId = null → bug cũ (message luôn hiện bên trái).
+  const callerId = callCallerIds.get(channelName) ?? null;
 
   // Xóa khỏi channel
   removeParticipant(channelName, agoraUid);
@@ -156,25 +207,47 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
     console.log(`[SOCKET] busyUsers.delete(${userId}) — left active call`);
   }
 
-  // Gửi tin nhắn "cuộc gọi kết thúc" CHỈ khi người CUỐI CÙNG rời
-  if (lastJoinTimes.has(channelName)) {
-    const countAfterRemove = channelParticipants.get(channelName)?.size ?? 0;
-    if (countAfterRemove === 0) {
-      const startTime = lastJoinTimes.get(channelName);
-      const convId = channelName?.match(/^call_(.+)$/)?.[1];
-      // Ưu tiên activeCallTypes (server-side, chính xác), fallback về callType client gửi
-      const callType = activeCallTypes.get(channelName) ?? callTypeFallback;
-      if (startTime && convId && callType) {
-        const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
-        try {
-          await sendSystemCallMessage(convId, callType, durationSeconds);
-          console.log(`[SOCKET] Call ended message sent for ${channelName} (${durationSeconds}s)`);
-        } catch (err) {
-          console.error('[SOCKET] sendSystemCallMessage error:', err);
-        }
+  const countAfterRemove = channelParticipants.get(channelName)?.size ?? 0;
+  console.log(`[SOCKET] handleLeaveChannel: ${countAfterRemove} remaining in ${channelName} after ${userId} left (peak=${peak}, duration=${durationSeconds}s, callerId=${callerId})`);
+
+  // === Issue 2: Phát tín hiệu "cuộc gọi đã kết thúc" tới TẤT CẢ thành viên
+  // còn lại trong channel để họ thoát CallScreen. ===
+  // Bỏ qua người vừa rời (socket đã leave channel rồi, nhưng vẫn check
+  // để chắc chắn — phòng trường hợp 1 user có nhiều socket).
+  // Gửi TRƯỚC khi gửi system message để client cleanup UI ngay.
+  if (countAfterRemove > 0) {
+    const convId = channelName?.match(/^call_(.+)$/)?.[1];
+    io.to(channelName).emit('call_ended', {
+      channelName,
+      callType,
+      durationSeconds,
+      endedBy: userId,
+      conversationId: convId,
+    });
+    console.log(
+      `[SOCKET] 📡 call_ended emitted to ${countAfterRemove} remaining in ${channelName} ` +
+      `(duration=${durationSeconds}s, endedBy=${userId})`
+    );
+  }
+
+  // === Issue 3: Gửi tin nhắn hệ thống "cuộc gọi kết thúc" ===
+  // Chỉ khi channel rỗng HOÀN TOÀN (tất cả thành viên đã rời)
+  // VÀ có nhiều hơn 1 người từng join (peak > 1) — tránh trùng với
+  // call_cancelled / call_busy / call_rejected / timeout (đã gửi "Cuộc gọi nhỡ").
+  // senderId = callerId (người bấm nút gọi ban đầu, đã đọc trước khi xóa Map)
+  // → message hiển thị đúng phía trên UI (bên phải với caller, bên trái với callee).
+  if (countAfterRemove === 0 && peak > 1) {
+    const convId = channelName?.match(/^call_(.+)$/)?.[1];
+    if (startTime && convId && callType) {
+      try {
+        await sendSystemCallMessage(convId, callType, durationSeconds, false, callerId);
+        console.log(`[SOCKET] Call ended message sent for ${channelName} (${durationSeconds}s, callerId=${callerId})`);
+      } catch (err) {
+        console.error('[SOCKET] sendSystemCallMessage error:', err);
       }
-      lastJoinTimes.delete(channelName);
     }
+  } else if (countAfterRemove === 0 && peak <= 1) {
+    console.log(`[SOCKET] handleLeaveChannel: peak<=1, skipping system message (handled by call_cancelled/busy/etc.)`);
   }
 }
 
@@ -266,8 +339,8 @@ io.on('connection', (socket) => {
 
         clearBusyForChannel(channelName, 'timeout (30s)');
         try {
-          await sendSystemCallMessage(pending.conversationId, pending.callType, 0, true);
-          console.log(`[SOCKET] Missed call (timeout) message sent for ${channelName}`);
+          await sendSystemCallMessage(pending.conversationId, pending.callType, 0, true, pending.callerId);
+          console.log(`[SOCKET] Missed call (timeout) message sent for ${channelName} (callerId=${pending.callerId})`);
         } catch (err) {
           console.error('[SOCKET] sendSystemCallMessage (missed/timeout) error:', err);
         }
@@ -276,13 +349,37 @@ io.on('connection', (socket) => {
         ? memberIds.filter((id) => String(id) !== String(callerId)).map(String)
         : peerId ? [String(peerId)] : [];
       pendingCalls.set(channelName, { conversationId, callType, callerId, timerId, targetIds });
-      console.log(`[SOCKET] pendingCalls.set for ${channelName} (timeout=30s, targetIds=${targetIds.length})`);
+      // Lưu callerId vào callCallerIds để handleLeaveChannel có thể dùng
+      // khi gửi "Cuộc gọi kết thúc (X phút)" — pendingCalls có thể đã bị
+      // delete sau khi có người join đầu tiên, nên cần map độc lập.
+      callCallerIds.set(channelName, String(callerId));
+      console.log(`[SOCKET] pendingCalls.set + callCallerIds.set for ${channelName} (timeout=30s, callerId=${callerId}, targetIds=${targetIds.length})`);
     }
 
     if (isGroup) {
       // Mời tất cả thành viên trong nhóm (trừ caller) + đánh dấu busy
       const targets = memberIds.filter((id) => String(id) !== String(callerId));
       console.log(`[SOCKET] Group call to ${targets.length} members in channel ${channelName}`);
+
+      // === Lấy tên nhóm để gửi kèm incoming_call (UI hiển thị biết cuộc gọi
+      // đến từ nhóm nào). Tránh query khi conversationId không hợp lệ.
+      // Failure an toàn: emit incoming_call không có groupName, modal vẫn
+      // hoạt động bình thường (fallback về layout 1-1 style). ===
+      let groupName = null;
+      if (conversationId) {
+        try {
+          const conv = await Conversation.findById(conversationId)
+            .select('name isGroup')
+            .lean();
+          if (conv && conv.isGroup && conv.name) {
+            groupName = conv.name;
+          }
+        } catch (err) {
+          console.warn('[SOCKET] start_call: failed to fetch conversation name for groupName:', err?.message);
+        }
+      }
+      console.log(`[SOCKET] Group call groupName resolved: "${groupName}"`);
+
       for (const targetId of targets) {
         const key = targetId.toString();
         const busyState = busyUsers.get(key);
@@ -298,6 +395,9 @@ io.on('connection', (socket) => {
           isGroup: true,
           callerId,
           callerName,
+          // groupName có thể null nếu DB lỗi / conv không có name — client
+          // sẽ fallback về layout cũ khi groupName null.
+          groupName,
         });
       }
     } else if (peerId) {
@@ -314,8 +414,8 @@ io.on('connection', (socket) => {
           clearTimeout(pendingEntry.timerId);
           // Gửi tin nhắn "Cuộc gọi nhỡ" sau khi atomic delete — tránh timeout gửi trùng
           try {
-            await sendSystemCallMessage(pendingEntry.conversationId, pendingEntry.callType, 0, true);
-            console.log(`[SOCKET] Missed call (peer busy) message sent for ${channelName}`);
+            await sendSystemCallMessage(pendingEntry.conversationId, pendingEntry.callType, 0, true, pendingEntry.callerId);
+            console.log(`[SOCKET] Missed call (peer busy) message sent for ${channelName} (callerId=${pendingEntry.callerId})`);
           } catch (err) {
             console.error('[SOCKET] sendSystemCallMessage (missed/peer-busy) error:', err);
           }
@@ -323,8 +423,34 @@ io.on('connection', (socket) => {
         return;
       }
       // 1-1 call: forward tới đúng peer + đánh dấu B là pending
+      // Kiểm tra quan hệ follow MUTUAL giữa caller và peer (cả 2 follow nhau).
+      // Dùng cả 2 chiều vì Follow là 1 chiều (Follow.findOne({follower, following})).
+      const [aFollowsB, bFollowsA] = await Promise.all([
+        Follow.exists({ followerId: callerId, followingId: peerId }),
+        Follow.exists({ followerId: peerId, followingId: callerId }),
+      ]);
+      if (!aFollowsB || !bFollowsA) {
+        console.log(`[SOCKET] start_call BLOCKED — not_mutual_follow`, {
+          callerId,
+          peerId,
+          aFollowsB: !!aFollowsB,
+          bFollowsA: !!bFollowsA,
+        });
+        // Cleanup pendingCalls (đã tạo ở trên)
+        const pendingEntry = pendingCalls.get(channelName);
+        pendingCalls.delete(channelName);
+        if (pendingEntry) clearTimeout(pendingEntry.timerId);
+        io.to(callerId.toString()).emit('call_rejected', {
+          channelName,
+          reason: 'not_following',
+          message: 'Hai bên cần follow lẫn nhau để gọi thoại/video.',
+        });
+        return;
+      }
+
       busyUsers.set(peerId.toString(), 'pending');
       console.log(`[SOCKET] busyUsers.set(${peerId}) = pending`);
+      console.log(`[SOCKET] 📞 EMIT incoming_call → peer=${peerId}, channel=${channelName}, callType=${callType}`);
       io.to(peerId.toString()).emit('incoming_call', {
         channelName,
         callType,
@@ -386,29 +512,69 @@ io.on('connection', (socket) => {
         }
 
         // Tất cả kiểm tra qua — cho phép join
+        const userId = socket.data.userId;
+        const isFirstJoinInChannel = !callStartTimes.has(channelName);
         addParticipant(channelName, agoraUid);
+        updatePeakParticipants(channelName);
         socket.join(channelName);
         socket.data.currentChannel = channelName; // track để cleanup khi disconnect
 
         // Ghi nhận thời điểm join (cập nhật mỗi lần có user join)
         lastJoinTimes.set(channelName, Date.now());
 
+        // Ghi nhận thời điểm BẮT ĐẦU cuộc gọi thật sự — chỉ set khi
+        // chưa có start time (người đầu tiên join). Dùng để tính duration
+        // chính xác, không bị ghi đè khi user thứ 2/3/... join.
+        if (isFirstJoinInChannel) {
+          callStartTimes.set(channelName, Date.now());
+          console.log(`[SOCKET] callStartTimes.set for ${channelName} (FIRST join)`);
+        }
+
+        const pending = pendingCalls.get(channelName);
+
+        // ⚠️ QUAN TRỌNG: Phân biệt caller tự join vs callee join.
+        // - Caller tự join channel của chính mình ngay sau start_call:
+        //     KHÔNG được coi là "cuộc gọi đã được trả lời", vì callee chưa hề bấm Nhận.
+        //     Tránh emit call_answered_elsewhere sai + clear pendingCalls sai.
+        // - Callee join: mới là dấu hiệu cuộc gọi được chấp nhận.
+        const isCallerSelfJoin =
+          pending &&
+          pending.callerId &&
+          String(pending.callerId) === String(userId);
+
+        if (isCallerSelfJoin) {
+          // Caller tự vào channel — KHÔNG thay đổi busy/pending state.
+          // Chỉ log để debug và cho phép caller thấy CallScreen hoạt động.
+          console.log(
+            `[SOCKET] join_channel_request: caller (userId=${userId}, agoraUid=${agoraUid}) ` +
+            `joined own channel ${channelName} — NOT treating as call answered (still waiting for callee)`
+          );
+          ackFn({ ok: true });
+          console.log(
+            `[SOCKET] User ${agoraUid} (caller) joined channel ${channelName}` +
+            ` (${getChannelParticipantCount(channelName)}/${MAX_PARTICIPANTS_PER_CHANNEL})`
+          );
+          io.to(channelName).emit('user_joined_channel', { channelName, agoraUid });
+          return;
+        }
+
+        // === Callee thực sự join → cuộc gọi được trả lời ===
         // Chuyển trạng thái busy: 'pending' → 'active'
-        const userId = socket.data.userId;
-        if (userId && busyUsers.get(userId) === 'pending') {
+        if (busyUsers.get(userId) === 'pending') {
           busyUsers.set(userId, 'active');
           console.log(`[SOCKET] busyUsers(${userId}): pending → active`);
         }
 
-        // Người nhận nhấc máy → cuộc gọi được kết nối
-        // Cancel timeout timer và xóa pendingCalls để tránh gửi "Cuộc gọi nhỡ" sau này
-        const pending = pendingCalls.get(channelName);
         if (pending) {
+          // Cancel timeout timer và xóa pendingCalls để tránh gửi "Cuộc gọi nhỡ" sau này
           clearTimeout(pending.timerId);
           pendingCalls.delete(channelName);
           // Lưu callType server-side để dùng trong handleLeaveChannel (disconnect-safe)
           activeCallTypes.set(channelName, pending.callType);
-          console.log(`[SOCKET] pendingCalls cleared + activeCallTypes.set for ${channelName} (call answered)`);
+          console.log(
+            `[SOCKET] pendingCalls cleared + activeCallTypes.set for ${channelName} ` +
+            `(call answered by userId=${userId}, agoraUid=${agoraUid})`
+          );
 
           // Báo cho các member KHÔNG bắt máy: cuộc gọi đã được người khác nhận
           for (const tid of pending.targetIds ?? []) {
@@ -504,8 +670,8 @@ io.on('connection', (socket) => {
     if (pendingToSend) {
       clearTimeout(pendingToSend.timerId);
       try {
-        await sendSystemCallMessage(pendingToSend.conversationId, pendingToSend.callType, 0, true);
-        console.log(`[SOCKET] Missed call (busy) message sent for ${channelName}`);
+        await sendSystemCallMessage(pendingToSend.conversationId, pendingToSend.callType, 0, true, pendingToSend.callerId);
+        console.log(`[SOCKET] Missed call (busy) message sent for ${channelName} (callerId=${pendingToSend.callerId})`);
       } catch (err) {
         console.error('[SOCKET] sendSystemCallMessage (missed/busy) error:', err);
       }
@@ -548,8 +714,8 @@ io.on('connection', (socket) => {
     if (pendingToSend) {
       clearTimeout(pendingToSend.timerId);
       try {
-        await sendSystemCallMessage(pendingToSend.conversationId, pendingToSend.callType, 0, true);
-        console.log(`[SOCKET] Missed call (rejected) message sent for ${channelName}`);
+        await sendSystemCallMessage(pendingToSend.conversationId, pendingToSend.callType, 0, true, pendingToSend.callerId);
+        console.log(`[SOCKET] Missed call (rejected) message sent for ${channelName} (callerId=${pendingToSend.callerId})`);
       } catch (err) {
         console.error('[SOCKET] sendSystemCallMessage (missed/rejected) error:', err);
       }
@@ -576,9 +742,18 @@ io.on('connection', (socket) => {
       io.to(key).emit('call_cancelled', { channelName });
     }
 
+    // Gửi tin nhắn hệ thống "Cuộc gọi nhỡ" vì không ai nhấc máy.
+    // pending còn tồn tại → chưa ai join thật sự → duration = 0.
     if (pending) {
+      const convId = pending.conversationId;
+      const callType = pending.callType;
+      const callerId = pending.callerId;
       clearTimeout(pending.timerId);
       pendingCalls.delete(channelName);
+      // Gửi async, không block — fire-and-forget
+      sendSystemCallMessage(convId, callType, 0, true, callerId)
+        .then(() => console.log(`[SOCKET] Missed call (cancelled) message sent for ${channelName} (callerId=${callerId})`))
+        .catch((err) => console.error('[SOCKET] sendSystemCallMessage (missed/cancelled) error:', err));
     }
   });
 
