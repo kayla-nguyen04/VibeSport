@@ -10,7 +10,6 @@ const API_BASE_URL_CANDIDATES = Array.from(new Set([
   API_BASE_URL,
   'http://10.0.2.2:4000',
   'http://localhost:4000',
-  'http://192.168.1.5:4000',
 ].filter(Boolean)));
 
 async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIMEOUT_MS) {
