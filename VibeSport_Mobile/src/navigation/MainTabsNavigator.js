@@ -42,7 +42,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
       left: 0,
       right: 0,
       bottom: bottomPosition,
-    },]}>
+    }]}>
       <View style={styles.bottomBarWrap}>
         <View style={styles.bottomBar}>
           {state.routes.map((route, index) => {

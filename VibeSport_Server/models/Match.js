@@ -99,6 +99,73 @@ const matchSchema = new Schema(
       maxlength: 200,
     },
 
+    contactPhone: {
+      type: String,
+      default: "",
+    },
+
+    contactZalo: {
+      type: String,
+      default: "",
+    },
+
+    contactFacebook: {
+      type: String,
+      default: "",
+    },
+
+    contactAppUser: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    courtDescription: {
+      type: String,
+      default: "",
+    },
+
+    specificAddress: {
+      type: String,
+      default: "",
+    },
+
+    endTime: {
+      type: String,
+      default: "20:30",
+    },
+
+    time: {
+      type: String,
+      default: "19:00 - 20:30",
+    },
+
+    totalHours: {
+      type: Number,
+      default: 1.5,
+    },
+
+    totalCourtCost: {
+      type: Number,
+      default: 450000,
+    },
+
+    costPerPlayer: {
+      type: Number,
+      default: 45000,
+    },
+
+    skillLevel: {
+      type: String,
+      default: "Người mới",
+    },
+
+    serviceCost: {
+      type: Number,
+      default: 31250,
+      min: 0,
+    },
+
     selectedPositionIds: {
       type: [String],
       default: [],
@@ -127,6 +194,12 @@ const matchSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: false,
+    },
+
+    chatGroupId: {
+      type: Schema.Types.ObjectId,
+      ref: "Conversation",
+      default: null,
     },
 
     participants: [

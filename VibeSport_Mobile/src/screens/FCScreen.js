@@ -21,6 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import { Screen } from '../components/Screen';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { API_BASE_URL } from '../components/constants/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -448,7 +450,10 @@ export default function FCScreen({ navigation }) {
 
   // Actions menu for posts inside FC
   const handlePostMoreOptions = (post) => {
-    const isPostOwner = post.userId?._id === user?._id || post.userId === user?._id;
+    const curUserId = String(user?._id || user?.id || "");
+    const authorObj = post.userId || post.createdBy || post.author || post.user;
+    const authorId = typeof authorObj === "object" && authorObj != null ? String(authorObj._id || authorObj.id || "") : String(authorObj || "");
+    const isPostOwner = !!curUserId && !!authorId && curUserId === authorId;
     
     if (isPostOwner) {
       Alert.alert(
@@ -613,7 +618,7 @@ export default function FCScreen({ navigation }) {
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <View style={{ paddingTop: insets.top }}>
-          <View style={styles.appHeader}>
+          <ScreenHeader style={styles.appHeader}>
             <View style={styles.appHeaderLeft}>
               <Image
                 source={require('../../assets/logosp.png')}
@@ -633,7 +638,7 @@ export default function FCScreen({ navigation }) {
               <Ionicons name="add-circle-outline" size={20} color="#fff" />
               <Text style={styles.createFCBtnText}>Tạo FC</Text>
             </TouchableOpacity>
-          </View>
+          </ScreenHeader>
         </View>
 
         {/* Search input */}

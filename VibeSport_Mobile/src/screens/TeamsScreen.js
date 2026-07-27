@@ -80,7 +80,7 @@ const getFootballRole = (positionId) => {
 const formatCost = (c) => {
   if (!c || c === 0) return "Miễn phí";
   const formatted = c.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `${formatted} vnd/ người`;
+  return `${formatted}đ`;
 };
 
 const getInitials = (name) => {
@@ -351,10 +351,11 @@ export default function TeamsScreen({ navigation }) {
 
   const getPostAuthorId = (post) => {
     if (!post) return "";
-    if (typeof post.userId === "object" && post.userId != null) {
-      return normalizeId(post.userId._id || post.userId.id);
+    const authorObj = post.createdBy || post.userId || post.author || post.user;
+    if (typeof authorObj === "object" && authorObj != null) {
+      return normalizeId(authorObj._id || authorObj.id);
     }
-    return normalizeId(post.userId);
+    return normalizeId(authorObj);
   };
 
   const isPostOwner = (post) => {
@@ -485,8 +486,28 @@ export default function TeamsScreen({ navigation }) {
     const totalNeededPositions = positionCount + benchCount;
     const displayFound = `${participantsCount}/${totalNeededPositions || item.maxPlayers || 10}`;
     const maxCount = item.maxPlayers || 10;
-    const timeLabel = item.startTime && typeof item.startTime === "string" ? item.startTime.replace(":", "g ") + "p" : "";
+    let timeLabel = item.time;
+    if (!timeLabel || !timeLabel.includes("-")) {
+      const startStr = item.startTime || "19:00";
+      let endStr = item.endTime;
+      if (!endStr) {
+        const [h, m] = startStr.split(":").map(Number);
+        const totalM = (h || 19) * 60 + (m || 0) + 90;
+        const endH = String(Math.floor(totalM / 60) % 24).padStart(2, "0");
+        const endM = String(totalM % 60).padStart(2, "0");
+        endStr = `${endH}:${endM}`;
+      }
+      timeLabel = `${startStr} - ${endStr}`;
+    }
     const isEnded = item.status === "completed" || item.status === "cancelled";
+
+    const pitchTypeLabel = item.sport === "football"
+      ? (maxCount === 10 ? "Sân 5 (5v5)" : maxCount === 14 ? "Sân 7 (7v7)" : "Sân 11 (11v11)")
+      : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)");
+
+    const totalHoursVal = item.totalHours || 1;
+    const totalCostVal = item.totalCourtCost || (item.costPerPerson * totalHoursVal);
+    const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / (maxCount || 10)) : item.costPerPerson);
 
     // Position needs (football only)
     const positionNeeds = [];
@@ -574,57 +595,67 @@ export default function TeamsScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Info rows */}
-        <View style={styles.figmaInfoList}>
-          <View style={[styles.figmaInfoRow, { borderTopWidth: 0, paddingTop: 0 }]}>
-            <View style={styles.figmaInfoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>{timeLabel} - {getDayLabel(item.date)} - {item.date}</Text>
-          </View>
-          <View style={styles.figmaInfoRow}>
-            <View style={styles.figmaInfoIcon}><Ionicons name="location-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>{item.locationName}</Text>
-          </View>
-          {item.note ? (
-            <View style={styles.figmaInfoRow}>
-              <View style={styles.figmaInfoIcon}><Ionicons name="create-outline" size={16} color="#333" /></View>
-              <Text style={styles.figmaInfoText}>{item.note}</Text>
+        {/* Compact & Ultra-Sleek Info Container */}
+        <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: 10, marginVertical: 8, gap: 8 }}>
+          {/* 1 & 3: Tên sân & Thời gian */}
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="location-outline" size={15} color="#4B5563" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#111827" }} numberOfLines={1}>
+                {item.locationName}
+              </Text>
             </View>
-          ) : null}
-          <View style={styles.figmaInfoRow}>
-            <View style={styles.figmaInfoIcon}><Ionicons name="grid-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>Loại sân : {item.sport === "football" ? `${Math.floor(maxCount / 2)}vs ${Math.floor(maxCount / 2)}` : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="time-outline" size={15} color="#4B5563" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 12.5, fontWeight: "600", color: "#4B5563" }}>
+                {timeLabel} - {item.date}
+              </Text>
+            </View>
+          </View>
+
+          {/* 2, 4, 5, 6, 7: Flexible Responsive Badges */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 4,marginRight:10 }}>
+            {/* Loại sân */}
+            <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight:10}}>
+              <MaterialCommunityIcons name="soccer-field" size={14} color="#6B7280" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>{pitchTypeLabel}</Text>
+            </View>
+
+            {/* Trình độ */}
+            <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:10 }}>
+              <Ionicons name="ribbon-outline" size={14} color="#FF6B3D" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: ORANGE, fontWeight: "700" }}>{item.skillLevel || "Người mới"}</Text>
+            </View>
+
+            {/* Giá 1 người */}
+            <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center", marginRight: 10 }}>
+              <Ionicons name="cash-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#059669", fontWeight: "700" }}>{formatCost(costPerPlayerVal)}</Text>
+            </View>
+
+             {/* Số người đã tìm */}
+            <View style={{ backgroundColor: "#FFF7ED", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FFD8A8", flexDirection: "row", alignItems: "center",marginRight:10 }}>
+              <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#C2410C", fontWeight: "700" }}>Đã tìm: {displayFound}</Text>
+            </View>
+
+            {/* Tiền dịch vụ */}
+            <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ước tính ≈ {formatCost(item.serviceCost || 31250)}</Text>
+            </View>
           </View>
         </View>
 
-        {/* Grid boxes */}
-        <View style={styles.figmaGrid}>
-          <View style={styles.figmaGridCol}>
-            <Text style={styles.figmaGridLabel}>Số người đã tìm.</Text>
-            <View style={styles.figmaGridBox}>
-              <Ionicons name="people-outline" size={15} color="#333" />
-              <Text style={styles.figmaGridValue}>{displayFound}</Text>
-            </View>
-          </View>
-          <View style={styles.figmaGridCol}>
-            <Text style={styles.figmaGridLabel}>Tiền cọc sân.</Text>
-            <View style={styles.figmaGridBox}>
-              <Ionicons name="wallet-outline" size={15} color="#333" />
-              <Text style={styles.figmaGridValue} numberOfLines={1}>{formatCost(item.costPerPerson)}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Position tags (football only) */}
+        {/* 8. Vị trí cần tìm (football only) */}
         {positionNeeds.length > 0 && (
-          <View style={styles.positionTagsSection}>
-            <Text style={styles.positionTagsLabel}>Vị trí cần tìm.</Text>
-            <View style={styles.positionTagsRow}>
-              {positionNeeds.map((p, i) => (
-                <View key={i} style={styles.positionTag}>
-                  <Text style={styles.positionTagText}>{p.label} x{p.count}</Text>
-                </View>
-              ))}
-            </View>
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 8, paddingHorizontal: 2, marginLeft:9 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Vị trí cần tìm:</Text>
+            {positionNeeds.map((p, i) => (
+              <View key={i} style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#1F2937" }}>{p.label} x{p.count}</Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -969,7 +1000,11 @@ export default function TeamsScreen({ navigation }) {
                     const post = optionsPost;
                     setOptionsPost(null);
                     if (post) {
-                      navigation.navigate("CreatePost", { editPost: post });
+                      if (post.sport || post.locationName || post.maxPlayers) {
+                        navigation.navigate("CreateMatch", { editMatch: post });
+                      } else {
+                        navigation.navigate("CreatePost", { editPost: post });
+                      }
                     }
                   }}
                   style={styles.bottomSheetOption}
@@ -978,7 +1013,17 @@ export default function TeamsScreen({ navigation }) {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => optionsPost && handleDeletePost(optionsPost)}
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    if (post) {
+                      if (post.sport || post.locationName || post.maxPlayers) {
+                        handleDeleteMatch(post);
+                      } else {
+                        handleDeletePost(post);
+                      }
+                    }
+                  }}
                   style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
                 >
                   <Text style={[styles.bottomSheetOptionText, { color: "#EF4444" }]}>Xóa bài viết</Text>
