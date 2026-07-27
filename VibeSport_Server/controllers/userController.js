@@ -9,13 +9,17 @@ const { getPresenceFromLastSeen } = require('../utils/presence');
 function formatUserPublic(user) {
   return {
     id: user._id,
+    _id: user._id,
     name: user.name,
     picture: user.picture,
+    phone: user.phone,
+    email: user.email,
     favoriteSport: user.favoriteSport,
     position: user.position,
     area: user.area,
     bio: user.bio,
     rating: user.rating ?? 0,
+    courts: user.courts || [],
     createdAt: user.createdAt,
   };
 }
@@ -39,7 +43,7 @@ exports.getUserProfile = async (req, res) => {
     const { id } = req.params;
     const viewerId = req.userId;
 
-    const user = await User.findById(id).select('-passwordHash');
+    let user = await User.findById(id).populate('courts').select('-passwordHash');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
@@ -235,7 +239,7 @@ exports.searchUsers = async (req, res) => {
     const users = await User.find({
       name: { $regex: keyword, $options: 'i' },
     })
-      .select('_id name picture favoriteSport')
+      .select('_id name picture phone favoriteSport')
       .limit(8)
       .lean();
 
@@ -243,8 +247,10 @@ exports.searchUsers = async (req, res) => {
       success: true,
       data: users.map((u) => ({
         id: u._id,
+        _id: u._id,
         name: u.name,
         picture: u.picture,
+        phone: u.phone,
         favoriteSport: u.favoriteSport,
       })),
     });
@@ -260,7 +266,7 @@ exports.getMutualFriends = async (req, res) => {
     const mutualFollowers = await Follow.find({
       followerId: { $in: following },
       followingId: req.userId,
-    }).populate('followerId', '_id name picture favoriteSport position area lastSeenAt');
+    }).populate('followerId', '_id name picture phone favoriteSport position area lastSeenAt');
 
     const friends = mutualFollowers
       .map((f) => f.followerId)
@@ -282,7 +288,7 @@ exports.getFollowingList = async (req, res) => {
     const viewerId = req.userId;
 
     const followDocs = await Follow.find({ followerId: targetUserId })
-      .populate('followingId', '_id name picture favoriteSport position area lastSeenAt bio');
+      .populate('followingId', '_id name picture phone favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followingId).filter(Boolean);
     const userIds = users.map((u) => u._id);
@@ -322,7 +328,7 @@ exports.getFollowersList = async (req, res) => {
     const viewerId = req.userId;
 
     const followDocs = await Follow.find({ followingId: targetUserId })
-      .populate('followerId', '_id name picture favoriteSport position area lastSeenAt bio');
+      .populate('followerId', '_id name picture phone favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followerId).filter(Boolean);
     const userIds = users.map((u) => u._id);

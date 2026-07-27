@@ -35,6 +35,7 @@ import {
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
 import { getSocket } from "../hooks/useSocket";
+import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -177,14 +178,18 @@ const getRelativeTime = (dateStr) => {
   }
 };
 
-const formatTimeLabel = (timeStr) => {
-  if (!timeStr) return "";
-  const cleaned = timeStr.trim();
-  if (cleaned.includes(":")) {
-    const parts = cleaned.split(":");
-    return `${parts[0]}g ${parts[1]}p`;
+const formatTimeLabel = (timeStr, matchObj) => {
+  if (matchObj && matchObj.time && matchObj.time.includes("-")) return matchObj.time;
+  const start = (matchObj && matchObj.startTime) || timeStr || "19:00";
+  let end = matchObj && matchObj.endTime;
+  if (!end) {
+    const [h, m] = start.split(":").map(Number);
+    const totalM = (h || 19) * 60 + (m || 0) + 90;
+    const endH = String(Math.floor(totalM / 60) % 24).padStart(2, "0");
+    const endM = String(totalM % 60).padStart(2, "0");
+    end = `${endH}:${endM}`;
   }
-  return cleaned;
+  return `${start} - ${end}`;
 };
 
 const parseDate = (dateStr) => {
@@ -313,8 +318,17 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [showDetailsCollapsed, setShowDetailsCollapsed] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
+  const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
 
   const userId = normalizeId(user?.id || user?._id);
+
+  const isUserParticipant = (matchObj) => {
+    const pList = matchObj?.participants || [];
+    return pList.some((p) => {
+      const pid = typeof p === 'object' ? p._id || p.id : p;
+      return normalizeId(pid) === userId;
+    });
+  };
 
   // Extract position data safely (before early return so useMemo is always called)
   const selectedPositionIds = match?.selectedPositionIds || [];
@@ -378,7 +392,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       );
       await reloadMatch();
     } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể cập nhật trạng thái trận đấu");
+      Alert.alert("Thông báo", err.message || "Không thể cập nhật trạng thái trận đấu");
     } finally {
       setActionLoading(false);
     }
@@ -596,20 +610,23 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleOpenMap = () => {
-    if (!coords?.lat || !coords?.lng) {
-      Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí trên bản đồ.");
-      return;
+    const fullAddress = match.specificAddress || match.location?.address || match.locationName;
+    if (fullAddress) {
+      const query = encodeURIComponent(fullAddress);
+      const url = Platform.select({
+        ios: `maps:0,0?q=${query}`,
+        android: `geo:0,0?q=${query}`,
+        default: `https://www.google.com/maps/search/?api=1&query=${query}`,
+      });
+      Linking.openURL(url).catch(() => {
+        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
+      });
+    } else if (coords?.lat != null && coords?.lng != null) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`;
+      Linking.openURL(url);
+    } else {
+      Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí chi tiết.");
     }
-    const label = encodeURIComponent(match.locationName || "Vị trí trận đấu");
-    const url = Platform.select({
-      ios: `maps:0,0?q=${coords.lat},${coords.lng}(${label})`,
-      android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${label})`,
-      default: `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`,
-    });
-    Linking.openURL(url).catch(() => {
-      // Fallback to Google Maps in browser
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`);
-    });
   };
 
   const handleRequestJoin = () => {
@@ -649,18 +666,30 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleConfirmJoin = async () => {
-    try {
-      setActionLoading(true);
-      const data = await requestJoinMatch(match._id, userId);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-      setShowPositionModal(false);
-      setJoinSelectedPositions([]);
-    }
+    Alert.alert(
+      "Nhắc nhở dụng cụ",
+      "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn tham gia? (Người mới biết để thuê đồ)",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Đồng ý",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const data = await requestJoinMatch(match._id, userId);
+              setMatch(data);
+              Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+            } catch (err) {
+              Alert.alert("Lỗi", err.message);
+            } finally {
+              setActionLoading(false);
+              setShowPositionModal(false);
+              setJoinSelectedPositions([]);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleConfirmJoinWithPositions = async () => {
@@ -669,26 +698,30 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
 
-    Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn gửi yêu cầu với vị trí đã chọn?", [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "Đồng ý",
-        onPress: async () => {
-          try {
-            setActionLoading(true);
-            setShowPositionModal(false);
-            const data = await requestJoinMatch(match._id, userId, selectedPositions);
-            setMatch(data);
-            setSelectedPositions([]);
-            Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-          } catch (err) {
-            Alert.alert("Lỗi", err.message);
-          } finally {
-            setActionLoading(false);
-          }
+    Alert.alert(
+      "Nhắc nhở dụng cụ",
+      "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn tham gia? ",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Đồng ý",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              setShowPositionModal(false);
+              const data = await requestJoinMatch(match._id, userId, selectedPositions);
+              setMatch(data);
+              setSelectedPositions([]);
+              Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+            } catch (err) {
+              Alert.alert("Lỗi", err.message);
+            } finally {
+              setActionLoading(false);
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const togglePositionSelection = (option) => {
@@ -720,7 +753,7 @@ export default function MatchDetailScreen({ navigation, route }) {
             setSelectedPositions([]);
             setShowPositionModal(true);
           } catch (err) {
-            Alert.alert("Lỗi", err.message || "Không thể đổi vị trí");
+            Alert.alert("Thông báo", err.message || "Không thể đổi vị trí");
           } finally {
             setActionLoading(false);
           }
@@ -734,6 +767,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       { text: "Hủy", style: "cancel" },
       {
         text: "Đồng ý",
+
         onPress: async () => {
           try {
             setActionLoading(true);
@@ -835,7 +869,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       });
       setFollowingUsers(filtered);
     } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể tải danh sách");
+      Alert.alert("Thông báo", err.message || "Không thể tải danh sách");
     } finally {
       setInviteLoading(false);
     }
@@ -865,7 +899,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               })
             );
           } catch (err) {
-            Alert.alert("Lỗi", err.message || "Không thể mời");
+            Alert.alert("Thông báo", err.message || "Không thể mời");
           } finally {
             setActionLoading(false);
           }
@@ -924,7 +958,7 @@ export default function MatchDetailScreen({ navigation, route }) {
             setKickTarget(null);
             setKickReason("");
           } catch (err) {
-            Alert.alert("Lỗi", err.message || "Không thể kích");
+            Alert.alert("Thông báo", err.message || "Không thể kích");
           } finally {
             setActionLoading(false);
           }
@@ -1007,7 +1041,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               <View style={styles.infoSection}>
                 <View style={styles.infoRow}>
                   <View style={styles.infoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
-                  <Text style={styles.infoText}>{formatTimeLabel(match.startTime)} - {getDayLabel(match.date)} - {match.date}</Text>
+                  <Text style={styles.infoText}>{formatTimeLabel(match.startTime, match)} - {getDayLabel(match.date)} - {match.date}</Text>
                 </View>
 
                 {match.note ? (
@@ -1021,27 +1055,57 @@ export default function MatchDetailScreen({ navigation, route }) {
                   <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
                   <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
                 </View>
+
+                {/* Skill Level */}
+                <View style={[styles.infoRow, { paddingTop: 5, paddingBottom: 5 }]}>
+                  <View style={styles.infoIcon}><Ionicons name="ribbon-outline" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>Trình độ: <Text style={{ fontWeight: "700", color: ORANGE }}>{match.skillLevel || "Người mới"}</Text></Text>
+                </View>
+
+                {/* Specific Address */}
+                {match.specificAddress ? (
+                  <View style={[styles.infoRow, { paddingBottom: 10 }]}>
+                    <View style={styles.infoIcon}><Ionicons name="map-outline" size={16} color="#333" /></View>
+                    <Text style={styles.infoText} numberOfLines={3}>Địa chỉ chi tiết: {match.specificAddress}</Text>
+                  </View>
+                ) : null}
+
+            
+               
               </View>
 
-              <View style={styles.gridContainer}>
-                <View style={styles.gridColumn}>
-                  <Text style={styles.gridLabel}>Số người đã tuyển.</Text>
-                  <View style={styles.gridBox}>
-                    <Ionicons name="people-outline" size={16} color="#333" />
-                    <Text style={styles.gridValue}>{currentCount}/{displayTotalNeeded}</Text>
+              {/* Flexible Centered Badges (Identical to TeamsScreen) */}
+              {(() => {
+                const totalHoursVal = match.totalHours || 1;
+                const totalCostVal = match.totalCourtCost || (match.costPerPerson * totalHoursVal);
+                const costPerPlayerVal = match.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / (displayTotalNeeded || match.maxPlayers || 10)) : match.costPerPerson);
+
+                return (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6, marginVertical: 12 }}>
+            
+                    {/* Giá 1 người */}
+                    <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center",marginRight:"5" }}>
+                      <Ionicons name="cash-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 14, color: "#059669", fontWeight: "700" }}>{formatCost(costPerPlayerVal)}</Text>
+                    </View>
+
+                    {/* Số người đã tìm/tuyển */}
+                    <View style={{ backgroundColor: "#FFF7ED", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FFD8A8", flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 14, color: "#C2410C", fontWeight: "700" }}>Đã tìm: {currentCount}/{displayTotalNeeded}</Text>
+                    </View>
+
+                    {/* Tiền dịch vụ ước tính */}
+                    <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:"15" }}>
+                      <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 14, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ≈ {formatCost(match.serviceCost || 31250)}</Text>
+                    </View>
                   </View>
-                </View>
-                <View style={styles.gridColumn}>
-                  <Text style={styles.gridLabel}>Tiền cọc sân.</Text>
-                  <View style={styles.gridBox}>
-                    <Ionicons name="wallet-outline" size={16} color="#333" />
-                    <Text style={styles.gridValue} numberOfLines={1}>{formatCost(match.costPerPerson)}</Text>
-                  </View>
-                </View>
-              </View>
+                );
+              })()}
 
               {neededRolesList.length > 0 && (
-                <View style={{ marginBottom: 16 }}>
+                <View style={{ marginBottom: 3 }}>
                   <Text style={styles.gridLabel}>Vị trí cần tìm.</Text>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                     {neededRolesList.map(({ role, qty }) => (
@@ -1058,12 +1122,150 @@ export default function MatchDetailScreen({ navigation, route }) {
                   <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
                   <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
                 </View>
-                {coords?.lat != null && coords?.lng != null && (
+                {(Boolean(match.specificAddress) || Boolean(match.locationName) || (coords?.lat != null && coords?.lng != null)) && (
                   <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
                     <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
                   </TouchableOpacity>
                 )}
               </View>
+
+              {/* Court Details Button */}
+              <TouchableOpacity
+                style={{
+                  marginTop: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "#EFF6FF",
+                  borderWidth: 1,
+                  borderColor: "#BFDBFE",
+                  padding: 10,
+                  borderRadius: 10,
+                  gap: 6,
+                }}
+                onPress={() => setShowCourtDetailModal(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="information-circle" size={18} color="#2563EB" />
+                <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>
+                  Chi tiết sân 
+                </Text>
+              </TouchableOpacity>
+
+              {/* Contact organizer block */}
+              {(match.contactPhone || match.contactZalo || match.contactFacebook || match.contactAppUser) ? (
+                <View style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#FFF7ED",
+                  borderWidth: 1,
+                  borderColor: "#FFD8A8",
+                }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#C2410C", marginBottom: 8 }}>
+                     LIÊN HỆ CHỦ SÂN 
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                    {match.contactAppUser ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 100,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: ORANGE,
+                          paddingVertical: 8,
+                          paddingHorizontal: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => openProfile(match.contactAppUser)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="person-circle" size={16} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }} numberOfLines={1}>
+                          {match.contactAppUser.name || "Tài khoản App"}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {match.contactPhone ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 80,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#16A34A",
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => Linking.openURL(`tel:${match.contactPhone}`)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="call" size={15} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Gọi điện</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    
+                    {match.contactZalo ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 70,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#0068FF",
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => {
+                          const cleanZalo = match.contactZalo.replace(/[^0-9]/g, "");
+                          const zaloUrl = match.contactZalo.startsWith("http")
+                            ? match.contactZalo
+                            : `https://zalo.me/${cleanZalo || match.contactZalo}`;
+                          Linking.openURL(zaloUrl);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialCommunityIcons name="chat-processing" size={15} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Zalo</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {match.contactFacebook ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 90,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#1877F2",
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => {
+                          const fbUrl = match.contactFacebook.startsWith("http")
+                            ? match.contactFacebook
+                            : `https://facebook.com/${match.contactFacebook}`;
+                          Linking.openURL(fbUrl);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="logo-facebook" size={15} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Facebook</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
             </>
           )}
         </View>
@@ -1073,11 +1275,6 @@ export default function MatchDetailScreen({ navigation, route }) {
         
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
-            {isOwner && (
-              <TouchableOpacity style={styles.inviteSmallBtn} onPress={handleOpenInvite} activeOpacity={0.7}>
-                <Text style={styles.inviteSmallBtnText}>Mời +</Text>
-              </TouchableOpacity>
-            )}
           </View>
           {allParticipants.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
@@ -1094,11 +1291,81 @@ export default function MatchDetailScreen({ navigation, route }) {
                   isMe={isMe}
                   showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
-                 
                 />
               );
             })
           )}
+
+          {/* Nút Mời thêm bạn bè tham gia (Hiển thị phía dưới Danh sách tham gia) */}
+          {isOwner && (
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#FFF7ED",
+                borderWidth: 1.5,
+                borderColor: "#FFD8A8",
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                marginTop: 10,
+                marginBottom: 8,
+                gap: 6,
+              }}
+              onPress={handleOpenInvite}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="person-add" size={18} color={ORANGE} />
+              <Text style={{ color: ORANGE, fontWeight: "700", fontSize: 13.5 }}>
+                + Mời thêm bạn bè tham gia
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Nhóm chat gắn với trận đấu */}
+          {match.chatGroupId ? (
+            <View style={{
+              marginTop: 12,
+              marginBottom: 8,
+              padding: 14,
+              backgroundColor: "#EFF6FF",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#BFDBFE",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="chatbubbles" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14.5, fontWeight: "700", color: "#1E3A8A" }} numberOfLines={1}>
+                    {match.chatGroupId.name || "Nhóm chat trận đấu"}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#3B82F6", marginTop: 2 }}>
+                    {isUserParticipant(match) ? "Tự động thêm khi tham gia trận" : "Chỉ thành viên trận mới có thể vào nhóm"}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: "#2563EB", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
+                onPress={() => {
+                  const convId = match.chatGroupId._id || match.chatGroupId;
+                  navigation.navigate("ChatDetail", {
+                    conversationId: convId,
+                    isGroup: true,
+                    peer: { name: match.chatGroupId.name || "Nhóm chat trận đấu" },
+                  });
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12.5 }}>Vào nhóm</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           {canJoinMatch && (
             <TouchableOpacity
@@ -1448,9 +1715,22 @@ export default function MatchDetailScreen({ navigation, route }) {
         </View>
       </Modal>
 
-
-      {/* ─── Custom Bottom Tab Bar ─── */}
-
+      {/* Court Detail Modal */}
+      <CourtDetailModal
+        visible={showCourtDetailModal}
+        court={
+          COURT_DIRECTORY.find(
+            (c) => c.name === match.locationName || c.address === match.specificAddress
+          ) || {
+            name: match.locationName,
+            address: match.specificAddress || match.locationName,
+            intro: match.courtDescription,
+            coords: coords,
+            phone: match.contactPhone,
+          }
+        }
+        onClose={() => setShowCourtDetailModal(false)}
+      />
     </Screen>
   );
 

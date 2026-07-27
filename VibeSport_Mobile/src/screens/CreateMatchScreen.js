@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import {
   View,
+  Pressable,
   Text,
   TextInput,
   TouchableOpacity,
@@ -17,16 +18,24 @@ import {
   ActivityIndicator,
   Dimensions,
   KeyboardAvoidingView,
+  Keyboard,
+  SafeAreaView,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
+import * as ImagePicker from "expo-image-picker";
+import { openConversation, updateGroupInfo, fetchConversations } from "../redux/chatSlice";
 import { getPostsRequest } from "../services/postApi";
+import { getFollowingListRequest, getUserProfileRequest, getMutualFriendsRequest } from "../services/userApi";
+import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
+import { getCourtsRequest } from "../services/courtService";
 import { Screen } from "../components/Screen";
 import { TagIcon } from "../components/TagIcon";
 import { primary } from "../theme";
 
+import GroupCreationModal from '../components/GroupCreationModal';
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -44,6 +53,12 @@ const formatNumberWithDots = (val) => {
   const digits = val.replace(/[^0-9]/g, "");
   if (!digits) return "";
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+const getInitials = (name) => {
+  if (!name) return "?";
+  const p = name.trim().split(" ");
+  return p.length > 1 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
 };
 
 function PickleballIcon({ color, size = 32 }) {
@@ -619,7 +634,7 @@ const legendStyles = StyleSheet.create({
 // ─── Racket Court (Badminton / Pickleball) ──────────────────────────────────
 const COURT_ASPECT = 1.8; // height/width ratio (portrait court)
 
-function RacketCourt({ maxPlayers, sport }) {
+function RacketCourt({ maxPlayers, sport, selectedIds = [], onToggle }) {
   const courtWidth = SCREEN_WIDTH - 80;
   const courtHeight = courtWidth * COURT_ASPECT;
   const fmt = RACKET_FORMATS[maxPlayers] || RACKET_FORMATS[4];
@@ -628,21 +643,12 @@ function RacketCourt({ maxPlayers, sport }) {
   const sportColor = sport === "pickleball" ? "#f59e0b" : "#3b82f6";
   const sportLabel = sport === "pickleball" ? "Pickleball" : "Cầu lông";
 
-  // Generate player dot positions for each side
-  const generateDots = (side) => {
-    // side: "top" or "bottom"
-    const dots = [];
-    if (perSide === 1) {
-      dots.push({ x: 0.5, y: side === "top" ? 0.22 : 0.78 });
-    } else {
-      dots.push({ x: 0.3, y: side === "top" ? 0.22 : 0.78 });
-      dots.push({ x: 0.7, y: side === "top" ? 0.22 : 0.78 });
-    }
-    return dots;
-  };
-
-  const topDots = generateDots("top");
-  const bottomDots = generateDots("bottom");
+  const allRacketDots = [
+    { id: "racket_a1", label: "A1", x: perSide === 1 ? 0.5 : 0.3, y: 0.22 },
+    { id: "racket_a2", label: "A2", x: 0.7, y: 0.22, hidden: perSide === 1 },
+    { id: "racket_b1", label: "B1", x: perSide === 1 ? 0.5 : 0.3, y: 0.78 },
+    { id: "racket_b2", label: "B2", x: 0.7, y: 0.78, hidden: perSide === 1 },
+  ].filter((d) => !d.hidden);
 
   return (
     <View style={[courtStyles.court, { width: courtWidth, height: courtHeight }]}>
@@ -675,39 +681,38 @@ function RacketCourt({ maxPlayers, sport }) {
         <Text style={[courtStyles.sportBadgeText, { color: sportColor }]}>{sportLabel}</Text>
       </View>
 
-      {/* Player dots top */}
-      {topDots.map((dot, idx) => (
-        <View
-          key={`top_${idx}`}
-          style={[
-            courtStyles.playerDot,
-            {
-              left: dot.x * courtWidth - 18,
-              top: dot.y * courtHeight - 18,
-              backgroundColor: sportColor,
-            },
-          ]}
-        >
-          <Text style={courtStyles.playerDotText}>P{idx + 1}</Text>
-        </View>
-      ))}
+      {/* Interactive Player Dots */}
+      {allRacketDots.map((dot) => {
+        const isSelected = selectedIds.includes(dot.id);
+        const dotSize = isSelected ? 36 : 28;
+        const left = dot.x * courtWidth - dotSize / 2;
+        const top = dot.y * courtHeight - dotSize / 2;
 
-      {/* Player dots bottom */}
-      {bottomDots.map((dot, idx) => (
-        <View
-          key={`bot_${idx}`}
-          style={[
-            courtStyles.playerDot,
-            {
-              left: dot.x * courtWidth - 18,
-              top: dot.y * courtHeight - 18,
-              backgroundColor: sportColor + "cc",
-            },
-          ]}
-        >
-          <Text style={courtStyles.playerDotText}>P{idx + 1}</Text>
-        </View>
-      ))}
+        return (
+          <TouchableOpacity
+            key={dot.id}
+            style={[
+              courtStyles.playerDot,
+              {
+                left,
+                top,
+                width: dotSize,
+                height: dotSize,
+                borderRadius: dotSize / 2,
+                backgroundColor: isSelected ? ORANGE : sportColor,
+                borderColor: isSelected ? "#fff" : "rgba(255,255,255,0.7)",
+                borderWidth: isSelected ? 2 : 1,
+              },
+            ]}
+            onPress={() => onToggle && onToggle(dot.id)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: "#fff", fontSize: isSelected ? 11 : 9.5, fontWeight: "700" }}>
+              {isSelected ? "✓" : dot.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -803,8 +808,82 @@ const courtStyles = StyleSheet.create({
 export default function CreateMatchScreen({ navigation, route }) {
   const user = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
+  const dispatch = useDispatch();
+  const conversations = useSelector((state) => state.chat.conversations || []);
   const editMatch = route?.params?.editMatch ?? null;
   const isEditMode = !!editMatch;
+
+  const [selectedChatGroupId, setSelectedChatGroupId] = useState(
+    editMatch?.chatGroupId?._id || editMatch?.chatGroupId || null
+  );
+  const [showGroupPickerModal, setShowGroupPickerModal] = useState(false);
+  const [showInlineCreateGroupModal, setShowInlineCreateGroupModal] = useState(false);
+  const [newGroupNameInput, setNewGroupNameInput] = useState("");
+  const [creatingGroupInline, setCreatingGroupInline] = useState(false);
+  const [groupCreationStepInline, setGroupCreationStepInline] = useState(1);
+  const [selectedAvatarImage, setSelectedAvatarImage] = useState(null);
+
+  const [mutualFriends, setMutualFriends] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [selectedGroupUserIds, setSelectedGroupUserIds] = useState([]);
+  const [friendSearchText, setFriendSearchText] = useState("");
+
+  const getAvatarColor = (name) => {
+    if (!name) return '#0b74ff';
+    const colors = ['#F59E0B', '#10B981', '#6366F1', '#EC4899', '#8B5CF6', '#3B82F6', '#EF4444'];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const fixMediaUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return url;
+  };
+
+  const loadMutualFriends = async () => {
+    if (!token) return;
+    try {
+      setLoadingFriends(true);
+      const res = await getMutualFriendsRequest(token);
+      setMutualFriends(res.data || []);
+    } catch (err) {
+      console.error("Load mutual friends error:", err);
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const handleToggleSelectGroupUser = (userId) => {
+    const normId = String(userId);
+    setSelectedGroupUserIds((prev) =>
+      prev.includes(normId)
+        ? prev.filter((id) => id !== normId)
+        : [...prev, normId]
+    );
+  };
+
+  const filteredMutualFriends = useMemo(() => {
+    const kw = friendSearchText.trim().toLowerCase();
+    return mutualFriends.filter((f) => {
+      if (!kw) return true;
+      return f.name?.toLowerCase().includes(kw);
+    });
+  }, [mutualFriends, friendSearchText]);
+
+  const userChatGroups = useMemo(() => {
+    return conversations.filter((c) => c.isGroup);
+  }, [conversations]);
+
+  // Load danh sách nhóm chat khi màn hình được focus
+  useFocusEffect(
+    useCallback(() => {
+      if (token) dispatch(fetchConversations());
+    }, [token])
+  );
 
   const [sport, setSport] = useState(editMatch?.sport || "football");
   const [findTeamPosts, setFindTeamPosts] = useState([]);
@@ -847,8 +926,20 @@ export default function CreateMatchScreen({ navigation, route }) {
     editMatch?.date ? parseDateString(editMatch.date) : new Date()
   );
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(editMatch?.startTime || "19:00");
+  const [endTimeSlot, setEndTimeSlot] = useState(editMatch?.endTime || "20:30");
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardDidShow", () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const [costPerPerson, setCostPerPerson] = useState(
     editMatch?.costPerPerson ? String(editMatch.costPerPerson) : ""
   );
@@ -859,6 +950,229 @@ export default function CreateMatchScreen({ navigation, route }) {
       : null
   );
   const [note, setNote] = useState(editMatch?.note || "");
+  const [contactPhone, setContactPhone] = useState(editMatch?.contactPhone || "");
+  const [contactZalo, setContactZalo] = useState(editMatch?.contactZalo || "");
+  const [contactFacebook, setContactFacebook] = useState(editMatch?.contactFacebook || "");
+  const [courtDescription, setCourtDescription] = useState(editMatch?.courtDescription || "");
+  const [specificAddress, setSpecificAddress] = useState(editMatch?.specificAddress || "");
+  const [addressInputType, setAddressInputType] = useState("preset");
+  const [selectedCourtObj, setSelectedCourtObj] = useState(editMatch?.selectedCourtObj || null);
+  const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
+  const [isCourtPresetsExpanded, setIsCourtPresetsExpanded] = useState(false);
+
+  const activePitchType = useMemo(() => {
+    if (sport === "football") {
+      return footballMaxPlayers === 10 ? "Sân 5" : footballMaxPlayers === 14 ? "Sân 7" : "Sân 11";
+    }
+    return racketMaxPlayers === 2 ? "Sân đơn" : "Sân đôi";
+  }, [sport, footballMaxPlayers, racketMaxPlayers]);
+
+  const activeTotalPeople = useMemo(() => {
+    if (sport === "football") {
+      const b1 = Number(benchMembersTeam1 || 0);
+      const b2 = Number(benchMembersTeam2 || 0);
+      return (footballMaxPlayers || 10) + b1 + b2;
+    }
+    if (sport === "badminton" || sport === "pickleball") {
+      return racketMaxPlayers || 4;
+    }
+    return Number(maxPlayersOther || 2);
+  }, [sport, footballMaxPlayers, benchMembersTeam1, benchMembersTeam2, racketMaxPlayers, maxPlayersOther]);
+
+  const activePitchTypeLabel = useMemo(() => {
+    if (sport === "football") {
+      if (footballMaxPlayers === 10) return "Sân 5 - 5vs5";
+      if (footballMaxPlayers === 14) return "Sân 7 - 7vs7";
+      return "Sân 11 - 11vs11";
+    }
+    if (racketMaxPlayers === 2) return "Sân đơn - 1vs1";
+    return "Sân đôi - 2vs2";
+  }, [sport, footballMaxPlayers, racketMaxPlayers]);
+
+  const activePitchDisplayTag = useMemo(() => {
+    if (sport === "football") {
+      if (footballMaxPlayers === 10) return "Sân 5v5";
+      if (footballMaxPlayers === 14) return "Sân 7v7";
+      return "Sân 11v11";
+    }
+    if (racketMaxPlayers === 2) return "Sân 1v1";
+    return "Sân 2v2";
+  }, [sport, footballMaxPlayers, racketMaxPlayers]);
+
+  const checkCourtSupportsPitch = useCallback((court, pitchType) => {
+    if (!court || !pitchType) return false;
+
+    // Check pitchOptions from MongoDB
+    if (Array.isArray(court.pitchOptions) && court.pitchOptions.length > 0) {
+      const targetTag = pitchType.includes("5") ? "5v5" 
+                      : pitchType.includes("7") ? "7v7" 
+                      : pitchType.includes("11") ? "11v11" 
+                      : pitchType.includes("1") || pitchType.includes("đơn") ? "1v1" 
+                      : "2v2";
+      return court.pitchOptions.some((opt) => opt.pitchType === targetTag || opt.pitchType === pitchType);
+    }
+
+    const types = court.pitchTypes || court.fieldTypes;
+    if (!types || !Array.isArray(types) || types.length === 0) return true;
+    
+    const digitMatch = pitchType.match(/\d+/);
+    const targetDigit = digitMatch ? digitMatch[0] : "";
+
+    if (targetDigit) {
+      return types.some((t) => {
+        if (!t) return false;
+        const tStr = String(t);
+        if (tStr === pitchType) return true;
+        const tDigitMatch = tStr.match(/\d+/);
+        return tDigitMatch && tDigitMatch[0] === targetDigit;
+      });
+    }
+
+    return true;
+  }, []);
+
+  const getCourtPriceForPitch = useCallback((court, pitchType) => {
+    if (!court) return 300000;
+
+    // 1. Direct MongoDB pitchOptions array check
+    if (Array.isArray(court.pitchOptions) && court.pitchOptions.length > 0) {
+      const targetTag = pitchType.includes("5") ? "5v5" 
+                      : pitchType.includes("7") ? "7v7" 
+                      : pitchType.includes("11") ? "11v11" 
+                      : pitchType.includes("1") || pitchType.includes("đơn") ? "1v1" 
+                      : "2v2";
+      const foundOpt = court.pitchOptions.find((opt) => opt.pitchType === targetTag || opt.pitchType === pitchType);
+      if (foundOpt && foundOpt.pricePerHour) {
+        return foundOpt.pricePerHour;
+      }
+    }
+
+    // 2. pricesByPitchType object fallback
+    if (court.pricesByPitchType && court.pricesByPitchType[pitchType]) {
+      return court.pricesByPitchType[pitchType];
+    }
+
+    // 3. Mathematical fallback
+    const pFrom = Number(court.priceFrom || court.hourlyRate || 300000);
+    const pTo = Number(court.priceTo || pFrom * 2);
+
+    if (pitchType === "Sân 5" || pitchType.includes("5")) return pFrom;
+    if (pitchType === "Sân 7" || pitchType.includes("7")) return Math.round((pFrom + pTo) / 2);
+    if (pitchType === "Sân 11" || pitchType.includes("11")) return pTo >= 900000 ? pTo : Math.round(pFrom * 2.5);
+
+    if (pitchType === "Sân đơn" || pitchType.includes("đơn") || pitchType.includes("1")) return pFrom;
+    if (pitchType === "Sân đôi" || pitchType.includes("đôi") || pitchType.includes("2")) return pTo > pFrom ? pTo : Math.round(pFrom * 1.5);
+
+    return court.hourlyRate || pFrom;
+  }, []);
+
+  const [dbCourts, setDbCourts] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setDbCourts([]); // Clear previous courts on sport change
+    getCourtsRequest(sport).then((courts) => {
+      if (isMounted && Array.isArray(courts) && courts.length > 0) {
+        setDbCourts(courts);
+      }
+    });
+    return () => { isMounted = false; };
+  }, [sport]);
+
+  const filteredCourts = useMemo(() => {
+    const list = dbCourts.length > 0 ? dbCourts : COURT_DIRECTORY;
+    return list.filter((c) => c.sportType === sport);
+  }, [sport, dbCourts]);
+
+  useEffect(() => {
+    // When activePitchType changes, reset selected court state so user must choose a court for the new pitch type
+    setSelectedCourtObj(null);
+    setLocationName("");
+    setSpecificAddress("");
+    setCostPerPerson("");
+  }, [activePitchType]);
+  const [skillLevel, setSkillLevel] = useState(editMatch?.skillLevel || "Người mới");
+  const [serviceCost, setServiceCost] = useState(
+    editMatch?.serviceCost ? String(editMatch.serviceCost) : (editMatch?.selectedCourtObj?.serviceCost || "31250")
+  );
+  const [selectedContactUser, setSelectedContactUser] = useState(
+    editMatch?.contactAppUser || null
+  );
+  const [showTagUserModal, setShowTagUserModal] = useState(false);
+  const [followingList, setFollowingList] = useState([]);
+  const [loadingFollowing, setLoadingFollowing] = useState(false);
+  const [searchUserQuery, setSearchUserQuery] = useState("");
+
+  const handleOpenTagModal = async () => {
+    if (selectedCourtObj) {
+      Alert.alert(
+        "Chủ sân gắn liền với mẫu sân",
+        `Chủ sân đã được tự động liên kết với mẫu sân "${selectedCourtObj.name}". Để đổi chủ sân khác, vui lòng chọn mẫu sân tương ứng.`
+      );
+      return;
+    }
+    try {
+      setLoadingFollowing(true);
+      setShowTagUserModal(true);
+      const res = await getFollowingListRequest(token);
+      setFollowingList(res?.data || []);
+    } catch (err) {
+      Alert.alert("Lỗi", "Không thể tải danh sách người theo dõi");
+    } finally {
+      setLoadingFollowing(false);
+    }
+  };
+
+  const handleSelectTagUser = (u) => {
+    setSelectedContactUser(u);
+    const userPhone = u?.phone || u?.phoneNumber || u?.contactPhone || "";
+    if (userPhone) {
+      setContactPhone(userPhone);
+    } else {
+      const targetId = u?._id || u?.id;
+      if (targetId) {
+        getUserProfileRequest(targetId, token)
+          .then((res) => {
+            const fullUserData = res?.data || res;
+            if (fullUserData?.phone) {
+              setContactPhone(fullUserData.phone);
+              setSelectedContactUser((prev) => (prev ? { ...prev, phone: fullUserData.phone } : prev));
+            }
+          })
+          .catch(() => {});
+      }
+    }
+    setShowTagUserModal(false);
+    setSearchUserQuery("");
+  };
+
+  useEffect(() => {
+    if (selectedContactUser) {
+      const userPhone = selectedContactUser.phone || selectedContactUser.phoneNumber || selectedContactUser.contactPhone || "";
+      if (userPhone) {
+        setContactPhone(userPhone);
+      } else {
+        const targetId = selectedContactUser._id || selectedContactUser.id;
+        if (targetId) {
+          getUserProfileRequest(targetId, token)
+            .then((res) => {
+              const fullUserData = res?.data || res;
+              if (fullUserData?.phone) {
+                setContactPhone(fullUserData.phone);
+                setSelectedContactUser((prev) => (prev ? { ...prev, phone: fullUserData.phone } : prev));
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    }
+  }, [selectedContactUser, token]);
+
+  const filteredFollowingList = useMemo(() => {
+    if (!searchUserQuery.trim()) return followingList;
+    const q = searchUserQuery.toLowerCase().trim();
+    return followingList.filter((u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+  }, [followingList, searchUserQuery]);
 
   // ── Position map state ──
   // selectedPositionIds: list of position ids ticked on the pitch
@@ -900,6 +1214,219 @@ export default function CreateMatchScreen({ navigation, route }) {
     return 4; // default is 2 vs 2
   });
 
+  // ── Effect to update/reset form fields when editMatch changes ──
+  useEffect(() => {
+    if (editMatch) {
+      setSport(editMatch.sport || "football");
+      setTitle(editMatch.title || "");
+      setSelectedDate(editMatch.date ? parseDateString(editMatch.date) : new Date());
+      setSelectedTimeSlot(editMatch.startTime || "19:00");
+      setEndTimeSlot(editMatch.endTime || "20:30");
+      setCostPerPerson(editMatch.costPerPerson ? String(editMatch.costPerPerson) : "");
+      setLocationName(editMatch.locationName || "");
+      setLocationCoords(editMatch.location?.lat != null ? { lat: editMatch.location.lat, lng: editMatch.location.lng } : null);
+      setNote(editMatch.note || "");
+      setContactPhone(editMatch.contactPhone || "");
+      setContactZalo(editMatch.contactZalo || "");
+      setContactFacebook(editMatch.contactFacebook || "");
+      setCourtDescription(editMatch.courtDescription || "");
+      setSpecificAddress(editMatch.specificAddress || "");
+      setSkillLevel(editMatch.skillLevel || "Người mới");
+      setServiceCost(editMatch.serviceCost ? String(editMatch.serviceCost) : "31250");
+      setSelectedContactUser(editMatch.contactAppUser || null);
+      setSelectedPositionIds(editMatch.selectedPositionIds || []);
+      setBenchMembersTeam1(editMatch.benchMembersTeam1 ? String(editMatch.benchMembersTeam1) : "");
+      setBenchMembersTeam2(editMatch.benchMembersTeam2 ? String(editMatch.benchMembersTeam2) : "");
+      setMaxPlayersOther(editMatch.maxPlayers ? String(editMatch.maxPlayers) : "2");
+      setSelectedChatGroupId(editMatch.chatGroupId?._id || editMatch.chatGroupId || null);
+      if (editMatch.sport === "football" && editMatch.maxPlayers) {
+        setFootballMaxPlayers(editMatch.maxPlayers);
+      }
+      if ((editMatch.sport === "badminton" || editMatch.sport === "pickleball") && editMatch.maxPlayers) {
+        setRacketMaxPlayers(editMatch.maxPlayers);
+      }
+    } else {
+      setSport("football");
+      setTitle("");
+      setSelectedDate(new Date());
+      setSelectedTimeSlot("19:00");
+      setEndTimeSlot("20:30");
+      setCostPerPerson("");
+      setLocationName("");
+      setLocationCoords(null);
+      setNote("");
+      setContactPhone("");
+      setContactZalo("");
+      setContactFacebook("");
+      setCourtDescription("");
+      setSpecificAddress("");
+      setSkillLevel("Người mới");
+      setServiceCost("31250");
+      setSelectedContactUser(null);
+      setSelectedPositionIds([]);
+      setBenchMembersTeam1("");
+      setBenchMembersTeam2("");
+      setMaxPlayersOther("2");
+      setFootballMaxPlayers(22);
+      setRacketMaxPlayers(4);
+      setSelectedCourtObj(null);
+      setSelectedChatGroupId(null);
+    }
+  }, [editMatch]);
+
+  const handleOpenCreateGroupModal = () => {
+    setShowGroupPickerModal(false);
+    setShowInlineCreateGroupModal(true);
+    setGroupCreationStepInline(1);
+    setNewGroupNameInput("");
+    setSelectedGroupUserIds([]);
+    setFriendSearchText("");
+    setSelectedAvatarImage(null);
+    loadMutualFriends();
+  };
+
+  const handleNextStepInline = () => {
+    if (selectedGroupUserIds.length >= 1) {
+      setGroupCreationStepInline(2);
+    }
+  };
+
+  const handlePickGroupAvatar = () => {
+    Alert.alert(
+      'Chọn ảnh đại diện nhóm',
+      'Chọn phương thức để lấy ảnh',
+      [
+        {
+          text: 'Chụp ảnh mới',
+          onPress: () => processGroupImagePick('camera')
+        },
+        {
+          text: 'Chọn từ thư viện',
+          onPress: () => processGroupImagePick('library')
+        },
+        { text: 'Hủy', style: 'cancel' }
+      ]
+    );
+  };
+
+  const processGroupImagePick = async (mode) => {
+    try {
+      let result;
+      if (mode === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập máy ảnh để chụp ảnh.');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.5,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện để chọn ảnh.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.5,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedAvatarImage(result.assets[0]);
+      }
+    } catch (err) {
+      console.error('Lỗi chọn ảnh nhóm:', err);
+      Alert.alert('Lỗi', 'Không thể chọn ảnh.');
+    }
+  };
+
+  const handleCreateGroupInline = async () => {
+    if (!newGroupNameInput.trim() || selectedGroupUserIds.length < 1) return;
+    setCreatingGroupInline(true);
+    try {
+      const result = await dispatch(
+        openConversation({ recipientIds: selectedGroupUserIds, name: newGroupNameInput.trim() })
+      ).unwrap();
+
+      const newConv = result.data || result;
+      const createdId = newConv?._id || newConv?.id;
+
+      if (selectedAvatarImage && createdId) {
+        try {
+          const formData = new FormData();
+          formData.append('name', newGroupNameInput.trim());
+
+          const uri = selectedAvatarImage.uri;
+          const uriParts = uri.split('.');
+          const fileType = uriParts[uriParts.length - 1];
+          const fileName = uri.split('/').pop();
+
+          formData.append('avatar', {
+            uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+            name: fileName || `avatar.${fileType}`,
+            type: `image/${fileType}`,
+          });
+
+          await dispatch(updateGroupInfo({ conversationId: createdId, formData })).unwrap();
+        } catch (uploadErr) {
+          console.error('Lỗi upload avatar lúc tạo nhóm:', uploadErr);
+        }
+      }
+
+      if (createdId) {
+        setSelectedChatGroupId(createdId);
+        Alert.alert("Thành công", `Đã tạo nhóm "${newGroupNameInput.trim()}" và gắn vào trận đấu!`);
+      }
+
+      setShowInlineCreateGroupModal(false);
+      setShowGroupPickerModal(false);
+      setNewGroupNameInput("");
+      setSelectedGroupUserIds([]);
+      setSelectedAvatarImage(null);
+      setGroupCreationStepInline(1);
+    } catch (err) {
+      Alert.alert('Lỗi', typeof err === 'string' ? err : 'Không thể tạo nhóm trò chuyện');
+    } finally {
+      setCreatingGroupInline(false);
+    }
+  };
+
+  const renderFriendItem = ({ item }) => {
+    const fId = String(item._id || item.id);
+    const isSelected = selectedGroupUserIds.includes(fId);
+    const displayName = item.name || 'Thành viên VibeSport';
+    const avatarColor = getAvatarColor(displayName);
+
+    return (
+      <TouchableOpacity
+        style={styles.friendItem}
+        activeOpacity={0.8}
+        onPress={() => handleToggleSelectGroupUser(fId)}
+      >
+        {item.picture ? (
+          <Image source={{ uri: fixMediaUrl(item.picture) }} style={styles.friendAvatar} />
+        ) : (
+          <View style={[styles.friendAvatarFallback, { backgroundColor: avatarColor }]}>
+            <Text style={styles.friendAvatarText}>{getInitials(displayName)}</Text>
+          </View>
+        )}
+        <Text style={styles.friendName} numberOfLines={1}>
+          {displayName}
+        </Text>
+        <View style={[styles.checkCircle, isSelected && styles.checkCircleSelected]}>
+          {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   // Format helpers
   const formatDate = (d) => {
     const day = String(d.getDate()).padStart(2, "0");
@@ -930,9 +1457,9 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
   };
 
-  const onTimeChange = (event, date) => {
+  const onStartTimeChange = (event, date) => {
     if (Platform.OS === "android") {
-      setShowTimePicker(false);
+      setShowStartTimePicker(false);
     }
     if (event.type === "set" && date) {
       const hh = String(date.getHours()).padStart(2, "0");
@@ -941,12 +1468,40 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
   };
 
-  const getTimeDate = (timeStr) => {
-    const [h, m] = (timeStr || "19:00").split(":").map(Number);
+  const onEndTimeChange = (event, date) => {
+    if (Platform.OS === "android") {
+      setShowEndTimePicker(false);
+    }
+    if (event.type === "set" && date) {
+      const hh = String(date.getHours()).padStart(2, "0");
+      const mm = String(date.getMinutes()).padStart(2, "0");
+      setEndTimeSlot(`${hh}:${mm}`);
+    }
+  };
+
+  const getTimeDate = (timeStr, defaultHour = 19, defaultMin = 0) => {
+    const [h, m] = (timeStr || `${defaultHour}:${defaultMin}`).split(":").map(Number);
     const d = new Date();
-    d.setHours(h ?? 19, m ?? 0, 0, 0);
+    d.setHours(h ?? defaultHour, m ?? defaultMin, 0, 0);
     return d;
   };
+
+  const calculateTotalHours = useCallback((startTimeStr, endTimeStr) => {
+    if (!startTimeStr || !endTimeStr) return 1;
+    const [startH, startM] = startTimeStr.split(":").map(Number);
+    const [endH, endM] = endTimeStr.split(":").map(Number);
+    
+    let startMin = (startH || 0) * 60 + (startM || 0);
+    let endMin = (endH || 0) * 60 + (endM || 0);
+
+    if (endMin <= startMin) {
+      endMin += 24 * 60;
+    }
+
+    const diffMin = endMin - startMin;
+    const hours = diffMin / 60;
+    return Math.max(hours, 0.5);
+  }, []);
 
   const buildFormDraft = useCallback(
     () => ({
@@ -964,6 +1519,16 @@ export default function CreateMatchScreen({ navigation, route }) {
       benchMembersTeam2,
       locationName,
       locationCoords,
+      contactPhone,
+      contactZalo,
+      contactFacebook,
+      courtDescription,
+      specificAddress,
+      skillLevel,
+      serviceCost,
+      selectedContactUser,
+      addressInputType,
+      selectedCourtObj,
     }),
     [
       sport,
@@ -980,6 +1545,16 @@ export default function CreateMatchScreen({ navigation, route }) {
       benchMembersTeam2,
       locationName,
       locationCoords,
+      contactPhone,
+      contactZalo,
+      contactFacebook,
+      courtDescription,
+      specificAddress,
+      skillLevel,
+      serviceCost,
+      selectedContactUser,
+      addressInputType,
+      selectedCourtObj,
     ]
   );
 
@@ -999,6 +1574,16 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (draft.benchMembersTeam2 != null) setBenchMembersTeam2(String(draft.benchMembersTeam2));
     if (draft.locationName != null) setLocationName(draft.locationName);
     if (draft.locationCoords) setLocationCoords(draft.locationCoords);
+    if (draft.contactPhone != null) setContactPhone(draft.contactPhone);
+    if (draft.contactZalo != null) setContactZalo(draft.contactZalo);
+    if (draft.contactFacebook != null) setContactFacebook(draft.contactFacebook);
+    if (draft.courtDescription != null) setCourtDescription(draft.courtDescription);
+    if (draft.specificAddress != null) setSpecificAddress(draft.specificAddress);
+    if (draft.skillLevel != null) setSkillLevel(draft.skillLevel);
+    if (draft.serviceCost != null) setServiceCost(String(draft.serviceCost));
+    if (draft.selectedContactUser !== undefined) setSelectedContactUser(draft.selectedContactUser);
+    if (draft.addressInputType !== undefined) setAddressInputType(draft.addressInputType);
+    if (draft.selectedCourtObj !== undefined) setSelectedCourtObj(draft.selectedCourtObj);
   }, []);
 
   // Khôi phục form khi quay lại từ MapPicker
@@ -1040,6 +1625,7 @@ export default function CreateMatchScreen({ navigation, route }) {
 
   const handleSelectFootballMaxPlayers = (maxP) => {
     setFootballMaxPlayers(maxP);
+    setIsCourtPresetsExpanded(true);
     const limit = (FOOTBALL_FORMATS[maxP] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
     setSelectedPositionIds((prev) => {
       const t1 = prev.filter((id) => id.startsWith("t1_"));
@@ -1113,7 +1699,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       return;
     }
     const num = parseInt(digits, 10);
-    setCostPerPerson(String(Math.min(num, MAX_COST_PER_PERSON)));
+    setCostPerPerson(String(num));
   };
 
   const handleBenchTeam1Change = (text) => {
@@ -1192,6 +1778,10 @@ export default function CreateMatchScreen({ navigation, route }) {
       title: title.trim(),
       date: formatDate(selectedDate),
       startTime: selectedTimeSlot,
+      endTime: endTimeSlot,
+      time: `${selectedTimeSlot} - ${endTimeSlot}`,
+      totalHours: calculateTotalHours(selectedTimeSlot, endTimeSlot),
+      totalCourtCost: Math.round(Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot)),
       maxPlayers,
       positionsNeeded: sport === "football" ? positionsNeeded : [],
       selectedPositionIds: sport === "football" ? selectedPositionIds : [],
@@ -1206,6 +1796,15 @@ export default function CreateMatchScreen({ navigation, route }) {
         address: locationName.trim(),
       },
       note: note.trim(),
+      contactPhone: contactPhone.trim(),
+      contactZalo: contactZalo.trim(),
+      contactFacebook: contactFacebook.trim(),
+      courtDescription: courtDescription.trim(),
+      specificAddress: specificAddress.trim(),
+      skillLevel,
+      serviceCost: Number(serviceCost || 0),
+      chatGroupId: selectedChatGroupId || null,
+      contactAppUser: selectedContactUser ? (selectedContactUser._id || selectedContactUser.id) : null,
       ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
     };
   };
@@ -1235,14 +1834,6 @@ export default function CreateMatchScreen({ navigation, route }) {
       Alert.alert("Dữ liệu không hợp lệ", "Số người tham gia phải lớn hơn 0");
       return false;
     }
-    const cost = Number(costPerPerson || 0);
-    if (cost > MAX_COST_PER_PERSON) {
-      Alert.alert(
-        "Dữ liệu không hợp lệ",
-        `Chi phí tối đa là ${MAX_COST_PER_PERSON.toLocaleString("vi-VN")} VND/người`
-      );
-      return false;
-    }
     if (sport === "football") {
       if (benchMembersTeam1 && Number(benchMembersTeam1) > 3) {
         Alert.alert("Dữ liệu không hợp lệ", "Đội 1 tối đa là 3 thành viên dự bị");
@@ -1269,6 +1860,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             text: "OK",
             onPress: () => {
               if (navigation) {
+                navigation.setParams({ editMatch: null });
                 navigation.navigate("Home", { screen: "MatchesTab" });
               }
             }
@@ -1278,13 +1870,14 @@ export default function CreateMatchScreen({ navigation, route }) {
         await createMatch(payload, token);
         Alert.alert(
           "Thành công",
-          "Đã tạo đội của bạn thành công và đồng bộ với trận đấu!",
+          "Đã tạo trận đấu thành công!",
           [
             {
               text: "OK",
               onPress: () => {
                 if (navigation) {
-                  navigation.navigate("Home", { screen: "TeamsTab" });
+                  navigation.setParams({ editMatch: null });
+                  navigation.navigate("Home", { screen: "MatchesTab" });
                 }
               }
             }
@@ -1367,11 +1960,20 @@ export default function CreateMatchScreen({ navigation, route }) {
           </View>
 
           {/* Pitch */}
-          <FootballPitch
-            selectedIds={selectedPositionIds}
-            onToggle={togglePosition}
-            maxPlayers={footballMaxPlayers}
-          />
+          {sport === "football" ? (
+            <FootballPitch
+              selectedIds={selectedPositionIds}
+              onToggle={togglePosition}
+              maxPlayers={footballMaxPlayers}
+            />
+          ) : (
+            <RacketCourt
+              maxPlayers={racketMaxPlayers}
+              sport={sport}
+              selectedIds={selectedPositionIds}
+              onToggle={togglePosition}
+            />
+          )}
 
           {/* Role adjustment */}
           <View style={pitchModal.breakdownBox}>
@@ -1480,7 +2082,7 @@ export default function CreateMatchScreen({ navigation, route }) {
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ flex: 1 }}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
@@ -1568,7 +2170,10 @@ export default function CreateMatchScreen({ navigation, route }) {
                   label={item.label}
                   subLabel={item.count}
                   isSelected={racketMaxPlayers === item.maxPlayers}
-                  onPress={() => setRacketMaxPlayers(item.maxPlayers)}
+                  onPress={() => {
+                    setRacketMaxPlayers(item.maxPlayers);
+                    setIsCourtPresetsExpanded(true);
+                  }}
                 />
               ))}
             </>
@@ -1587,7 +2192,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           />
         </View>
 
-        {/* Ngày & Giờ bắt đầu */}
+        {/* Ngày & Giờ bắt đầu và kết thúc */}
         <View style={styles.dateTimeRow}>
           <View style={styles.dateTimeCol}>
             <Text style={styles.sectionLabel}>Ngày/ tháng/ Năm</Text>
@@ -1601,16 +2206,36 @@ export default function CreateMatchScreen({ navigation, route }) {
               </Text>
             </TouchableOpacity>
           </View>
+        </View>
 
+        <Text style={styles.sectionLabel}>Giờ bắt đầu và kết thúc</Text>
+        <View style={styles.dateTimeRow}>
           <View style={styles.dateTimeCol}>
-            <Text style={styles.sectionLabel}>Giờ bắt đầu</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280", marginBottom: 4 }}>
+              Giờ bắt đầu
+            </Text>
             <TouchableOpacity
               style={styles.pickerButton}
-              onPress={() => setShowTimePicker(true)}
+              onPress={() => setShowStartTimePicker(true)}
               activeOpacity={0.7}
             >
               <Text style={styles.pickerButtonText}>
-                {getTimeLabel(selectedTimeSlot)}
+                🕐 {getTimeLabel(selectedTimeSlot)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.dateTimeCol}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280", marginBottom: 4 }}>
+              Giờ kết thúc
+            </Text>
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => setShowEndTimePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.pickerButtonText}>
+                🕕 {getTimeLabel(endTimeSlot)}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1650,32 +2275,69 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Modal>
         )}
 
-        {/* Time Picker */}
-        {showTimePicker && Platform.OS === "android" && (
+        {/* Time Pickers (Start & End) */}
+        {/* Start Time Android */}
+        {showStartTimePicker && Platform.OS === "android" && (
           <DateTimePicker
-            value={getTimeDate(selectedTimeSlot)}
+            value={getTimeDate(selectedTimeSlot, 19, 0)}
             mode="time"
             display="spinner"
             is24Hour={true}
-            onChange={onTimeChange}
+            onChange={onStartTimeChange}
           />
         )}
+        {/* Start Time iOS */}
         {Platform.OS === "ios" && (
-          <Modal visible={showTimePicker} transparent animationType="slide">
+          <Modal visible={showStartTimePicker} transparent animationType="slide">
             <View style={styles.modalOverlay}>
               <View style={styles.timeModalContent}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>🕐 Chọn giờ bắt đầu</Text>
-                  <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <TouchableOpacity onPress={() => setShowStartTimePicker(false)}>
                     <Text style={styles.modalDone}>Xong</Text>
                   </TouchableOpacity>
                 </View>
                 <DateTimePicker
-                  value={getTimeDate(selectedTimeSlot)}
+                  value={getTimeDate(selectedTimeSlot, 19, 0)}
                   mode="time"
                   display="spinner"
                   is24Hour={true}
-                  onChange={onTimeChange}
+                  onChange={onStartTimeChange}
+                  style={{ height: 200 }}
+                  locale="vi-VN"
+                />
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* End Time Android */}
+        {showEndTimePicker && Platform.OS === "android" && (
+          <DateTimePicker
+            value={getTimeDate(endTimeSlot, 20, 30)}
+            mode="time"
+            display="spinner"
+            is24Hour={true}
+            onChange={onEndTimeChange}
+          />
+        )}
+        {/* End Time iOS */}
+        {Platform.OS === "ios" && (
+          <Modal visible={showEndTimePicker} transparent animationType="slide">
+            <View style={styles.modalOverlay}>
+              <View style={styles.timeModalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>🕕 Chọn giờ kết thúc</Text>
+                  <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                    <Text style={styles.modalDone}>Xong</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={getTimeDate(endTimeSlot, 20, 30)}
+                  mode="time"
+                  display="spinner"
+                  is24Hour={true}
+                  onChange={onEndTimeChange}
                   style={{ height: 200 }}
                   locale="vi-VN"
                 />
@@ -1685,68 +2347,448 @@ export default function CreateMatchScreen({ navigation, route }) {
         )}
 
         {/* Sơ đồ & Số người cần tìm */}
-        {sport === "football" ? (
-          <>
-            <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
-            
-            <View style={styles.pitchTriggerContainer}>
-              <View style={styles.pitchTriggerShadow} />
-              <TouchableOpacity
-                style={styles.pitchTriggerContent}
-                onPress={() => setShowPitchModal(true)}
-                activeOpacity={0.9}
-              >
-                <View style={styles.pitchTriggerLeft}>
-                  <SoccerFieldIcon color="#1A1A1A" />
-                  <View style={styles.pitchTriggerTextContainer}>
-                    <Text style={styles.pitchTriggerTitle}>
-                      Sơ đồ vị trí ( {footballMaxPlayers === 10 ? "5vs 5" : footballMaxPlayers === 14 ? "7vs 7" : "11vs 11"} )
-                    </Text>
-                    <Text style={styles.pitchTriggerSub}>Nhấn để mở sơ đồ</Text>
-                  </View>
+        <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
+        
+        <View style={styles.pitchTriggerContainer}>
+          <View style={styles.pitchTriggerShadow} />
+          <TouchableOpacity
+            style={styles.pitchTriggerContent}
+            onPress={() => setShowPitchModal(true)}
+            activeOpacity={0.9}
+          >
+            <View style={styles.pitchTriggerLeft}>
+              {sport === "football" ? (
+                <SoccerFieldIcon color="#1A1A1A" />
+              ) : (
+                <Ionicons name={sport === "pickleball" ? "trophy-outline" : "tennisball-outline"} size={24} color="#1A1A1A" />
+              )}
+              <View style={styles.pitchTriggerTextContainer}>
+                <Text style={styles.pitchTriggerTitle}>
+                  {sport === "football"
+                    ? `Sơ đồ vị trí ( ${footballMaxPlayers === 10 ? "5vs 5" : footballMaxPlayers === 14 ? "7vs 7" : "11vs 11"} )`
+                    : `Sơ đồ vị trí ( ${racketMaxPlayers === 2 ? "Sân đơn" : "Sân đôi"} )`}
+                </Text>
+                <Text style={styles.pitchTriggerSub}>Nhấn để mở sơ đồ</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Role / position chips summary */}
+        {selectedPositionIds.length > 0 && (
+          <View style={styles.roleChipsRow}>
+            {sport === "football" ? (
+              Object.entries(selectedRoleSummary).map(([role, qty]) => (
+                <View key={role} style={styles.roleChip}>
+                  <Text style={styles.roleChipText}>
+                    {roleLabels[role]} x{qty}
+                  </Text>
                 </View>
+              ))
+            ) : (
+              selectedPositionIds.map((posId) => {
+                const posLabel = {
+                  racket_a1: "Bên A (TV 1)",
+                  racket_a2: "Bên A (TV 2)",
+                  racket_b1: "Bên B (TV 1)",
+                  racket_b2: "Bên B (TV 2)",
+                }[posId] || posId;
+                return (
+                  <View key={posId} style={styles.roleChip}>
+                    <Text style={styles.roleChipText}>{posLabel}</Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        <Text style={styles.sectionLabel}>Số người cần tìm</Text>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.input}
+            value={
+              sport === "football"
+                ? (totalNeeded > 0 ? `${totalNeeded} người` : "")
+                : (selectedPositionIds.length > 0 ? `${selectedPositionIds.length} người` : "Chưa chọn (Tự do)")
+            }
+            placeholder={sport === "football" ? "3 người" : "1 người"}
+            placeholderTextColor="#bbb"
+            editable={false}
+          />
+        </View>
+
+        {/* Notice Banner & Địa điểm sân (Short title) */}
+        <Text style={styles.sectionLabel}>Địa điểm sân</Text>
+
+        <View style={{
+          backgroundColor: "#FFFBEB",
+          borderWidth: 1,
+          borderColor: "#FCD34D",
+          borderRadius: 12,
+          padding: 10,
+          marginBottom: 10,
+          flexDirection: "row",
+          gap: 8,
+          alignItems: "flex-start",
+        }}>
+          <Ionicons name="warning" size={18} color="#D97706" style={{ marginTop: 2 }} />
+          <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 17, fontWeight: "500" }}>
+            <Text style={{ fontWeight: "700" }}>Lưu ý: </Text>
+            VibeSport chỉ cung cấp thông tin sân. Vui lòng liên hệ sân để xác nhận tình trạng còn trống trước khi tạo hoặc tham gia trận đấu.
+          </Text>
+        </View>
+
+        {/* Sleek Court Picker Card matching User Image design */}
+        {!isCourtPresetsExpanded ? (
+          <TouchableOpacity
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#FFFFFF",
+              borderRadius: 24,
+              height: 56,
+              paddingHorizontal: 16,
+              borderWidth: 1,
+              borderColor: "#E5E7EB",
+              elevation: 1,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.04,
+              shadowRadius: 3,
+              marginBottom: 12,
+            }}
+            onPress={() => setIsCourtPresetsExpanded(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="location-outline" size={24} color="#1F2937" style={{ marginRight: 12 }} />
+            
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: selectedCourtObj || specificAddress ? "#111827" : "#6B7280" }} numberOfLines={1}>
+                {selectedCourtObj 
+                  ? selectedCourtObj.name 
+                  : (specificAddress || "Chọn sân")}
+              </Text>
+              {selectedCourtObj ? (
+                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 1 }} numberOfLines={1}>
+                  {selectedCourtObj.address}
+                </Text>
+              ) : null}
+            </View>
+
+            <Ionicons name="chevron-down" size={22} color="#6B7280" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: 20,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: "#E5E7EB",
+            elevation: 2,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            marginBottom: 12,
+          }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="location-outline" size={22} color="#1F2937" />
+                <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
+                  Chọn sân 
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={{ padding: 4 }}
+                onPress={() => setIsCourtPresetsExpanded(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="chevron-up" size={22} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            {/* Role chips summary */}
-            {Object.keys(selectedRoleSummary).length > 0 && (
-              <View style={styles.roleChipsRow}>
-                {Object.entries(selectedRoleSummary).map(([role, qty]) => (
-                  <View
-                    key={role}
-                    style={styles.roleChip}
-                  >
-                    <Text style={styles.roleChipText}>
-                      {roleLabels[role]} x{qty}
-                    </Text>
-                  </View>
-                ))}
+            <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+              {[
+                { mode: "preset", label: "Mẫu sân" },
+                { mode: "map", label: "Bản đồ" },
+                { mode: "custom", label: "Tự nhập" },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.mode}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    borderRadius: 16,
+                    backgroundColor: addressInputType === item.mode ? ORANGE : "#F3F4F6",
+                    alignItems: "center",
+                  }}
+                  onPress={() => setAddressInputType(item.mode)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{
+                    color: addressInputType === item.mode ? "#fff" : "#374151",
+                    fontSize: 13,
+                    fontWeight: "600"
+                  }}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Mẫu sân list */}
+            {addressInputType === "preset" && (
+              <View style={{ gap: 8 }}>
+                {filteredCourts.map((court) => {
+                  const isSelected = Boolean(selectedCourtObj) && Boolean(
+                    (court._id && selectedCourtObj._id === court._id) ||
+                    (court.id && selectedCourtObj.id === court.id) ||
+                    (court.name && selectedCourtObj.name === court.name)
+                  );
+                  
+                  const activePitchKey = sport === "football"
+                    ? (footballMaxPlayers === 10 ? "5v5" : footballMaxPlayers === 14 ? "7v7" : "11v11")
+                    : (racketMaxPlayers === 2 ? "1v1" : "2v2");
+
+                  const activePitchDisplayTag = sport === "football"
+                    ? (footballMaxPlayers === 10 ? "Sân 5v5" : footballMaxPlayers === 14 ? "Sân 7v7" : "Sân 11v11")
+                    : (racketMaxPlayers === 2 ? "Sân 1v1" : "Sân 2v2");
+
+                  let isSupported = true;
+                  let priceForActiveType = court.hourlyRate || court.priceFrom || 300000;
+
+                  if (Array.isArray(court.pitchOptions) && court.pitchOptions.length > 0) {
+                    const opt = court.pitchOptions.find((o) => o.pitchType === activePitchKey);
+                    if (opt && opt.pricePerHour) {
+                      isSupported = true;
+                      priceForActiveType = opt.pricePerHour;
+                    } else {
+                      isSupported = false;
+                    }
+                  } else if (court.pricesByPitchType) {
+                    const pKey = footballMaxPlayers === 10 ? "Sân 5" : footballMaxPlayers === 14 ? "Sân 7" : "Sân 11";
+                    if (court.pricesByPitchType[pKey]) {
+                      isSupported = true;
+                      priceForActiveType = court.pricesByPitchType[pKey];
+                    } else {
+                      isSupported = false;
+                    }
+                  } else if (court.pitchTypes || court.fieldTypes) {
+                    const types = court.pitchTypes || court.fieldTypes;
+                    const targetDigit = footballMaxPlayers === 10 ? "5" : footballMaxPlayers === 14 ? "7" : "11";
+                    isSupported = types.some((t) => String(t).includes(targetDigit));
+                    if (isSupported) {
+                      const pFrom = Number(court.priceFrom || 300000);
+                      const pTo = Number(court.priceTo || pFrom * 2);
+                      priceForActiveType = footballMaxPlayers === 10 ? pFrom : footballMaxPlayers === 14 ? Math.round((pFrom + pTo) / 2) : (pTo >= 900000 ? pTo : Math.round(pFrom * 2.5));
+                    }
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={court._id || court.id || `court_${court.name}`}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        padding: 12,
+                        backgroundColor: isSelected ? "#FFF7ED" : isSupported ? "#F9FAFB" : "#F3F4F6",
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: isSelected ? ORANGE : "#E5E7EB",
+                        opacity: isSupported ? 1 : 0.45,
+                        gap: 10,
+                      }}
+                      onPress={() => {
+                        if (!isSupported) {
+                          Alert.alert("Sân không hỗ trợ", `${court.name} không có sẵn loại ${activePitchDisplayTag}. Vui lòng chọn sân khác.`);
+                          return;
+                        }
+                        setSelectedCourtObj(court);
+                        setLocationName(court.name);
+                        setSpecificAddress(court.address);
+                        setCourtDescription(court.intro || court.description);
+                        setCostPerPerson(String(priceForActiveType));
+                        setServiceCost(String(court.serviceCost || court.serviceDetails?.avgServiceCost || 31250));
+                        setLocationCoords(court.locationCoords || court.coords);
+                        const targetOwner = (typeof court.owner === "object" && court.owner !== null)
+                          ? court.owner
+                          : (court.ownerUser || {
+                            _id: typeof court.owner === "string" ? court.owner : (court.ownerId || "6a6465f17b201152379c08cc"),
+                            id: typeof court.owner === "string" ? court.owner : (court.ownerId || "6a6465f17b201152379c08cc"),
+                            name: court.ownerName || court.contactName || (court.name ? `Chủ sân ${court.name}` : "Chủ sân"),
+                            phone: court.phone || court.contactPhone || "",
+                            picture: court.ownerPicture || null,
+                          });
+
+                        setSelectedContactUser(targetOwner);
+                        setContactPhone(targetOwner.phone || targetOwner.phoneNumber || court.phone || "");
+                        setIsCourtPresetsExpanded(false);
+                      }}
+                    >
+                      <Ionicons
+                        name={isSelected ? "radio-button-on" : "radio-button-off"}
+                        size={18}
+                        color={isSelected ? ORANGE : "#9CA3AF"}
+                      />
+                      <View style={{ flex: 1 }}>
+                        {/* 1. Tên sân & Tag môn */}
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                          <Text style={{ fontSize: 14, color: isSupported ? "#111827" : "#9CA3AF", fontWeight: "700", flex: 1 }}>
+                            {court.name}
+                          </Text>
+                          {(() => {
+                            const tagMap = {
+                              football: { label: "Bóng đá", bg: "#ECFDF5", color: "#047857", border: "#A7F3D0" },
+                              badminton: { label: "Cầu lông", bg: "#EFF6FF", color: "#1D4ED8", border: "#BFDBFE" },
+                              pickleball: { label: "Pickleball", bg: "#F3E8FF", color: "#7E22CE", border: "#E9D5FF" },
+                            };
+                            const tag = tagMap[court.sportType] || tagMap.football;
+                            return (
+                              <View style={{
+                                backgroundColor: tag.bg,
+                                borderColor: tag.border,
+                                borderWidth: 1,
+                                paddingHorizontal: 7,
+                                paddingVertical: 2,
+                                borderRadius: 10,
+                              }}>
+                                <Text style={{ color: tag.color, fontSize: 10, fontWeight: "700" }}>
+                                  {tag.label}
+                                </Text>
+                              </View>
+                            );
+                          })()}
+                        </View>
+
+                        {/* Thông báo nếu không hỗ trợ */}
+                        {!isSupported && (
+                          <Text style={{ fontSize: 11, color: "#EF4444", fontWeight: "600", marginTop: 2 }}>
+                            (Không hỗ trợ {activePitchDisplayTag})
+                          </Text>
+                        )}
+
+                        {/* 2. Địa điểm */}
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
+                          <Ionicons name="location-outline" size={13} color="#6B7280" />
+                          <Text style={{ fontSize: 12, color: "#6B7280" }} numberOfLines={1}>
+                            {court.address}
+                          </Text>
+                        </View>
+
+                        {/* 3, 4 & Tag Giá Dịch Vụ */}
+                        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                          <View style={{
+                            backgroundColor: "#FFF7ED",
+                            borderWidth: 1,
+                            borderColor: "#FFD8A8",
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                          }}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2410C" }}>
+                              {activePitchDisplayTag}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 12.5, color: ORANGE, fontWeight: "800" }}>
+                            {formatNumberWithDots(String(priceForActiveType))}đ / giờ
+                          </Text>
+
+                          <View style={{
+                            backgroundColor: "#F3F4F6",
+                            borderWidth: 1,
+                            borderColor: "#E5E7EB",
+                            paddingHorizontal: 7,
+                            paddingVertical: 2.5,
+                            borderRadius: 6,
+                            marginLeft: "auto",
+                          }}>
+                            <Text style={{ fontSize: 10.5, color: "#374151", fontWeight: "600" }}>
+                              Giá DV ≈ {formatNumberWithDots(String(court.serviceCost || 31250))}đ
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 
-            <Text style={styles.sectionLabel}>Số người cần tìm</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={totalNeeded > 0 ? `${totalNeeded} người` : ""}
-                placeholder="3 người"
-                placeholderTextColor="#bbb"
-                editable={false}
-              />
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.sectionLabel}>Sơ đồ sân</Text>
-            <RacketCourt maxPlayers={racketMaxPlayers} sport={sport} />
-            <Text style={[styles.helperText, { textAlign: "center", marginTop: 8 }]}>
-              Bên A ({RACKET_FORMATS[racketMaxPlayers]?.playerCountPerSide || 1} người) vs Bên B ({RACKET_FORMATS[racketMaxPlayers]?.playerCountPerSide || 1} người) • Tối đa {racketMaxPlayers} người
-            </Text>
-          </>
+            {/* Map link option */}
+            {addressInputType === "map" && (
+              <View>
+                <TouchableOpacity
+                  style={styles.mapLink}
+                  onPress={() =>
+                    navigation.navigate("MapPicker", {
+                      currentLocation: locationCoords,
+                      currentAddress: locationName,
+                      formDraft: buildFormDraft(),
+                    })
+                  }
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="location-outline" size={18} color={ORANGE} style={styles.mapLinkIcon} />
+                  <Text style={styles.mapLinkText}>Chọn vị trí</Text>
+                </TouchableOpacity>
+                {locationCoords && (
+                  <View style={[styles.coordBadge, { marginTop: 6 }]}>
+                    <Text style={styles.coordBadgeText}>
+                      ✓ Tọa độ: {locationCoords.lat.toFixed(4)}, {locationCoords.lng.toFixed(4)} ({locationName || "Đã chọn"})
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Tự nhập option */}
+            {addressInputType === "custom" && (
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.input}
+                  value={specificAddress}
+                  onChangeText={(text) => {
+                    setSpecificAddress(text);
+                    setLocationName(text);
+                  }}
+                  placeholder="Nhập địa chỉ"
+                  placeholderTextColor="#bbb"
+                />
+              </View>
+            )}
+          </View>
         )}
 
-        {/* Tiền cọc sân / người */}
-        <Text style={styles.sectionLabel}>Tiền cọc sân / người</Text>
+        {/* Mô tả sân (Short title) */}
+        
+
+        {selectedCourtObj ? (
+          <TouchableOpacity
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "#EFF6FF",
+              borderWidth: 1,
+              borderColor: "#BFDBFE",
+              padding: 10,
+              borderRadius: 10,
+              marginBottom: 8,
+              gap: 6,
+            }}
+            onPress={() => setShowCourtDetailModal(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="information-circle" size={18} color="#2563EB" />
+            <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 12.5 }}>
+              Chi tiết {selectedCourtObj.name} 
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        
+
+        {/* Giá thuê 1 giờ */}
+        <Text style={styles.sectionLabel}>Giá thuê 1 giờ</Text>
         <View style={styles.inputWrapper}>
           <TextInput
             style={[styles.input, styles.costInput]}
@@ -1759,37 +2801,362 @@ export default function CreateMatchScreen({ navigation, route }) {
           <Text style={styles.currencySuffix}>VND</Text>
         </View>
 
-        {/* Địa điểm sân */}
-        <Text style={styles.sectionLabel}>Địa điểm sân</Text>
+        {/* Tính toán Tổng giờ thuê & Tổng tiền thuê sân */}
+        {(() => {
+          const pricePerHourNum = Number(costPerPerson || 0);
+          const totalHours = calculateTotalHours(selectedTimeSlot, endTimeSlot);
+          const totalCourtCost = Math.round(pricePerHourNum * totalHours);
+
+          return (
+            <View style={{
+              backgroundColor: "#FFF7ED",
+              borderRadius: 14,
+              borderWidth: 1.5,
+              borderColor: "#FFD8A8",
+              padding: 12,
+              marginBottom: 14,
+              gap: 8,
+            }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>
+                  Tổng giờ thuê:
+                </Text>
+                <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#111827" }}>
+                  {totalHours % 1 === 0 ? totalHours.toFixed(0) : totalHours.toFixed(1)} giờ ({selectedTimeSlot} - {endTimeSlot})
+                </Text>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: "#FFE8D6" }} />
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#C2410C" }}>
+                   Tổng tiền thuê sân:
+                </Text>
+                <Text style={{ fontSize: 15, fontWeight: "800", color: ORANGE }}>
+                  {formatNumberWithDots(String(totalCourtCost))} VND
+                </Text>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: "#FFE8D6" }} />
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#059669" }}>
+                  💵 Giá thuê 1 người:
+                </Text>
+                <Text style={{ fontSize: 14.5, fontWeight: "800", color: "#059669" }}>
+                  {formatNumberWithDots(String(Math.round(totalCourtCost / Math.max(activeTotalPeople, 1))))} VND 
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* Chi phí dịch vụ (Short title) */}
+        <Text style={styles.sectionLabel}>Chi phí dịch vụ ước tính</Text>
         <View style={styles.inputWrapper}>
           <TextInput
-            style={styles.input}
-            value={locationName}
-            placeholder="Sân bóng Mỹ Đình."
+            style={[styles.input, styles.costInput]}
+            value={formatNumberWithDots(serviceCost)}
+            onChangeText={(text) => setServiceCost(text.replace(/[^0-9]/g, ""))}
+            keyboardType="numeric"
+            placeholder=""
             placeholderTextColor="#bbb"
-            editable={false}
           />
+          <Text style={styles.currencySuffix}>VND</Text>
         </View>
-        <TouchableOpacity
-          style={styles.mapLink}
-          onPress={() =>
-            navigation.navigate("MapPicker", {
-              currentLocation: locationCoords,
-              currentAddress: locationName,
-              formDraft: buildFormDraft(),
-            })
-          }
-        >
-          <Ionicons name="location-outline" size={16} color={ORANGE} style={styles.mapLinkIcon} />
-          <Text style={styles.mapLinkText}>Chọn vị trí trên bản đồ</Text>
-        </TouchableOpacity>
-        {locationCoords && (
-          <View style={styles.coordBadge}>
-            <Text style={styles.coordBadgeText}>
-              ✓ Đã chọn tọa độ: {locationCoords.lat.toFixed(4)}, {locationCoords.lng.toFixed(4)}
-            </Text>
+
+        {/* Trình độ (Short title) */}
+        <Text style={styles.sectionLabel}>Trình độ</Text>
+        <View style={{ flexDirection: "row", gap: 10, marginVertical: 8 }}>
+          {["Người mới", "Trung cấp", "Chuyên nghiệp"].map((level) => (
+            <TouchableOpacity
+              key={level}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 10,
+                backgroundColor: skillLevel === level ? ORANGE : "#f5f5f5",
+                borderWidth: 1,
+                borderColor: skillLevel === level ? ORANGE : "#e0e0e0",
+                alignItems: "center"
+              }}
+              onPress={() => setSkillLevel(level)}
+              activeOpacity={0.7}
+            >
+              <Text style={{
+                color: skillLevel === level ? "#fff" : "#333",
+                fontSize: 13,
+                fontWeight: "700"
+              }}>{level}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Liên hệ chủ sân (Short title) */}
+        <Text style={styles.sectionLabel}>Liên hệ chủ sân</Text>
+        <View style={{ gap: 10, marginBottom: 12 }}>
+          {/* Tag account card / picker */}
+          
+
+          {selectedContactUser ? (
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: 14,
+                backgroundColor: "#FFF7ED",
+                borderRadius: 14,
+                borderWidth: 1.5,
+                borderColor: "#FFD8A8",
+              }}
+              onPress={() => {
+                const rawId = typeof selectedContactUser === "object"
+                  ? (selectedContactUser._id || selectedContactUser.id)
+                  : selectedContactUser;
+                const targetId = String(rawId || "6a6465f17b201152379c08cc");
+                navigation.navigate("UserProfile", { userId: targetId });
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
+                {selectedContactUser.picture ? (
+                  <Image source={{ uri: selectedContactUser.picture }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                ) : (
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: ORANGE, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{getInitials(selectedContactUser.name)}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: "#333" }} numberOfLines={1}>
+                    {selectedContactUser.name}
+                  </Text>
+                 
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                {selectedCourtObj ? (
+                  <View style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    backgroundColor: "#F3F4F6",
+                    paddingHorizontal: 8,
+                    paddingVertical: 5,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                  }}>
+                    <Ionicons name="lock-closed" size={12} color="#6B7280" />
+                    <Text style={{ color: "#6B7280", fontSize: 11.5, fontWeight: "700" }}>Gắn liền với sân</Text>
+                  </View>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={{ backgroundColor: ORANGE, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={handleOpenTagModal}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Đổi</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: "#eee", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={() => setSelectedContactUser(null)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ color: "#666", fontSize: 12, fontWeight: "700" }}>Gỡ</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                padding: 12,
+                backgroundColor: "#fff",
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: "#e0e0e0",
+                gap: 10
+              }}
+              onPress={handleOpenTagModal}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="person-add-outline" size={20} color="#666" />
+              <Text style={{ color: "#555", fontSize: 13, fontWeight: "500" }}>
+                Chọn tài khoản 
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.inputWrapper}>
+            <Ionicons name="call-outline" size={16} color="#666" style={{ marginLeft: 12, marginRight: -4 }} />
+            <TextInput
+              style={styles.input}
+              value={contactPhone}
+              onChangeText={setContactPhone}
+              placeholder="Số điện thoại liên hệ"
+              placeholderTextColor="#bbb"
+              keyboardType="phone-pad"
+            />
           </View>
-        )}
+        </View>
+
+        {/* Nhóm chat gắn với trận đấu */}
+        <Text style={[styles.sectionLabel, { marginBottom: 10, marginTop: 4 }]}>Nhóm chat gắn với trận đấu</Text>
+
+        {/* 2 nút hành động */}
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              backgroundColor: showGroupPickerModal ? "#EFF6FF" : "#F3F4F6",
+              paddingVertical: 11,
+              borderRadius: 10,
+              borderWidth: 1.5,
+              borderColor: showGroupPickerModal ? "#3B82F6" : "#E5E7EB",
+            }}
+            onPress={() => setShowGroupPickerModal((prev) => !prev)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="people-outline" size={18} color={showGroupPickerModal ? "#3B82F6" : "#555"} />
+            <Text style={{ fontSize: 14, fontWeight: "700", color: showGroupPickerModal ? "#3B82F6" : "#555" }}>Chọn nhóm</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              backgroundColor: "#FFF7ED",
+              paddingVertical: 11,
+              borderRadius: 10,
+              borderWidth: 1.5,
+              borderColor: "#FFD8A8",
+            }}
+            onPress={handleOpenCreateGroupModal}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={ORANGE} />
+            <Text style={{ fontSize: 14, fontWeight: "700", color: ORANGE }}>Tạo nhóm</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ marginBottom: 14, gap: 8 }}>
+          {/* Hiển thị nhóm đang được chọn khi list đóng */}
+          {!showGroupPickerModal && selectedChatGroupId !== null && (() => {
+            const selectedGroup = userChatGroups.find((g) => String(g._id) === String(selectedChatGroupId));
+            if (!selectedGroup) return null;
+            return (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: "#FFF7ED", borderWidth: 1.5, borderColor: ORANGE }}>
+                <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: ORANGE, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="people" size={18} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827" }} numberOfLines={1}>{selectedGroup.name || "Nhóm chat"}</Text>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 1 }}>👥 {selectedGroup.participants?.length || 1} thành viên</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color={ORANGE} />
+              </View>
+            );
+          })()}
+
+          {/* Không gắn nhóm chat – luôn hiện */}
+          {!showGroupPickerModal && selectedChatGroupId === null && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: "#E5E7EB" }}>
+              <Ionicons name="ban" size={16} color="#9CA3AF" />
+              <Text style={{ fontSize: 13, color: "#9CA3AF" }}>Chưa gắn nhóm chat nào</Text>
+            </View>
+          )}
+
+          {/* Danh sách chọn nhóm – hiện khi bấm "Chọn nhóm" */}
+          {showGroupPickerModal && (
+            <>
+              {/* Option: Không gắn */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: selectedChatGroupId === null ? "#FFF7ED" : "#FAFAFA",
+                  borderWidth: 1.5,
+                  borderColor: selectedChatGroupId === null ? ORANGE : "#E5E7EB",
+                }}
+                onPress={() => { setSelectedChatGroupId(null); setShowGroupPickerModal(false); }}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: selectedChatGroupId === null ? ORANGE : "#E5E7EB", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="ban" size={16} color={selectedChatGroupId === null ? "#FFF" : "#6B7280"} />
+                  </View>
+                  <Text style={{ fontSize: 13.5, fontWeight: "700", color: selectedChatGroupId === null ? ORANGE : "#374151" }}>
+                    Không gắn nhóm chat
+                  </Text>
+                </View>
+                {selectedChatGroupId === null && (
+                  <Ionicons name="checkmark-circle" size={20} color={ORANGE} />
+                )}
+              </TouchableOpacity>
+
+              {/* Danh sách các nhóm chat sẵn có */}
+              {userChatGroups.length === 0 ? (
+                <Text style={{ textAlign: "center", color: "#9CA3AF", fontSize: 13, paddingVertical: 16, fontStyle: "italic" }}>
+                  Bạn chưa có nhóm chat nào. Hãy tạo nhóm mới!
+                </Text>
+              ) : (
+                userChatGroups.map((g) => {
+                  const isSelected = String(g._id) === String(selectedChatGroupId);
+                  const memberCount = g.participants?.length || 1;
+                  return (
+                    <TouchableOpacity
+                      key={g._id}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: 12,
+                        borderRadius: 12,
+                        backgroundColor: isSelected ? "#FFF7ED" : "#FFFFFF",
+                        borderWidth: 1.5,
+                        borderColor: isSelected ? ORANGE : "#E5E7EB",
+                      }}
+                      onPress={() => { setSelectedChatGroupId(g._id); setShowGroupPickerModal(false); }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isSelected ? ORANGE : "#F3F4F6", alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name="people" size={18} color={isSelected ? "#FFF" : ORANGE} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827" }} numberOfLines={1}>
+                            {g.name || "Nhóm chat"}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 1 }}>
+                            👥 {memberCount} thành viên
+                          </Text>
+                        </View>
+                      </View>
+                      {isSelected && (
+                        <Ionicons name="checkmark-circle" size={20} color={ORANGE} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </>
+          )}
+        </View>
 
         {/* Ghi chú mô tả */}
         <Text style={styles.sectionLabel}>Ghi chú mô tả</Text>
@@ -1800,7 +3167,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             onChangeText={(text) => {
               if (text.length <= 200) setNote(text);
             }}
-            placeholder={`Team mình đang thiếu 2 Hậu vệ, 1 Trung vệ.\nAnh em nào muốn đá thì tham gia nhé!`}
+            placeholder={`Nhập mô tả`}
             placeholderTextColor="#bbb"
             multiline
             textAlignVertical="top"
@@ -1812,21 +3179,162 @@ export default function CreateMatchScreen({ navigation, route }) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <View style={styles.bottomButtonContainer}>
-        {isEditMode && (
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.7}>
-            <Text style={styles.deleteButtonText}>🗑️ Xóa trận đấu</Text>
+      {!isKeyboardVisible && (
+        <View style={styles.bottomButtonContainer}>
+          {isEditMode && (
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.7}>
+              <Text style={styles.deleteButtonText}>🗑️ Xóa trận đấu</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.createButton} onPress={handleSubmit} activeOpacity={0.8}>
+            <Text style={styles.createButtonText}>
+              {isEditMode ? "Lưu thay đổi" : "Tạo trận đấu"}
+            </Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.createButton} onPress={handleSubmit} activeOpacity={0.8}>
-          <Text style={styles.createButtonText}>
-            {isEditMode ? "Lưu thay đổi" : "Tạo trận đấu"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
 
       {/* Pitch selection modal */}
       {renderPitchModal()}
+
+      <GroupCreationModal
+        visible={showInlineCreateGroupModal}
+        onClose={() => setShowInlineCreateGroupModal(false)}
+        onGroupCreated={() => {
+          setShowInlineCreateGroupModal(false);
+        }}
+      />
+
+      {/* Court Detail Modal */}
+      <CourtDetailModal
+        visible={showCourtDetailModal}
+        court={selectedCourtObj}
+        onClose={() => setShowCourtDetailModal(false)}
+        navigation={navigation}
+      />
+
+      {/* Tag User Modal */}
+      <Modal visible={showTagUserModal} animationType="slide">
+        <Screen style={styles.safeArea}>
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={() => setShowTagUserModal(false)}>
+              <Ionicons name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Tag tài khoản VibeSport</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <View style={{ padding: 20, flex: 1 }}>
+            <View style={[styles.inputWrapper, { marginBottom: 16, height: 50 }]}>
+              <Ionicons name="search-outline" size={20} color="#888" style={{ marginLeft: 14, marginRight: -2 }} />
+              <TextInput
+                style={[styles.input, { fontSize: 15 }]}
+                value={searchUserQuery}
+                onChangeText={setSearchUserQuery}
+                placeholder="Tìm kiếm người bạn đã theo dõi..."
+                placeholderTextColor="#bbb"
+              />
+            </View>
+
+            {loadingFollowing ? (
+              <ActivityIndicator size="large" color={ORANGE} style={{ marginVertical: 40 }} />
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
+                {/* Option 1: Myself */}
+                {user && (
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      padding: 16,
+                      backgroundColor: selectedContactUser && (selectedContactUser._id || selectedContactUser.id) === (user.id || user._id) ? "#FFF7ED" : "#fff",
+                      borderRadius: 14,
+                      borderWidth: 1.5,
+                      borderColor: selectedContactUser && (selectedContactUser._id || selectedContactUser.id) === (user.id || user._id) ? ORANGE : "#e5e7eb",
+                      gap: 14,
+                    }}
+                    onPress={() => handleSelectTagUser(user)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: ORANGE, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{getInitials(user.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#333" }}>{user.name} (Chính tôi)</Text>
+                      <Text style={{ fontSize: 12.5, color: "#888", marginTop: 2 }}>Tag tài khoản cá nhân của bạn</Text>
+                    </View>
+                    <Ionicons name="checkmark-circle" size={24} color={selectedContactUser && (selectedContactUser._id || selectedContactUser.id) === (user.id || user._id) ? ORANGE : "#ccc"} />
+                  </TouchableOpacity>
+                )}
+
+                {/* Following Users List */}
+                <Text style={{ fontSize: 14, fontWeight: "700", color: "#555", marginTop: 10, marginBottom: 4 }}>
+                  Đang theo dõi ({filteredFollowingList.length})
+                </Text>
+
+                {filteredFollowingList.length === 0 ? (
+                  <Text style={{ textAlign: "center", color: "#999", marginVertical: 30, fontStyle: "italic", fontSize: 14 }}>
+                    {searchUserQuery ? "Không tìm thấy người dùng phù hợp" : "Chưa theo dõi người dùng nào"}
+                  </Text>
+                ) : (
+                  filteredFollowingList.map((u) => {
+                    const uid = u._id || u.id;
+                    const isSelected = selectedContactUser && (selectedContactUser._id || selectedContactUser.id) === uid;
+                    return (
+                      <TouchableOpacity
+                        key={uid}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          padding: 16,
+                          backgroundColor: isSelected ? "#FFF7ED" : "#fff",
+                          borderRadius: 14,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? ORANGE : "#e5e7eb",
+                          gap: 14,
+                        }}
+                        onPress={() => handleSelectTagUser(u)}
+                        activeOpacity={0.7}
+                      >
+                        {u.picture ? (
+                          <Image source={{ uri: u.picture }} style={{ width: 46, height: 46, borderRadius: 23 }} />
+                        ) : (
+                          <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: "#3b82f6", alignItems: "center", justifyContent: "center" }}>
+                            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{getInitials(u.name)}</Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 15, fontWeight: "700", color: "#333" }}>{u.name}</Text>
+                          {u.email ? <Text style={{ fontSize: 12.5, color: "#888", marginTop: 2 }}>{u.email}</Text> : null}
+                        </View>
+                        <Ionicons name="checkmark-circle" size={24} color={isSelected ? ORANGE : "#ccc"} />
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+
+                {/* Clear tag button */}
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#f5f5f5",
+                    borderRadius: 12,
+                    marginTop: 12,
+                  }}
+                  onPress={() => {
+                    setSelectedContactUser(null);
+                    setShowTagUserModal(false);
+                  }}
+                >
+                  <Text style={{ color: "#ef4444", fontWeight: "700", fontSize: 14 }}>Gỡ tag tài khoản</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </Screen>
+      </Modal>
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -2506,5 +4014,194 @@ const pitchModal = StyleSheet.create({
     fontWeight: "600",
     color: "#555",
     marginBottom: 6,
+  },
+
+  // Group Modal Styles (Exact match with ChatListScreen)
+  groupModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  groupModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    height: '90%',
+    paddingBottom: 20,
+  },
+  groupModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#DBDBDB',
+  },
+  cancelBtnText: {
+    color: '#0b74ff',
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  groupModalTitle: {
+    color: '#262626',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  nextBtnText: {
+    color: '#0b74ff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  nextBtnTextDisabled: {
+    color: '#C7C7C7',
+  },
+  modalSearchWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  modalSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFEFEF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    color: '#262626',
+    fontSize: 15,
+    padding: 0,
+  },
+  suggestionTitle: {
+    color: '#8E8E8E',
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: '#FAFAFA',
+  },
+  modalLoadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 40,
+  },
+  friendsList: {
+    paddingBottom: 20,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EFEFEF',
+  },
+  friendAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EFEFEF',
+  },
+  friendAvatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  friendName: {
+    flex: 1,
+    color: '#262626',
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#DBDBDB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkCircleSelected: {
+    backgroundColor: '#0b74ff',
+    borderColor: '#0b74ff',
+  },
+  emptyFriendsText: {
+    color: '#8E8E8E',
+    textAlign: 'center',
+    fontSize: 14,
+    paddingTop: 40,
+  },
+  groupNameContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    width: '100%',
+  },
+  groupNameInput: {
+    color: '#262626',
+    fontSize: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DBDBDB',
+    paddingVertical: 8,
+    textAlign: 'center',
+  },
+  groupCreationBody: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+  },
+  groupAvatarPicker: {
+    position: 'relative',
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  groupAvatarPreview: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#E5E7EB',
+  },
+  groupAvatarPreviewFallback: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarFallbackText: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  groupAvatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#0b74ff',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

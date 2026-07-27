@@ -33,6 +33,7 @@ import { getTagsRequest } from '../services/tagApi';
 import { getPostLikesRequest, searchPostsRequest, reportPostRequest } from '../services/postApi';
 import { API_BASE_URL } from '../components/constants/api';
 import { Screen } from '../components/Screen';
+import { ScreenHeader } from '../components/ScreenHeader';
 import {
   LikesModal,
   ReactionsPreview,
@@ -76,10 +77,11 @@ const formatCount = (count) => {
 };
 
 const isPostOwner = (currentUser, post) => {
-  if (!currentUser || !post || !post.userId) return false;
-  const currentUserId = currentUser._id || currentUser.id;
-  const postAuthorId = post.userId._id || post.userId.id || (typeof post.userId === 'string' ? post.userId : null);
-  return !!currentUserId && !!postAuthorId && String(currentUserId) === String(postAuthorId);
+  if (!currentUser || !post) return false;
+  const currentUserId = String(currentUser._id || currentUser.id || "");
+  const authorObj = post.userId || post.createdBy || post.author || post.user;
+  const postAuthorId = typeof authorObj === "object" && authorObj != null ? String(authorObj._id || authorObj.id || "") : String(authorObj || "");
+  return !!currentUserId && !!postAuthorId && currentUserId === postAuthorId;
 };
 
 const navigateToProfile = (navigation, currentUser, userId, onGoToProfile) => {
@@ -556,7 +558,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     >
       <Screen edges={['top', 'left', 'right']} style={styles.safeArea}>
       {/* App Header */}
-      <View style={styles.header}>
+      <ScreenHeader style={styles.header}>
         {isSearchMode ? (
           // ─── Search mode header ──────────────────────────────────────
           <>
@@ -613,7 +615,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             </View>
           </>
         )}
-      </View>
+      </ScreenHeader>
 
       {/* Search tag filter: hiện khi đang search mode */}
       {isSearchMode && (

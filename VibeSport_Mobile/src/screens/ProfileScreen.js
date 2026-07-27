@@ -50,7 +50,7 @@ function canNavigateToRoute(navigation, routeName) {
   return false;
 }
 
-export function ProfileScreen({ onLogout, onUpdateProfile, navigation, user }) {
+export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCreateMatch, user }) {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
   const unreadCount = useSelector((state) => state.notifications.unreadCount);

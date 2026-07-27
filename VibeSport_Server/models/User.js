@@ -89,6 +89,7 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    courts: [{ type: Schema.Types.ObjectId, ref: 'Court' }],
     reportCount: {
       type: Number,
       default: 0,

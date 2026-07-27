@@ -85,6 +85,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/fc', fcRouter);
+app.use('/api/courts', require('./routes/courts'));
 app.use('/api/admin', require('./routes/adminAuth'));
 app.use('/api/admin/tasks', tasksRouter);
 app.use('/api/admin/users', adminUsersRouter);
