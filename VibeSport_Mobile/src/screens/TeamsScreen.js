@@ -12,15 +12,20 @@ import {
   Alert,
   Modal,
   Image,
+  Pressable,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { useSelector } from "react-redux";
-import { getMatches, leaveMatch } from "../services/matchService";
+import { useDispatch, useSelector } from "react-redux";
+import { getMatches, leaveMatch, deleteMatch } from "../services/matchService";
 import { getPostsRequest } from "../services/postApi";
+import { API_BASE_URL } from "../components/constants/api";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { TagIcon } from "../components/TagIcon";
 import { Screen } from "../components/Screen";
 import { primary } from "../theme";
+import { savePost, unsavePost, deletePost, fetchSavedPosts } from "../redux/postSlice";
+import { ReportModal } from "../components/ReportModal";
 
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
 const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
@@ -34,10 +39,48 @@ const SPORT_FILTERS = [
 ];
 
 const SPORT_ICONS = { football: "⚽", badminton: "🏸", pickleball: "🏓" };
+
+const TEAM1_POSITIONS = [
+  { id: "t1_gk",  label: "Thủ môn", role: "goalkeeper" },
+  { id: "t1_lb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t1_cb1", label: "Hậu vệ",  role: "defender" },
+  { id: "t1_cb2", label: "Hậu vệ",  role: "defender" },
+  { id: "t1_rb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t1_dm1", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_dm2", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_lm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_am",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_rm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t1_st",  label: "Tiền đạo", role: "forward" },
+];
+
+const TEAM2_POSITIONS = [
+  { id: "t2_gk",  label: "Thủ môn", role: "goalkeeper" },
+  { id: "t2_lb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t2_cb1", label: "Hậu vệ",  role: "defender" },
+  { id: "t2_cb2", label: "Hậu vệ",  role: "defender" },
+  { id: "t2_rb",  label: "Hậu vệ",  role: "defender" },
+  { id: "t2_dm1", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_dm2", label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_lm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_am",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_rm",  label: "Tiền vệ",  role: "midfielder" },
+  { id: "t2_st",  label: "Tiền đạo", role: "forward" },
+];
+
+const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
+
+const ROLE_LABELS = { defender: "Hậu vệ", midfielder: "Tiền vệ", forward: "Tiền đạo", goalkeeper: "Thủ môn", bench: "Dự bị" };
+
+const getFootballRole = (positionId) => {
+  if (typeof positionId !== "string") return null;
+  return ALL_POSITIONS.find((item) => item.id === positionId)?.role || null;
+};
+
 const formatCost = (c) => {
   if (!c || c === 0) return "Miễn phí";
   const formatted = c.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `${formatted} vnd/ người`;
+  return `${formatted}đ`;
 };
 
 const getInitials = (name) => {
@@ -46,7 +89,51 @@ const getInitials = (name) => {
   return p.length > 1 ? (p[0][0] + p[p.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
 };
 
+const getMatchStatusInfo = (m) => {
+  if (!m) return { label: "⏳ CHƯA BẮT ĐẦU", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
+  const isEnded = m.teamStatus === "ended" || m.status === "completed";
+  const isOngoing = m.teamStatus === "ongoing";
+  const isCancelled = m.status === "cancelled";
+
+  if (isCancelled) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ HỦY",
+      icon: "close-circle-outline",
+      bg: "#FEE2E2",
+      color: "#B91C1C",
+      borderColor: "#FCA5A5",
+    };
+  }
+  if (isEnded) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ KẾT THÚC 🏁",
+      icon: "flag-outline",
+      bg: "#F3F4F6",
+      color: "#4B5563",
+      borderColor: "#E5E7EB",
+    };
+  }
+  if (isOngoing) {
+    return {
+      label: "🔴 TRẬN ĐẤU ĐANG DIỄN RA (LIVE)",
+      icon: "radio-button-on-outline",
+      bg: "#DCFCE7",
+      color: "#15803D",
+      borderColor: "#86EFAC",
+    };
+  }
+  return {
+    label: "⏳ CHƯA BẮT ĐẦU",
+    icon: "time-outline",
+    bg: "#FFF7ED",
+    color: "#C2410C",
+    borderColor: "#FFD8A8",
+  };
+};
+
 const normalizeId = (id) => (id == null ? "" : String(id));
+
+const getUserIdValue = (value) => normalizeId(typeof value === "object" ? value?._id || value?.id : value);
 
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
@@ -96,6 +183,7 @@ const CreatorProfileRow = ({ creator, label }) => {
 };
 
 export default function TeamsScreen({ navigation }) {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
   const token = useSelector((state) => state.auth?.token);
   const [activeSubTab, setActiveSubTab] = useState("near");
@@ -109,6 +197,9 @@ export default function TeamsScreen({ navigation }) {
   const [findTeamLoading, setFindTeamLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [optionsPost, setOptionsPost] = useState(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [postToReport, setPostToReport] = useState(null);
   const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(true);
 
   const userId = normalizeId(user?.id || user?._id);
@@ -178,6 +269,63 @@ export default function TeamsScreen({ navigation }) {
     navigation?.navigate?.("CreateMatch", { editMatch: item });
   };
 
+  const handleDeleteMatch = (item) => {
+    Alert.alert("Xóa trận đấu", "Bạn có chắc muốn xóa trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteMatch(item._id, token);
+            await loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+            Alert.alert("Thành công", "Đã xóa trận đấu");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleMatchOptions = (item) => {
+    const creator = typeof item.createdBy === "object" ? item.createdBy : item.createdBy;
+    const creatorId = normalizeId(typeof creator === "object" ? creator?._id || creator?.id : creator);
+    const isOwner = creatorId && creatorId === userId;
+
+    const options = [
+      {
+        text: "Xem chi tiết",
+        onPress: () => handleViewDetail(item),
+      },
+    ];
+
+    if (isOwner) {
+      options.push(
+        {
+          text: "Chỉnh sửa",
+          onPress: () => handleEditMatch(item),
+        },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: () => handleDeleteMatch(item),
+        }
+      );
+    }
+
+    options.push({
+      text: "Hủy",
+      style: "cancel",
+    });
+
+    Alert.alert(
+      "Quản lý trận đấu",
+      isOwner ? "Chọn hành động cho trận đấu của bạn" : "Chọn hành động",
+      options
+    );
+  };
+
   const handleLeaveMatch = (item) => {
     Alert.alert("Rút khỏi trận", "Bạn có chắc muốn rút khỏi trận này?", [
       { text: "Hủy", style: "cancel" },
@@ -201,6 +349,93 @@ export default function TeamsScreen({ navigation }) {
     navigation?.navigate?.("PostDetail", { postId: post._id, post });
   };
 
+  const getPostAuthorId = (post) => {
+    if (!post) return "";
+    const authorObj = post.createdBy || post.userId || post.author || post.user;
+    if (typeof authorObj === "object" && authorObj != null) {
+      return normalizeId(authorObj._id || authorObj.id);
+    }
+    return normalizeId(authorObj);
+  };
+
+  const isPostOwner = (post) => {
+    if (!post) return false;
+    if (post.isOwner === true || post.isMine === true || post.owner === true) return true;
+
+    const currentUserId = normalizeId(user?._id || user?.id);
+    if (!currentUserId) return false;
+
+    const authorId = getPostAuthorId(post);
+    return !!authorId && authorId === currentUserId;
+  };
+
+  const handleDeletePost = (post) => {
+    Alert.alert("Xóa bài viết", "Bạn có chắc chắn muốn xóa bài viết này không?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: () => {
+          dispatch(deletePost(post._id))
+            .unwrap()
+            .then(() => {
+              Alert.alert("Thành công", "Đã xóa bài viết.");
+            })
+            .catch((err) => {
+              Alert.alert("Lỗi", err || "Không thể xóa bài viết");
+            })
+            .finally(() => {
+              setOptionsPost(null);
+            });
+        },
+      },
+    ]);
+  };
+
+  const updateFindTeamPostSavedState = useCallback((postId, isSaved) => {
+    setFindTeamPosts((prev) => prev.map((item) => (item._id === postId ? { ...item, isSaved } : item)));
+  }, []);
+
+  const handleToggleSavePost = (post) => {
+    if (!post?._id) {
+      Alert.alert("Lỗi", "Bài viết không hợp lệ để lưu.");
+      return;
+    }
+
+    const nextSavedState = !Boolean(post.isSaved);
+    const action = nextSavedState ? savePost(post._id) : unsavePost(post._id);
+
+    dispatch(action)
+      .unwrap()
+      .then(() => {
+        updateFindTeamPostSavedState(post._id, nextSavedState);
+        setOptionsPost((prev) => (prev?._id === post._id ? { ...prev, isSaved: nextSavedState } : prev));
+        dispatch(fetchSavedPosts());
+        Alert.alert(
+          "Thành công",
+          nextSavedState ? "Đã lưu bài viết." : "Đã bỏ lưu bài viết."
+        );
+      })
+      .catch((err) => {
+        Alert.alert("Lỗi", err?.error || "Không thể cập nhật trạng thái lưu bài viết.");
+      })
+      .finally(() => {
+        setOptionsPost(null);
+      });
+  };
+
+  const handleReportPost = (reason) => {
+    setReportModalVisible(false);
+    setPostToReport(null);
+    setOptionsPost(null);
+    Alert.alert("Thành công", "Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!");
+  };
+
+  const handlePostOptions = (post) => {
+    if (!post) return;
+    setOptionsPost(post);
+  };
+
   const handleCreateOption = (option) => {
     setShowCreateModal(false);
     if (option === "match") {
@@ -218,10 +453,10 @@ export default function TeamsScreen({ navigation }) {
 
   const getDisplayData = () => {
     if (activeSubTab === "near") {
-      return matches;
+      return matches.filter((m) => m.status !== "completed" && m.status !== "cancelled");
     }
     if (activeSubTab === "joined") {
-      return matches.filter(isUserParticipant);
+      return matches.filter(isUserParticipant).filter((m) => m.status !== "completed" && m.status !== "cancelled");
     }
     if (activeSubTab === "created") {
       return matches.filter((m) => {
@@ -231,28 +466,86 @@ export default function TeamsScreen({ navigation }) {
         return normalizeId(creatorId) === userId;
       });
     }
+    if (activeSubTab === "ended") {
+      return matches.filter((m) => m.status === "completed" || m.status === "cancelled");
+    }
     return matches;
   };
 
   const renderFigmaCard = (item, tabType) => {
     const joined = isUserParticipant(item);
     const creator = typeof item.createdBy === "object" ? item.createdBy : null;
-    const currentCount = item.currentPlayers || item.participants?.length || 0;
+    const creatorId = getUserIdValue(item.createdBy);
+    const participantList = Array.isArray(item.participants) ? item.participants : [];
+    const participantsCount = participantList.filter((participant) => {
+      const participantId = getUserIdValue(participant);
+      return Boolean(participantId) && participantId !== creatorId;
+    }).length;
+    const positionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
+    const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
+    const totalNeededPositions = positionCount + benchCount;
+    const displayFound = `${participantsCount}/${totalNeededPositions || item.maxPlayers || 10}`;
     const maxCount = item.maxPlayers || 10;
-    const timeLabel = item.startTime && typeof item.startTime === "string" ? item.startTime.replace(":", "g ") + "p" : "";
+    let timeLabel = item.time;
+    if (!timeLabel || !timeLabel.includes("-")) {
+      const startStr = item.startTime || "19:00";
+      let endStr = item.endTime;
+      if (!endStr) {
+        const [h, m] = startStr.split(":").map(Number);
+        const totalM = (h || 19) * 60 + (m || 0) + 90;
+        const endH = String(Math.floor(totalM / 60) % 24).padStart(2, "0");
+        const endM = String(totalM % 60).padStart(2, "0");
+        endStr = `${endH}:${endM}`;
+      }
+      timeLabel = `${startStr} - ${endStr}`;
+    }
     const isEnded = item.status === "completed" || item.status === "cancelled";
+
+    const pitchTypeLabel = item.sport === "football"
+      ? (maxCount === 10 ? "Sân 5 (5v5)" : maxCount === 14 ? "Sân 7 (7v7)" : "Sân 11 (11v11)")
+      : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)");
+
+    const totalHoursVal = item.totalHours || 1;
+    const totalCostVal = item.totalCourtCost || (item.costPerPerson * totalHoursVal);
+    const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / (maxCount || 10)) : item.costPerPerson);
 
     // Position needs (football only)
     const positionNeeds = [];
-    if (item.sport === "football" && Array.isArray(item.selectedPositionIds)) {
-      const ROLE_LABELS = { defender: "Hậu vệ", midfielder: "Trung vệ", forward: "Tiền đạo", goalkeeper: "Thủ môn" };
+    if (item.sport === "football") {
+      const ROLE_ALIASES = {
+        gk: "goalkeeper",
+        lb: "defender",
+        cb: "defender",
+        rb: "defender",
+        dm: "midfielder",
+        cm: "midfielder",
+        am: "midfielder",
+        lm: "midfielder",
+        rm: "midfielder",
+        lw: "forward",
+        rw: "forward",
+        st: "forward",
+        cf: "forward",
+      };
       const roleCounts = {};
-      item.selectedPositionIds.forEach(id => {
-        if (typeof id !== "string") return;
-        const role = id.replace(/^t[12]_/, "").replace(/[0-9]/g, "");
-        const mapped = role.startsWith("gk") ? "goalkeeper" : role.startsWith("lb") || role.startsWith("cb") || role.startsWith("rb") ? "defender" : role.startsWith("dm") || role.startsWith("cm") || role.startsWith("am") ? "midfielder" : role.startsWith("lw") || role.startsWith("rw") || role.startsWith("st") || role.startsWith("cf") ? "forward" : role;
-        roleCounts[mapped] = (roleCounts[mapped] || 0) + 1;
-      });
+      if (Array.isArray(item.selectedPositionIds)) {
+        item.selectedPositionIds.forEach((id) => {
+          if (typeof id !== "string") return;
+          const mappedRole = getFootballRole(id);
+          if (mappedRole) {
+            roleCounts[mappedRole] = (roleCounts[mappedRole] || 0) + 1;
+            return;
+          }
+          const rawRole = id.replace(/^t[12]_/, "").replace(/_\d+$/, "").toLowerCase();
+          const key = rawRole.replace(/\d+$/, "");
+          const fallbackRole = ROLE_ALIASES[key] || key;
+          roleCounts[fallbackRole] = (roleCounts[fallbackRole] || 0) + 1;
+        });
+      }
+      const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
+      if (benchCount > 0) {
+        roleCounts.bench = (roleCounts.bench || 0) + benchCount;
+      }
       Object.entries(roleCounts).forEach(([role, count]) => {
         positionNeeds.push({ label: ROLE_LABELS[role] || role, count });
       });
@@ -260,6 +553,17 @@ export default function TeamsScreen({ navigation }) {
 
     return (
       <View key={item._id} style={styles.card}>
+        {/* Match Status Bar */}
+        {(() => {
+          const statusInfo = getMatchStatusInfo(item);
+          return (
+            <View style={[styles.matchStatusBarContainer, { backgroundColor: statusInfo.bg, borderColor: statusInfo.borderColor }]}>
+              <Ionicons name={statusInfo.icon} size={15} color={statusInfo.color} style={{ marginRight: 6 }} />
+              <Text style={[styles.matchStatusBarText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            </View>
+          );
+        })()}
+
         {/* Card Header: Avatar + Title + ... menu */}
         <View style={styles.cardHeader}>
           <View style={styles.avatarContainer}>
@@ -286,62 +590,72 @@ export default function TeamsScreen({ navigation }) {
               <Ionicons name="pencil" size={16} color="#888" />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.moreBtn} activeOpacity={0.6}>
+          <TouchableOpacity style={styles.moreBtn} activeOpacity={0.6} onPress={() => handlePostOptions(item)}>
             <Ionicons name="ellipsis-horizontal" size={18} color="#888" />
           </TouchableOpacity>
         </View>
 
-        {/* Info rows */}
-        <View style={styles.figmaInfoList}>
-          <View style={[styles.figmaInfoRow, { borderTopWidth: 0, paddingTop: 0 }]}>
-            <View style={styles.figmaInfoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>{timeLabel} - {getDayLabel(item.date)} - {item.date}</Text>
-          </View>
-          <View style={styles.figmaInfoRow}>
-            <View style={styles.figmaInfoIcon}><Ionicons name="location-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>{item.locationName}</Text>
-          </View>
-          {item.note ? (
-            <View style={styles.figmaInfoRow}>
-              <View style={styles.figmaInfoIcon}><Ionicons name="create-outline" size={16} color="#333" /></View>
-              <Text style={styles.figmaInfoText}>{item.note}</Text>
+        {/* Compact & Ultra-Sleek Info Container */}
+        <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: 10, marginVertical: 8, gap: 8 }}>
+          {/* 1 & 3: Tên sân & Thời gian */}
+          <View style={{ gap: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="location-outline" size={15} color="#4B5563" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#111827" }} numberOfLines={1}>
+                {item.locationName}
+              </Text>
             </View>
-          ) : null}
-          <View style={styles.figmaInfoRow}>
-            <View style={styles.figmaInfoIcon}><Ionicons name="grid-outline" size={16} color="#333" /></View>
-            <Text style={styles.figmaInfoText}>Loại sân : {item.sport === "football" ? `${Math.floor(maxCount / 2)}vs ${Math.floor(maxCount / 2)}` : `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="time-outline" size={15} color="#4B5563" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 12.5, fontWeight: "600", color: "#4B5563" }}>
+                {timeLabel} - {item.date}
+              </Text>
+            </View>
+          </View>
+
+          {/* 2, 4, 5, 6, 7: Flexible Responsive Badges */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 4,marginRight:10 }}>
+            {/* Loại sân */}
+            <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight:10}}>
+              <MaterialCommunityIcons name="soccer-field" size={14} color="#6B7280" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>{pitchTypeLabel}</Text>
+            </View>
+
+            {/* Trình độ */}
+            <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:10 }}>
+              <Ionicons name="ribbon-outline" size={14} color="#FF6B3D" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: ORANGE, fontWeight: "700" }}>{item.skillLevel || "Người mới"}</Text>
+            </View>
+
+            {/* Giá 1 người */}
+            <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center", marginRight: 10 }}>
+              <Ionicons name="cash-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#059669", fontWeight: "700" }}>{formatCost(costPerPlayerVal)}</Text>
+            </View>
+
+             {/* Số người đã tìm */}
+            <View style={{ backgroundColor: "#FFF7ED", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FFD8A8", flexDirection: "row", alignItems: "center",marginRight:10 }}>
+              <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#C2410C", fontWeight: "700" }}>Đã tìm: {displayFound}</Text>
+            </View>
+
+            {/* Tiền dịch vụ */}
+            <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ước tính ≈ {formatCost(item.serviceCost || 31250)}</Text>
+            </View>
           </View>
         </View>
 
-        {/* Grid boxes */}
-        <View style={styles.figmaGrid}>
-          <View style={styles.figmaGridCol}>
-            <Text style={styles.figmaGridLabel}>Số người đã tìm.</Text>
-            <View style={styles.figmaGridBox}>
-              <Ionicons name="people-outline" size={15} color="#333" />
-              <Text style={styles.figmaGridValue}>{currentCount}/{maxCount}</Text>
-            </View>
-          </View>
-          <View style={styles.figmaGridCol}>
-            <Text style={styles.figmaGridLabel}>Tiền cọc sân.</Text>
-            <View style={styles.figmaGridBox}>
-              <Ionicons name="wallet-outline" size={15} color="#333" />
-              <Text style={styles.figmaGridValue} numberOfLines={1}>{formatCost(item.costPerPerson)}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Position tags (football only) */}
+        {/* 8. Vị trí cần tìm (football only) */}
         {positionNeeds.length > 0 && (
-          <View style={styles.positionTagsSection}>
-            <Text style={styles.positionTagsLabel}>Vị trí cần tìm.</Text>
-            <View style={styles.positionTagsRow}>
-              {positionNeeds.map((p, i) => (
-                <View key={i} style={styles.positionTag}>
-                  <Text style={styles.positionTagText}>{p.label} x{p.count}</Text>
-                </View>
-              ))}
-            </View>
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 8, paddingHorizontal: 2, marginLeft:9 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Vị trí cần tìm:</Text>
+            {positionNeeds.map((p, i) => (
+              <View key={i} style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#1F2937" }}>{p.label} x{p.count}</Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -394,20 +708,26 @@ export default function TeamsScreen({ navigation }) {
             <Text style={styles.matchTitle} numberOfLines={1}>Tìm đội • {sportTag}</Text>
             <Text style={styles.matchSubtitle}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            activeOpacity={0.7}
+            onPress={() => handlePostOptions(item)}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color="#888" />
+          </TouchableOpacity>
         </View>
-
         {author && (
           <TouchableOpacity
             style={styles.creatorRow}
             activeOpacity={0.7}
             onPress={() => {
-              const authorId = author._id || author.id;
-              if (authorId && normalizeId(authorId) !== userId) {
+              const authorId = normalizeId(author?._id || author?.id || item.userId);
+              if (authorId && authorId !== userId) {
                 navigation?.navigate?.("UserProfile", { userId: authorId });
               }
             }}
           >
-            <View style={[styles.creatorAvatar, { backgroundColor: AVATAR_COLORS[1] }]}>
+            <View style={[styles.creatorAvatar, { backgroundColor: AVATAR_COLORS[1] }]}> 
               {author.picture ? (
                 <Image source={{ uri: author.picture }} style={styles.creatorAvatarImg} />
               ) : (
@@ -451,15 +771,20 @@ export default function TeamsScreen({ navigation }) {
     : SPORT_FILTERS.find((item) => item.key === activeSport)?.label || "Tất cả môn";
 
   return (
-    <Screen style={styles.container}>
-      {/* ─── Header ─── */}
-      <View style={styles.headerWrap}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.container}>
+        {/* ─── Header ─── */}
+        <View style={styles.headerWrap}>
         <View style={styles.header}>
           <View style={styles.headerBrand}>
             <Image source={require("../../assets/logo_vibesport_icon.png")} style={styles.headerLogo} resizeMode="contain" />
             <Text style={styles.headerTitle}>
-              <Text style={styles.headerTitleBlack}>Tạo</Text>
-              <Text style={styles.headerTitleOrange}>Trận</Text>
+              <Text style={styles.headerTitleBlack}>Trận</Text>
+              <Text style={styles.headerTitleOrange}> Đấu</Text>
             </Text>
           </View>
           <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreateModal(true)}>
@@ -475,6 +800,7 @@ export default function TeamsScreen({ navigation }) {
             { key: "near", label: "Gần tôi" },
             { key: "joined", label: "Đã tham gia" },
             { key: "created", label: "Đã tạo" },
+            { key: "ended", label: "Đã kết thúc" },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.key}
@@ -600,10 +926,10 @@ export default function TeamsScreen({ navigation }) {
           onRefresh={() => (isFindTeamTab ? loadFindTeamPosts() : loadMatches(searchText, areaFilter, timeFilter, activeSubTab))}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>{isFindTeamTab ? "👥" : "⚽"}</Text>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>⚽</Text>
               <Text style={styles.emptyTitle}>
-                {activeSubTab === "findteam"
-                  ? "Chưa có bài đăng tìm đội"
+                {activeSubTab === "ended"
+                  ? "Chưa có trận đấu đã kết thúc"
                   : activeSubTab === "created"
                     ? "Bạn chưa tạo trận nào"
                     : activeSubTab === "joined"
@@ -611,8 +937,8 @@ export default function TeamsScreen({ navigation }) {
                       : "Không tìm thấy trận đấu"}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {activeSubTab === "findteam"
-                  ? "Nhấn + Tạo để đăng bài tìm đội mới."
+                {activeSubTab === "ended"
+                  ? "Các trận đấu đã hoàn thành hoặc bị hủy sẽ xuất hiện tại đây."
                   : activeSubTab === "near"
                     ? "Hãy tạo trận mới hoặc thay đổi bộ lọc tìm kiếm."
                     : activeSubTab === "created"
@@ -654,7 +980,94 @@ export default function TeamsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </Screen>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={optionsPost !== null}
+        onRequestClose={() => setOptionsPost(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOptionsPost(null)} />
+          <View style={styles.bottomSheetContainer}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>Tùy chọn bài viết</Text>
+
+            {optionsPost && isPostOwner(optionsPost) ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    if (post) {
+                      if (post.sport || post.locationName || post.maxPlayers) {
+                        navigation.navigate("CreateMatch", { editMatch: post });
+                      } else {
+                        navigation.navigate("CreatePost", { editPost: post });
+                      }
+                    }
+                  }}
+                  style={styles.bottomSheetOption}
+                >
+                  <Text style={styles.bottomSheetOptionText}>Sửa bài viết</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    if (post) {
+                      if (post.sport || post.locationName || post.maxPlayers) {
+                        handleDeleteMatch(post);
+                      } else {
+                        handleDeletePost(post);
+                      }
+                    }
+                  }}
+                  style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                >
+                  <Text style={[styles.bottomSheetOptionText, { color: "#EF4444" }]}>Xóa bài viết</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={() => optionsPost && handleToggleSavePost(optionsPost)}
+                  style={styles.bottomSheetOption}
+                >
+                  <Text style={styles.bottomSheetOptionText}>
+                    {optionsPost?.isSaved ? "Bỏ lưu bài viết" : "Lưu bài viết"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    if (optionsPost) {
+                      setPostToReport(optionsPost);
+                      setReportModalVisible(true);
+                      setOptionsPost(null);
+                    }
+                  }}
+                  style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
+                >
+                  <Text style={[styles.bottomSheetOptionText, { color: "#EF4444" }]}>Báo cáo bài viết</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <ReportModal
+        visible={reportModalVisible}
+        onClose={() => {
+          setReportModalVisible(false);
+          setPostToReport(null);
+        }}
+        onSelectReason={handleReportPost}
+      />
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1274,4 +1687,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalCancelText: { fontSize: 15, color: "#888", fontWeight: "600" },
+  bottomSheetContainer: {
+    marginTop: "auto",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: "#fff",
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+  },
+  bottomSheetHandle: {
+    width: 60,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#D1D5DB",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    color: "#111",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 14,
+  },
+  bottomSheetOption: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    paddingVertical: 16,
+  },
+  bottomSheetOptionText: {
+    fontSize: 16,
+    color: "#111",
+  },
+  matchStatusBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  matchStatusBarText: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
 });

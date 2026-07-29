@@ -5,14 +5,16 @@ import { useDispatch, useSelector } from 'react-redux';
 import { hydrateSession } from '../redux/authSlice';
 import { usePresenceHeartbeat } from '../hooks/usePresenceHeartbeat';
 import { useSocket } from '../hooks/useSocket';
+import { IncomingCallModal } from '../components/IncomingCallModal';
 import { AuthNavigator } from './AuthNavigator';
 import { MainNavigator, LoadingScreen, linking } from './MainNavigator';
+import { navigationRef } from './navigationRef';
 
 export function RootNavigator() {
   const dispatch = useDispatch();
   const { isAuthenticated, isHydrating, user } = useSelector((state) => state.auth);
 
-  const isProfileComplete = Boolean(user?.favoriteSport && user?.position && user?.area);
+  const isProfileComplete = Boolean(user?.profileCompleted || (user?.favoriteSport && user?.position && user?.area));
 
   usePresenceHeartbeat();
   useSocket();
@@ -25,25 +27,18 @@ export function RootNavigator() {
     return <LoadingScreen />;
   }
 
-  const navigatorKey = isAuthenticated
-    ? isProfileComplete
-      ? 'authenticated-complete'
-      : 'authenticated-incomplete'
-    : 'guest';
+  const navigatorKey = isAuthenticated ? 'authenticated' : 'guest';
 
-  const initialRouteName = isAuthenticated
-    ? isProfileComplete
-      ? 'Home'
-      : 'CompleteProfile'
-    : 'Auth';
+  const initialRouteName = isAuthenticated ? 'Home' : 'Auth';
 
   return (
-    <NavigationContainer key={navigatorKey} linking={linking}>
+    <NavigationContainer key={navigatorKey} linking={linking} ref={navigationRef}>
       {isAuthenticated ? (
         <MainNavigator initialRouteName={initialRouteName} />
       ) : (
         <AuthNavigator />
       )}
+      <IncomingCallModal />
     </NavigationContainer>
   );
 }

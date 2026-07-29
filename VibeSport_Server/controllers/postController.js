@@ -1,4 +1,5 @@
 const Post = require('../models/Post');
+const FC = require('../models/FC');
 const PostLike = require('../models/PostLike');
 const SavedPost = require('../models/SavedPost');
 const Comment = require('../models/Comment');
@@ -6,7 +7,9 @@ const CommentLike = require('../models/CommentLike');
 const User = require('../models/User');
 const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
+const Report = require('../models/Report');
 const { API_BASE_URL } = require('../utils/config');
+const { incrementReportCount } = require('../utils/reportHelpers');
 const {
   parseTagsInput,
   enrichPostTags,
@@ -48,8 +51,9 @@ async function createAndSendNotification({ userId, fromUserId, type, message, po
 }
 
 // Helper to construct media absolute URLs
-function getAbsoluteUrl(req, filename) {
-  return `${API_BASE_URL}/uploads/posts/${filename}`;
+function getAbsoluteUrl(req, file) {
+  if (!file) return '';
+  return file.path || `${API_BASE_URL}/uploads/posts/${file.filename}`;
 }
 
 // ─── POST CONTROLLER HANDLERS ─────────────────────────────────
@@ -70,15 +74,24 @@ async function buildPostTags({ tagsInput, sportType, content }) {
 
 exports.createPost = async (req, res) => {
   try {
-    let { content, location, sportType, tags } = req.body;
+    let { content, location, sportType, tags, fcId } = req.body;
     if (sportType === 'Không chọn' || sportType === 'Không') {
       sportType = '';
     }
+
+    // Nếu bài viết thuộc một FC, tự động kế thừa sportType của FC
+    if (fcId && !sportType) {
+      const fcDoc = await FC.findById(fcId).select('sportType').lean();
+      if (fcDoc && fcDoc.sportType) {
+        sportType = fcDoc.sportType;
+      }
+    }
+
     const finalSportType = sportType;
 
     let mediaUrls = [];
     if (req.files && req.files.length > 0) {
-      mediaUrls = req.files.map((file) => getAbsoluteUrl(req, file.filename));
+      mediaUrls = req.files.map((file) => getAbsoluteUrl(req, file));
     }
 
     const resolvedTags = await buildPostTags({
@@ -89,6 +102,7 @@ exports.createPost = async (req, res) => {
 
     const post = new Post({
       userId: req.userId,
+      fcId: fcId || null,
       content: content || '',
       mediaUrls,
       location: location || '',
@@ -99,7 +113,9 @@ exports.createPost = async (req, res) => {
     await post.save();
     await updateTagUsageCounts([], resolvedTags);
 
-    const populatedPost = await Post.findById(post._id).populate('userId', 'name picture favoriteSport');
+    const populatedPost = await Post.findById(post._id)
+      .populate('userId', 'name picture favoriteSport')
+      .populate('fcId', 'name avatar description isPrivate');
 
     res.status(201).json({
       success: true,
@@ -134,6 +150,8 @@ exports.getPosts = async (req, res) => {
     }
 
     const filter = {};
+    // Hide removed posts from public feed
+    filter.status = { $ne: 'removed_by_admin' };
     if (tag) {
       if (tag === 'Tìm đội') {
         filter.$or = [{ tags: tag }, { sportType: tag }];
@@ -156,6 +174,32 @@ exports.getPosts = async (req, res) => {
       if (followingIds.length > 0) {
         sortStage = { isFollowing: -1, createdAt: -1 };
       }
+    }
+
+    // Lấy danh sách FC mà user đang là thành viên để lọc bài viết của FC riêng tư
+    let memberFcIds = [];
+    if (req.userId) {
+      const memberFcs = await FC.find({ members: req.userId, isPrivate: true }).select('_id').lean();
+      memberFcIds = memberFcs.map((f) => f._id);
+    }
+    // Lấy danh sách tất cả FC riêng tư
+    const allPrivateFcs = await FC.find({ isPrivate: true }).select('_id').lean();
+    const allPrivateFcIds = allPrivateFcs.map((f) => f._id);
+    // Chỉ bao gồm bài viết không thuộc FC riêng tư, hoặc thuộc FC riêng tư mà user là thành viên
+    const excludedPrivateFcIds = allPrivateFcIds.filter(
+      (fcId) => !memberFcIds.some((mId) => String(mId) === String(fcId))
+    );
+    if (excludedPrivateFcIds.length > 0) {
+      const privateFcFilter = {
+        $or: [
+          { fcId: null },
+          { fcId: { $exists: false } },
+          { fcId: { $nin: excludedPrivateFcIds } },
+        ],
+      };
+      filter.$and = filter.$and
+        ? [...filter.$and, privateFcFilter]
+        : [privateFcFilter];
     }
 
     const aggregatePipeline = [
@@ -182,7 +226,11 @@ exports.getPosts = async (req, res) => {
     const populatedPosts = await Promise.all(
       posts.map(async (post) => {
         const user = await User.findById(post.userId).select('name picture favoriteSport').lean();
-        return { ...post, userId: user };
+        let fc = null;
+        if (post.fcId) {
+          fc = await FC.findById(post.fcId).select('name avatar description isPrivate').lean();
+        }
+        return { ...post, userId: user, fcId: fc };
       })
     );
 
@@ -216,6 +264,9 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
     );
 
     const matchFilter = { $or: orConditions };
+
+    // Hide removed posts from public feed
+    matchFilter.status = { $ne: 'removed_by_admin' };
 
     // Thêm filter tag (bộ lọc môn) nếu có
     if (tag) {
@@ -311,7 +362,20 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
       {
         $addFields: { userId: { $arrayElemAt: ['$_userArr', 0] } },
       },
-      { $project: { _userArr: 0, _searchScore: 0 } },
+      // Populate fcId
+      {
+        $lookup: {
+          from: 'fcs',
+          localField: 'fcId',
+          foreignField: '_id',
+          pipeline: [{ $project: { name: 1, avatar: 1, description: 1, isPrivate: 1 } }],
+          as: '_fcArr',
+        },
+      },
+      {
+        $addFields: { fcId: { $arrayElemAt: ['$_fcArr', 0] } },
+      },
+      { $project: { _userArr: 0, _fcArr: 0, _searchScore: 0 } },
     ];
 
     const rawPosts = await Post.aggregate(pipeline);
@@ -367,7 +431,9 @@ async function mapPostInteractions(posts, currentUserId, followingIds = []) {
 exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
-    const post = await Post.findById(id).populate('userId', 'name picture favoriteSport');
+    const post = await Post.findById(id)
+      .populate('userId', 'name picture favoriteSport')
+      .populate('fcId', 'name avatar description isPrivate');
     if (!post) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
     }
@@ -434,6 +500,9 @@ exports.getPostById = async (req, res) => {
       }
     });
 
+    // Mark removed posts so the client can show a proper notice
+    const isRemoved = post.status === 'removed_by_admin';
+
     res.status(200).json({
       success: true,
       data: {
@@ -443,6 +512,9 @@ exports.getPostById = async (req, res) => {
         topReactions,
         isSaved,
         isFollowing,
+        isRemoved,
+        removalReason: isRemoved ? post.removalReason : undefined,
+        removalCategory: isRemoved ? post.removalCategory : undefined,
         comments: topLevelComments,
       },
     });
@@ -516,6 +588,14 @@ exports.likePost = async (req, res) => {
     ]);
     const topReactions = reactionsCount.map(r => r._id);
 
+    if (global.io) {
+      global.io.emit('post_reaction_updated', {
+        postId: post._id.toString(),
+        likesCount: post.likesCount,
+        topReactions,
+      });
+    }
+
     res.status(200).json({
       success: true,
       isLiked: liked,
@@ -555,6 +635,14 @@ exports.unlikePost = async (req, res) => {
       { $limit: 2 }
     ]);
     const topReactions = reactionsCount.map(r => r._id);
+
+    if (global.io) {
+      global.io.emit('post_reaction_updated', {
+        postId: post._id.toString(),
+        likesCount: post.likesCount,
+        topReactions,
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -628,7 +716,7 @@ exports.commentPost = async (req, res) => {
 
     let mediaUrl = null;
     if (req.file) {
-      mediaUrl = getAbsoluteUrl(req, req.file.filename);
+      mediaUrl = getAbsoluteUrl(req, req.file);
     }
 
     if ((!content || !content.trim()) && !mediaUrl) {
@@ -688,6 +776,13 @@ exports.commentPost = async (req, res) => {
           postThumbnail,
         });
       }
+    }
+
+    if (global.io) {
+      global.io.emit('post_comment_updated', {
+        postId: post._id.toString(),
+        commentsCount: post.commentsCount,
+      });
     }
 
     res.status(201).json({
@@ -789,7 +884,7 @@ exports.updatePost = async (req, res) => {
       keptUrls = keepList.filter((url) => typeof url === 'string' && url.trim() !== '');
     }
     const newMediaUrls = req.files && req.files.length > 0
-      ? req.files.map((file) => getAbsoluteUrl(req, file.filename))
+      ? req.files.map((file) => getAbsoluteUrl(req, file))
       : [];
     post.mediaUrls = [...keptUrls, ...newMediaUrls];
 
@@ -843,5 +938,53 @@ exports.likeComment = async (req, res) => {
   } catch (error) {
     console.error('Like comment error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi thích/bỏ thích bình luận' });
+  }
+};
+
+// 9. Report a post (user)
+exports.reportPost = async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const { reason } = req.body;
+    const reporterId = req.userId;
+
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'Lý do báo cáo là bắt buộc' });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
+    }
+
+    // Không cho report bài của chính mình
+    if (post.userId.toString() === reporterId.toString()) {
+      return res.status(400).json({ success: false, message: 'Bạn không thể báo cáo bài viết của chính mình' });
+    }
+
+    // Unique index ngăn chặn report trùng — bắt lỗi MongoDB duplicate key
+    try {
+      await Report.create({ postId, reporterId, reason: reason.trim() });
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(409).json({ success: false, message: 'Bạn đã báo cáo bài viết này rồi' });
+      }
+      throw err;
+    }
+
+    // Tăng reportCount trên Post (dùng shared helper)
+    const updatedPost = await incrementReportCount(postId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Đã gửi báo cáo thành công',
+      data: {
+        reportCount: updatedPost.reportCount,
+        status: updatedPost.status,
+      },
+    });
+  } catch (error) {
+    console.error('Report post error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi báo cáo' });
   }
 };

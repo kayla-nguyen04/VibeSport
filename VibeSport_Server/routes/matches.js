@@ -2,15 +2,33 @@ const express = require("express");
 const Match = require("../models/Match");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
+const Conversation = require("../models/Conversation");
+const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
 const populateFields = [
   { path: "createdBy", select: "name email picture area favoriteSport position" },
+  { path: "contactAppUser", select: "name email picture area favoriteSport position" },
   { path: "participants", select: "name email picture area favoriteSport" },
   { path: "pendingJoinRequests", select: "name email picture area favoriteSport" },
   { path: "invitedMembers", select: "name email picture area favoriteSport" },
+  { path: "chatGroupId", select: "name isGroup avatar groupAvatar participants" },
 ];
+
+const autoAddParticipantToChatGroup = async (chatGroupId, userId) => {
+  if (!chatGroupId || !userId) return;
+  try {
+    const rawGroupId = typeof chatGroupId === "object" ? (chatGroupId._id || chatGroupId.id) : chatGroupId;
+    if (rawGroupId) {
+      await Conversation.findByIdAndUpdate(rawGroupId, {
+        $addToSet: { participants: userId }
+      });
+    }
+  } catch (err) {
+    console.error("Auto add to chat group error:", err.message);
+  }
+};
 
 const getPositionLabel = (posId) => {
   if (!posId) return "";
@@ -22,8 +40,9 @@ const getPositionLabel = (posId) => {
   return "";
 };
 
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
   try {
+    const userId = req.userId;
     const {
       sport,
       formation,
@@ -36,7 +55,6 @@ router.post("/", async (req, res) => {
       locationName,
       location,
       note,
-      createdBy,
       selectedPositionIds,
       benchMembersTeam1,
       benchMembersTeam2,
@@ -76,6 +94,11 @@ router.post("/", async (req, res) => {
       title,
       date,
       startTime,
+      endTime: req.body.endTime || "20:30",
+      time: req.body.time || (startTime ? `${startTime} - 20:30` : "19:00 - 20:30"),
+      totalHours: req.body.totalHours ? Number(req.body.totalHours) : 1.5,
+      totalCourtCost: req.body.totalCourtCost ? Number(req.body.totalCourtCost) : 450000,
+      costPerPlayer: req.body.costPerPlayer ? Number(req.body.costPerPlayer) : Number(costPerPerson || 0),
       maxPlayers: Number(maxPlayers),
       positionsNeeded: sport === "football" ? positionsNeeded || [] : [],
       selectedPositionIds: sport === "football" ? selectedPositionIds || [] : [],
@@ -86,12 +109,25 @@ router.post("/", async (req, res) => {
       locationName,
       location: location || {},
       note: note || "",
-      createdBy: createdBy || undefined,
-      participants: createdBy ? [createdBy] : [],
-      currentPlayers: createdBy ? 1 : 0,
-      memberRoles: createdBy ? [{ userId: createdBy, role: "owner" }] : [],
-      memberPositions: createdBy ? [{ userId: createdBy, positionId: "" }] : [],
+      contactPhone: req.body.contactPhone || "",
+      contactZalo: req.body.contactZalo || "",
+      contactFacebook: req.body.contactFacebook || "",
+      contactAppUser: req.body.contactAppUser || null,
+      courtDescription: req.body.courtDescription || "",
+      specificAddress: req.body.specificAddress || "",
+      skillLevel: req.body.skillLevel || "Người mới",
+      serviceCost: Number(req.body.serviceCost || 31250),
+      chatGroupId: req.body.chatGroupId || null,
+      createdBy: userId,
+      participants: [userId],
+      currentPlayers: 1,
+      memberRoles: [{ userId, role: "owner" }],
+      memberPositions: [{ userId, positionId: "" }],
     });
+
+    if (req.body.chatGroupId) {
+      await autoAddParticipantToChatGroup(req.body.chatGroupId, userId);
+    }
 
     return res.status(201).json({
       success: true,
@@ -111,7 +147,7 @@ router.post("/", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { sport, q, area, startTime, createdBy } = req.query;
+    const { sport, q, area, startTime, createdBy, participantId } = req.query;
 
     const filter = {};
 
@@ -121,6 +157,10 @@ router.get("/", async (req, res) => {
 
     if (createdBy && String(createdBy).trim()) {
       filter.createdBy = String(createdBy).trim();
+    }
+
+    if (participantId && String(participantId).trim()) {
+      filter.participants = String(participantId).trim();
     }
 
     // Search by keyword (title or locationName)
@@ -224,6 +264,10 @@ router.post("/:id/join", async (req, res) => {
     }
     await match.save();
 
+    if (match.chatGroupId) {
+      await autoAddParticipantToChatGroup(match.chatGroupId, userId);
+    }
+
     return res.json({ success: true, message: "Tham gia trận đấu thành công", data: match });
   } catch (error) {
     console.error("Join match error:", error);
@@ -271,13 +315,19 @@ router.post("/:id/leave", async (req, res) => {
 });
 
 // Update a match
-router.put("/:id", async (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
   try {
+    const userId = req.userId;
     const {
       sport,
       title,
       date,
       startTime,
+      endTime,
+      time,
+      totalHours,
+      totalCourtCost,
+      costPerPlayer,
       maxPlayers,
       positionsNeeded,
       costPerPerson,
@@ -288,11 +338,25 @@ router.put("/:id", async (req, res) => {
       benchMembersTeam1,
       benchMembersTeam2,
       footballFormation,
+      formation,
+      contactPhone,
+      contactZalo,
+      contactFacebook,
+      contactAppUser,
+      courtDescription,
+      specificAddress,
+      skillLevel,
+      serviceCost,
     } = req.body;
 
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    const creatorId = match.createdBy ? (typeof match.createdBy === "object" ? (match.createdBy._id || match.createdBy.id) : match.createdBy) : null;
+    if (creatorId && String(creatorId) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể chỉnh sửa trận đấu" });
     }
 
     if (sport && !["football", "badminton", "pickleball"].includes(sport)) {
@@ -319,10 +383,16 @@ router.put("/:id", async (req, res) => {
     }
 
     if (sport) match.sport = sport;
+    if (footballFormation !== undefined) match.footballFormation = footballFormation;
     if (formation !== undefined) match.formation = formation;
     if (title) match.title = title.trim();
     if (date) match.date = date;
     if (startTime) match.startTime = startTime;
+    if (endTime !== undefined) match.endTime = endTime;
+    if (time !== undefined) match.time = time;
+    if (totalHours !== undefined) match.totalHours = Number(totalHours || 1.5);
+    if (totalCourtCost !== undefined) match.totalCourtCost = Number(totalCourtCost || 0);
+    if (costPerPlayer !== undefined) match.costPerPlayer = Number(costPerPlayer || 0);
     if (positionsNeeded !== undefined) {
       match.positionsNeeded = sport === "football" || match.sport === "football" ? positionsNeeded || [] : [];
     }
@@ -342,6 +412,19 @@ router.put("/:id", async (req, res) => {
     if (locationName) match.locationName = locationName.trim();
     if (location) match.location = location;
     if (note !== undefined) match.note = note;
+    if (contactPhone !== undefined) match.contactPhone = contactPhone;
+    if (contactZalo !== undefined) match.contactZalo = contactZalo;
+    if (contactFacebook !== undefined) match.contactFacebook = contactFacebook;
+    if (contactAppUser !== undefined) match.contactAppUser = contactAppUser;
+    if (courtDescription !== undefined) match.courtDescription = courtDescription;
+    if (specificAddress !== undefined) match.specificAddress = specificAddress;
+    if (skillLevel !== undefined) match.skillLevel = skillLevel;
+    if (serviceCost !== undefined) match.serviceCost = Number(serviceCost || 31250);
+    if (req.body.chatGroupId !== undefined) match.chatGroupId = req.body.chatGroupId || null;
+
+    if (!match.createdBy) {
+      match.createdBy = userId;
+    }
 
     await match.save();
 
@@ -354,21 +437,27 @@ router.put("/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Update match error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi server khi cập nhật trận đấu" });
+    return res.status(500).json({ success: false, message: "Lỗi server khi cập nhật trận đấu", error: error.message });
   }
 });
 
 // Delete a match
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    const match = await Match.findByIdAndDelete(req.params.id);
+    const userId = req.userId;
+    const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
+    const creatorId = match.createdBy ? (typeof match.createdBy === "object" ? (match.createdBy._id || match.createdBy.id) : match.createdBy) : null;
+    if (creatorId && String(creatorId) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể xóa trận đấu" });
+    }
+    await Match.findByIdAndDelete(req.params.id);
     return res.json({ success: true, message: "Xóa trận đấu thành công" });
   } catch (error) {
     console.error("Delete match error:", error);
-    return res.status(500).json({ success: false, message: "Lỗi server khi xóa trận đấu" });
+    return res.status(500).json({ success: false, message: "Lỗi server khi xóa trận đấu", error: error.message });
   }
 });
 
@@ -557,6 +646,14 @@ router.post("/:id/accept-join", async (req, res) => {
       return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
     }
 
+    // Extract position entry requested by user BEFORE clearing pendingJoinRequestPositions
+    const reqPosEntry = (match.pendingJoinRequestPositions || []).find(
+      (entry) => String(entry.userId) === String(userId)
+    );
+    const positionToAssign = reqPosEntry && reqPosEntry.positionIds && reqPosEntry.positionIds.length > 0
+      ? reqPosEntry.positionIds.join(",")
+      : "";
+
     match.pendingJoinRequests.splice(requestIndex, 1);
     match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
       (entry) => String(entry.userId) !== String(userId)
@@ -566,17 +663,14 @@ router.post("/:id/accept-join", async (req, res) => {
     if (match.currentPlayers >= match.maxPlayers) {
       match.status = "full";
     }
+    if (match.chatGroupId) {
+      await autoAddParticipantToChatGroup(match.chatGroupId, userId);
+    }
     if (!match.memberRoles) match.memberRoles = [];
     if (!match.memberRoles.some((r) => String(r.userId) === String(userId))) {
       match.memberRoles.push({ userId, role: "member" });
     }
     if (!match.memberPositions) match.memberPositions = [];
-    const reqPosEntry = (match.pendingJoinRequestPositions || []).find(
-      (entry) => String(entry.userId) === String(userId)
-    );
-    const positionToAssign = reqPosEntry && reqPosEntry.positionIds && reqPosEntry.positionIds.length > 0
-      ? reqPosEntry.positionIds[0]
-      : "";
 
     const existingPosIndex = match.memberPositions.findIndex((p) => String(p.userId) === String(userId));
     if (existingPosIndex > -1) {
@@ -585,10 +679,6 @@ router.post("/:id/accept-join", async (req, res) => {
       match.memberPositions.push({ userId, positionId: positionToAssign });
     }
 
-    // Clean up this user's entry from pendingJoinRequestPositions
-    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter(
-      (entry) => String(entry.userId) !== String(userId)
-    );
     await match.save();
 
     const owner = await User.findById(ownerId).select("name");
@@ -924,6 +1014,9 @@ router.post("/:id/add-member", async (req, res) => {
     if (match.currentPlayers >= match.maxPlayers) {
       match.status = "full";
     }
+    if (match.chatGroupId) {
+      await autoAddParticipantToChatGroup(match.chatGroupId, userId);
+    }
 
     // Gán role và position mặc định
     if (!match.memberRoles) match.memberRoles = [];
@@ -1082,6 +1175,9 @@ router.post("/:id/accept-invite", async (req, res) => {
     match.currentPlayers = match.participants.length;
     if (match.currentPlayers >= match.maxPlayers) {
       match.status = "full";
+    }
+    if (match.chatGroupId) {
+      await autoAddParticipantToChatGroup(match.chatGroupId, userId);
     }
 
     if (!match.memberRoles) match.memberRoles = [];

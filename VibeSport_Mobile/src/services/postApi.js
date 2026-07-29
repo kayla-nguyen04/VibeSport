@@ -10,7 +10,6 @@ const API_BASE_URL_CANDIDATES = Array.from(new Set([
   API_BASE_URL,
   'http://10.0.2.2:4000',
   'http://localhost:4000',
-  'http://192.168.1.5:4000',
 ].filter(Boolean)));
 
 async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIMEOUT_MS) {
@@ -40,16 +39,24 @@ async function request(path, options = {}, token = null, timeoutMs = DEFAULT_TIM
       try {
         json = text ? JSON.parse(text) : null;
       } catch (e) {
-        throw new Error(`Lỗi máy chủ (${response.status}): Phản hồi không hợp lệ`);
+        throw Object.assign(new Error(`Lỗi máy chủ (${response.status}): Phản hồi không hợp lệ`), { _isHttpError: true });
       }
 
       if (!response.ok) {
-        throw new Error(json?.message || `Lỗi ${response.status}: ${response.statusText}`);
+        throw Object.assign(new Error(json?.message || `Lỗi ${response.status}: ${response.statusText}`), { _isHttpError: true });
       }
 
       return json;
     } catch (err) {
+      if (err.isHttpError) {
+        throw err;
+      }
       lastError = err;
+      // Chỉ thử IP khác nếu là lỗi mạng thật sự (không có response từ server).
+      // HTTP error (400, 409, 401...) có response → throw ngay, không loop tiếp.
+      if (err._isHttpError) {
+        throw err;
+      }
     } finally {
       clearTimeout(timeoutId);
     }
@@ -164,4 +171,14 @@ export const updatePostRequest = async (id, formData, token = null) => {
 
 export const getPostByIdRequest = async (id, token = null) => {
   return request(`/api/posts/${id}`, {}, token);
+};
+
+export const reportPostRequest = async (postId, reason, token = null) => {
+  return request(`/api/posts/${postId}/report`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
+  }, token);
 };

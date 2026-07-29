@@ -2,10 +2,21 @@ import { API_BASE_URL } from '../components/constants/api';
 
 const MATCHES_URL = `${API_BASE_URL}/api/matches`;
 
-async function matchRequest(url, options) {
+async function matchRequest(url, options = {}, token = null) {
   let response;
+  const headers = {
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   try {
-    response = await fetch(url, options);
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
   } catch {
     throw new Error(
       `Không kết nối được máy chủ (${API_BASE_URL}). Kiểm tra server đang chạy và IP trong api.example.js.`
@@ -21,18 +32,22 @@ async function matchRequest(url, options) {
   return result.data;
 }
 
-export async function createMatch(matchData) {
-  return matchRequest(MATCHES_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function createMatch(matchData, token = null) {
+  return matchRequest(
+    MATCHES_URL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(matchData),
     },
-    body: JSON.stringify(matchData),
-  });
+    token
+  );
 }
 
 // ĐÃ CẢI THIỆN: Bổ sung tham số phân tách participantId để quét toàn bộ trận đấu tham gia
-export async function getMatches(filters = {}) {
+export async function getMatches(filters = {}, token = null) {
   const params = new URLSearchParams();
   if (filters.sport) params.append("sport", filters.sport);
   if (filters.q) params.append("q", filters.q);
@@ -43,87 +58,119 @@ export async function getMatches(filters = {}) {
 
   const query = params.toString() ? `?${params.toString()}` : "";
 
-  return matchRequest(`${MATCHES_URL}${query}`);
+  return matchRequest(`${MATCHES_URL}${query}`, {}, token);
 }
 
-export async function requestJoinMatch(matchId, userId, selectedPositionIds = []) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/request-join`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function requestJoinMatch(matchId, userId, selectedPositionIds = [], token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/request-join`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ userId, selectedPositionIds }),
     },
-    body: JSON.stringify({ userId, selectedPositionIds }),
-  });
+    token
+  );
 }
 
-export async function cancelJoinRequest(matchId, userId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/cancel-request`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function cancelJoinRequest(matchId, userId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/cancel-request`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ userId }),
     },
-    body: JSON.stringify({ userId }),
-  });
+    token
+  );
 }
 
-export async function acceptJoinMatch(matchId, ownerId, userId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/accept-join`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function acceptJoinMatch(matchId, ownerId, userId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/accept-join`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ownerId, userId }),
     },
-    body: JSON.stringify({ ownerId, userId }),
-  });
+    token
+  );
 }
 
-export async function rejectJoinMatch(matchId, ownerId, userId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/reject-join`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function rejectJoinMatch(matchId, ownerId, userId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/reject-join`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ownerId, userId }),
     },
-    body: JSON.stringify({ ownerId, userId }),
-  });
+    token
+  );
 }
 
-export async function joinMatch(matchId, userId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/join`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function joinMatch(matchId, userId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/join`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ userId }),
     },
-    body: JSON.stringify({ userId }),
-  });
+    token
+  );
 }
 
-export async function leaveMatch(matchId, userId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/leave`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function leaveMatch(matchId, userId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/leave`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ userId }),
     },
-    body: JSON.stringify({ userId }),
-  });
+    token
+  );
 }
 
-export async function getMatchById(matchId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}`);
+export async function getMatchById(matchId, token = null) {
+  return matchRequest(`${MATCHES_URL}/${matchId}`, {}, token);
 }
 
-export async function updateMatch(matchId, matchData) {
-  return matchRequest(`${MATCHES_URL}/${matchId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
+export async function updateMatch(matchId, matchData, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(matchData),
     },
-    body: JSON.stringify(matchData),
-  });
+    token
+  );
 }
 
-export async function deleteMatch(matchId) {
-  return matchRequest(`${MATCHES_URL}/${matchId}`, {
-    method: "DELETE",
-  });
+export async function deleteMatch(matchId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}`,
+    {
+      method: "DELETE",
+    },
+    token
+  );
 }
 
 export async function updateTeamStatus(matchId, status) {

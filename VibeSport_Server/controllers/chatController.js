@@ -1057,7 +1057,7 @@ exports.updateGroupInfo = async (req, res) => {
     }
 
     if (req.file) {
-      conversation.avatar = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+      conversation.avatar = req.file.path || `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
     }
 
     await conversation.save();
@@ -1851,7 +1851,10 @@ exports.sendImageMessage = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn đã bị cấm chat trong nhóm này' });
     }
 
-    const mediaUrl = `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+    let mediaUrl = null;
+    if (req.file) {
+      mediaUrl = req.file.path || `${API_BASE_URL}/uploads/conversations/${req.file.filename}`;
+    }
 
     const message = await Message.create({
       conversationId: id,
@@ -2341,6 +2344,76 @@ exports.unpinMessage = async (req, res) => {
   } catch (error) {
     console.error('Unpin message error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi bỏ ghim tin nhắn' });
+  }
+};
+
+// ─── Gửi tin nhắn hệ thống khi kết thúc cuộc gọi ──────────────────────────
+// Được gọi từ socket 'leave_channel', 'call_rejected', 'call_busy' handler trong index.js
+// isMissed: true = cuộc gọi nhỡ (rejected/busy/timeout, duration=0)
+// isMissed: false = cuộc gọi kết thúc bình thường
+//
+// callerId (REQUIRED): MongoDB ObjectId (string) của người bấm nút gọi ban đầu.
+// Được dùng làm senderId / lastMessageSenderId để:
+// - Caller mở chat: thấy message bên PHẢI (tin nhắn của mình).
+// - Callee mở chat: thấy message bên TRÁI (tin nhắn nhận được từ caller).
+// Nếu không truyền callerId, fallback về null như cũ (không khuyến khích).
+exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds, isMissed = false, callerId = null) => {
+  try {
+    let content;
+    if (isMissed || durationSeconds === 0) {
+      content = callType === 'video'
+        ? 'Cuộc gọi video nhỡ'
+        : 'Cuộc gọi thoại nhỡ';
+    } else {
+      const durationMinutes = Math.floor(durationSeconds / 60);
+      const durationText =
+        durationMinutes > 0
+          ? `${durationMinutes} phút`
+          : `${durationSeconds} giây`;
+      content = callType === 'video'
+        ? `Cuộc gọi video đã kết thúc (${durationText})`
+        : `Cuộc gọi thoại đã kết thúc (${durationText})`;
+    }
+
+    console.log(`[ChatController] sendSystemCallMessage: callerId=${callerId}, convId=${conversationId}, callType=${callType}, duration=${durationSeconds}s, isMissed=${isMissed}`);
+
+    const message = await Message.create({
+      conversationId,
+      senderId: callerId || null, // ƯU TIÊN callerId để hiển thị đúng phía (mine vs peer)
+      type: 'call',
+      content,
+      readBy: [],
+    });
+
+    // Populate senderId để client nhận được object sender (giống các message khác)
+    const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
+
+    const conversation = await Conversation.findById(conversationId);
+    if (conversation) {
+      conversation.lastMessage = content;
+      conversation.lastMessageAt = message.createdAt;
+      // lastMessageSenderId = callerId để last message preview cũng hiển thị đúng phía
+      conversation.lastMessageSenderId = callerId || null;
+      await conversation.save();
+
+      // Broadcast tới tất cả participant đang online
+      if (global.io) {
+        conversation.participants.forEach((pId) => {
+          const pIdStr = String(pId);
+          global.io.to(pIdStr).emit('new_message', {
+            conversationId,
+            message: populatedMessage,
+            lastMessage: content,
+            lastMessageAt: message.createdAt,
+          });
+        });
+      }
+    }
+
+    return populatedMessage;
+  } catch (error) {
+    console.error('[ChatController] sendSystemCallMessage error:', error);
+    return null;
   }
 };
 

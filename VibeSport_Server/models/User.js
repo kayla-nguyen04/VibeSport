@@ -76,7 +76,25 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    role: {
+      type: String,
+      enum: ['Admin', 'User'],
+      default: 'User',
+    },
     lastSeenAt: {
+      type: Date,
+      default: null,
+    },
+    isLocked: {
+      type: Boolean,
+      default: false,
+    },
+    courts: [{ type: Schema.Types.ObjectId, ref: 'Court' }],
+    reportCount: {
+      type: Number,
+      default: 0,
+    },
+    lastReportedAt: {
       type: Date,
       default: null,
     },

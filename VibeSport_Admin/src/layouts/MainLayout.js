@@ -67,23 +67,27 @@ const icons = {
       <path d="M21 11.5a8.4 8.4 0 01-9 8.4A8.4 8.4 0 013 11.5a8.4 8.4 0 019-8.4 8.4 8.4 0 019 8.4z" />
     </svg>
   ),
+  tasks: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+    </svg>
+  ),
 };
 
 const navGroups = [
-  {
-    label: 'Tổng quan',
-    items: [
-      { key: '/', icon: icons.dashboard, label: 'Bảng điều khiển' },
-      { key: '/growth', icon: icons.growth, label: 'Thống kê tăng trưởng' },
-    ],
-  },
+      {
+        label: 'Tổng quan',
+        items: [
+          { key: '/growth', icon: icons.growth, label: 'Thống kê tăng trưởng' },
+        ],
+      },
   {
     label: 'Quản lý',
     items: [
       { key: '/users', icon: icons.users, label: 'Người dùng' },
       { key: '/posts', icon: icons.posts, label: 'Bài viết' },
       { key: '/reputation', icon: icons.reputation, label: 'Đánh giá & uy tín' },
-      { key: '/calls', icon: icons.calls, label: 'Cuộc gọi video/thoại' },
     ],
   },
   {
@@ -131,25 +135,27 @@ export default function MainLayout() {
           />
         </div>
 
-        {navGroups.map((group) => (
-          <React.Fragment key={group.label}>
-            <div className="nav-group-label">{group.label}</div>
+        <div className="sidebar-nav">
+          {navGroups.map((group) => (
+            <React.Fragment key={group.label}>
+              <div className="nav-group-label">{group.label}</div>
 
-            {group.items.map((item) => (
-              <NavLink
-                key={item.key}
-                to={item.key}
-                end={item.key === '/'}
-                className={({ isActive }) =>
-                  `nav-item${isActive ? ' active' : ''}`
-                }
-              >
-                {item.icon}
-                {item.label}
-              </NavLink>
-            ))}
-          </React.Fragment>
-        ))}
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.key}
+                  to={item.key}
+                  end={item.key === '/'}
+                  className={({ isActive }) =>
+                    `nav-item${isActive ? ' active' : ''}`
+                  }
+                >
+                  {item.icon}
+                  {item.label}
+                </NavLink>
+              ))}
+            </React.Fragment>
+          ))}
+        </div>
 
         <div className="sidebar-foot">
 

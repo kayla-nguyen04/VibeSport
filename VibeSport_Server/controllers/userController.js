@@ -3,18 +3,23 @@ const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
 const Team = require('../models/Team');
 const Match = require('../models/Match');
+const ReportUser = require('../models/ReportUser');
 const { getPresenceFromLastSeen } = require('../utils/presence');
 
 function formatUserPublic(user) {
   return {
     id: user._id,
+    _id: user._id,
     name: user.name,
     picture: user.picture,
+    phone: user.phone,
+    email: user.email,
     favoriteSport: user.favoriteSport,
     position: user.position,
     area: user.area,
     bio: user.bio,
     rating: user.rating ?? 0,
+    courts: user.courts || [],
     createdAt: user.createdAt,
   };
 }
@@ -38,7 +43,7 @@ exports.getUserProfile = async (req, res) => {
     const { id } = req.params;
     const viewerId = req.userId;
 
-    const user = await User.findById(id).select('-passwordHash');
+    let user = await User.findById(id).populate('courts').select('-passwordHash');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
@@ -234,7 +239,7 @@ exports.searchUsers = async (req, res) => {
     const users = await User.find({
       name: { $regex: keyword, $options: 'i' },
     })
-      .select('_id name picture favoriteSport')
+      .select('_id name picture phone favoriteSport')
       .limit(8)
       .lean();
 
@@ -242,8 +247,10 @@ exports.searchUsers = async (req, res) => {
       success: true,
       data: users.map((u) => ({
         id: u._id,
+        _id: u._id,
         name: u.name,
         picture: u.picture,
+        phone: u.phone,
         favoriteSport: u.favoriteSport,
       })),
     });
@@ -259,7 +266,7 @@ exports.getMutualFriends = async (req, res) => {
     const mutualFollowers = await Follow.find({
       followerId: { $in: following },
       followingId: req.userId,
-    }).populate('followerId', '_id name picture favoriteSport position area lastSeenAt');
+    }).populate('followerId', '_id name picture phone favoriteSport position area lastSeenAt');
 
     const friends = mutualFollowers
       .map((f) => f.followerId)
@@ -281,7 +288,7 @@ exports.getFollowingList = async (req, res) => {
     const viewerId = req.userId;
 
     const followDocs = await Follow.find({ followerId: targetUserId })
-      .populate('followingId', '_id name picture favoriteSport position area lastSeenAt bio');
+      .populate('followingId', '_id name picture phone favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followingId).filter(Boolean);
     const userIds = users.map((u) => u._id);
@@ -321,7 +328,7 @@ exports.getFollowersList = async (req, res) => {
     const viewerId = req.userId;
 
     const followDocs = await Follow.find({ followingId: targetUserId })
-      .populate('followerId', '_id name picture favoriteSport position area lastSeenAt bio');
+      .populate('followerId', '_id name picture phone favoriteSport position area lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followerId).filter(Boolean);
     const userIds = users.map((u) => u._id);
@@ -352,5 +359,55 @@ exports.getFollowersList = async (req, res) => {
   } catch (error) {
     console.error('getFollowersList error:', error);
     res.status(500).json({ success: false, message: 'Lỗi khi lấy danh sách người theo dõi' });
+  }
+};
+
+exports.reportUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reporterId = req.userId;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, message: 'Lý do báo cáo không được trống' });
+    }
+
+    if (String(id) === String(reporterId)) {
+      return res.status(400).json({ success: false, message: 'Bạn không thể tự báo cáo chính mình' });
+    }
+
+    const reportedUser = await User.findById(id);
+    if (!reportedUser) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng được báo cáo' });
+    }
+
+    // Kiểm tra xem đã báo cáo chưa
+    const existingReport = await ReportUser.findOne({ reportedUserId: id, reporterId });
+    if (existingReport) {
+      return res.status(400).json({ success: false, message: 'Bạn đã gửi báo cáo tài khoản này trước đó rồi' });
+    }
+
+    // Tạo báo cáo
+    await ReportUser.create({
+      reportedUserId: id,
+      reporterId,
+      reason: reason.trim(),
+    });
+
+    // Cập nhật người dùng bị báo cáo
+    reportedUser.reportCount = (reportedUser.reportCount || 0) + 1;
+    reportedUser.lastReportedAt = new Date();
+    await reportedUser.save();
+
+    res.json({
+      success: true,
+      message: 'Báo cáo người dùng thành công',
+      data: {
+        reportCount: reportedUser.reportCount,
+      },
+    });
+  } catch (error) {
+    console.error('reportUser error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi khi gửi báo cáo người dùng' });
   }
 };

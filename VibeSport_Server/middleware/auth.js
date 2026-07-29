@@ -14,6 +14,10 @@ async function authMiddleware(req, res, next) {
       return res.status(401).json({ success: false, message: 'Unauthorized: Invalid or expired token' });
     }
 
+    if (session.userId.isLocked) {
+      return res.status(403).json({ success: false, message: 'Tài khoản của bạn đã bị khóa.' });
+    }
+
     // Attach user information to request
     req.userId = session.userId._id;
     req.user = session.userId;

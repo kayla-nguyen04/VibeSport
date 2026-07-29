@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, Text, View, Keyboard } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { logoutUser, updateProfile } from '../redux/authSlice';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -16,19 +16,33 @@ const Tab = createBottomTabNavigator();
 
 const ACTIVE_COLOR = '#FFFFFF';
 const INACTIVE_COLOR = '#1F2937';
-const TAB_BAR_HEIGHT = 70;
+const TAB_BAR_HEIGHT = 56; // reduced 20% from 70
 
 function CustomTabBar({ state, descriptors, navigation }) {
-  const insets = useSafeAreaInsets();
   const chatUnreadCount = useSelector((state) => state.chat.unreadCount);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  if (keyboardVisible) return null;
+
+  const bottomPosition = insets.bottom > 0 ? Math.max(insets.bottom - 8, 12) : 12;
 
   return (
     <View style={[styles.bottomBarOuter, {
       position: 'absolute',
       left: 0,
       right: 0,
-      bottom: insets.bottom + 12,
-    },]}>
+      bottom: bottomPosition,
+    }]}>
       <View style={styles.bottomBarWrap}>
         <View style={styles.bottomBar}>
           {state.routes.map((route, index) => {
@@ -59,8 +73,10 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 onPress={() => navigation.navigate(route.name)}
                 style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]}
               >
-                <View style={[styles.iconFrame, isFocused && styles.activeIconFrame]}>
-                  {icon}
+                <View style={styles.iconFrameOuter}>
+                  <View style={[styles.iconFrameInner, isFocused && styles.activeIconFrame]}>
+                    {icon}
+                  </View>
                   {showChatBadge ? (
                     <View style={styles.tabBadge}>
                       <Text style={styles.tabBadgeText}>
@@ -119,6 +135,7 @@ export function MainTabsNavigator() {
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
       }}
       initialRouteName="PostsTab"
     >
@@ -161,7 +178,7 @@ const styles = StyleSheet.create({
   },
   bottomBarWrap: {
     backgroundColor: '#ffffff',
-    borderRadius: 40,
+    borderRadius: 32,
     borderWidth: 1.2,
     borderColor: '#d1d5db',
     shadowColor: '#000',
@@ -185,21 +202,28 @@ const styles = StyleSheet.create({
   tabButtonPressed: {
     opacity: 0.7,
   },
-  iconFrame: {
-   width: 52,
-  height: 52,
-  justifyContent: 'center',
-  alignItems: 'center',
-  borderRadius: 26,
-  overflow: 'hidden',
+  iconFrameOuter: {
+    width: 42,
+    height: 42,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconFrameInner: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
   activeIconFrame: {
     backgroundColor: '#FF5F3D',
   },
   tabBadge: {
     position: 'absolute',
-    top: 2,
-    right: 0,
+    top: -6,
+    right: -6,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
@@ -212,7 +236,7 @@ const styles = StyleSheet.create({
   },
   tabBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
 });

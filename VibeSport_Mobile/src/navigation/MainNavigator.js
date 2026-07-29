@@ -10,7 +10,7 @@ import MapPickerScreen from '../screens/MapPickerScreen';
 import AreaPickerScreen from '../screens/AreaPickerScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
-import UserProfileScreen from '../screens/UserProfileScreen';
+import { UserProfileScreen } from '../screens/UserProfileScreen';
 import SavedPostsScreen from '../screens/SavedPostsScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
@@ -20,6 +20,7 @@ import JoinGroupScreen from '../screens/JoinGroupScreen';
 import ProfileManagementScreen from '../screens/ProfileManagementScreen';
 import ClubManagementScreen from '../screens/ClubManagementScreen';
 import MatchHistoryScreen from '../screens/MatchHistoryScreen';
+import { CallScreen } from '../screens/CallScreen';
 
 export const linking = {
   prefixes: ['vibesport://', 'https://vibesport.app'],
@@ -42,12 +43,12 @@ export function LoadingScreen() {
 }
 
 export function MainNavigator({ initialRouteName = 'Home' }) {
+  console.log("UserProfileScreen in MainNavigator:", UserProfileScreen);
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        animation: 'slide_from_right',
-        animationDuration: 280,
+        animation: 'none',
         gestureEnabled: true,
       }}
       initialRouteName={initialRouteName}
@@ -70,6 +71,7 @@ export function MainNavigator({ initialRouteName = 'Home' }) {
       <Stack.Screen name="ProfileManagementScreen" component={ProfileManagementScreen} />
       <Stack.Screen name="ClubManagementScreen" component={ClubManagementScreen} />
       <Stack.Screen name="MatchHistoryScreen" component={MatchHistoryScreen} />
+      <Stack.Screen name="Call" component={CallScreen} options={{ animation: 'fade' }} />
     </Stack.Navigator>
   );
 }

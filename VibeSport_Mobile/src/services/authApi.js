@@ -36,11 +36,16 @@ async function request(path, options, timeoutMs = REQUEST_TIMEOUT_MS) {
 
       if (!response.ok) {
         const serverMessage = data?.message || text || response.statusText || 'Yêu cầu thất bại.';
-        throw new Error(`${response.status} ${response.statusText}: ${serverMessage}`);
+        const httpError = new Error(`${serverMessage}`);
+        httpError.isHttpError = true;
+        throw httpError;
       }
 
       return data;
     } catch (err) {
+      if (err.isHttpError) {
+        throw err; // Stop trying other URLs if we actually reached the server
+      }
       lastError = err;
     } finally {
       clearTimeout(timeoutId);

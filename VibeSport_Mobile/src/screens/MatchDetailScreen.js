@@ -13,6 +13,7 @@ import {
   Modal,
   TextInput,
   Pressable,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,8 +31,11 @@ import {
   approveInvite,
   acceptTeamInvite,
   rejectTeamInvite,
+  updateTeamStatus,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
+import { getSocket } from "../hooks/useSocket";
+import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -73,17 +77,30 @@ const TEAM2_POSITIONS = [
 
 const ALL_POSITIONS = [...TEAM1_POSITIONS, ...TEAM2_POSITIONS];
 
-const getPositionDisplayLabel = (posId) => {
+const getSinglePositionLabel = (posId) => {
+  if (!posId) return "";
   const pos = ALL_POSITIONS.find((item) => item.id === posId);
   if (pos) {
     const teamNumber = pos.id.startsWith("t1_") ? 1 : 2;
-    return `${pos.label} (Đội ${teamNumber})`;
+    return `${pos.label} Đội ${teamNumber}`;
   }
   if (typeof posId === "string" && posId.includes("bench")) {
     const teamNumber = posId.startsWith("t1_") ? 1 : 2;
-    return `Dự bị (Đội ${teamNumber})`;
+    return `Dự bị Đội ${teamNumber}`;
   }
   return posId;
+};
+
+const getPositionDisplayLabel = (posId) => {
+  if (!posId) return "";
+  if (typeof posId === "string" && posId.includes(",")) {
+    const labels = posId
+      .split(",")
+      .map((id) => getSinglePositionLabel(id.trim()))
+      .filter(Boolean);
+    return Array.from(new Set(labels)).join(", ");
+  }
+  return getSinglePositionLabel(posId);
 };
 
 const FOOTBALL_FORMATS = {
@@ -122,6 +139,7 @@ const ROLE_LABELS = {
   defender: "Hậu vệ",
   midfielder: "Tiền vệ",
   striker: "Tiền đạo",
+  bench: "Dự bị",
 };
 
 const ROLE_TAG_COLORS = {
@@ -160,14 +178,18 @@ const getRelativeTime = (dateStr) => {
   }
 };
 
-const formatTimeLabel = (timeStr) => {
-  if (!timeStr) return "";
-  const cleaned = timeStr.trim();
-  if (cleaned.includes(":")) {
-    const parts = cleaned.split(":");
-    return `${parts[0]}g ${parts[1]}p`;
+const formatTimeLabel = (timeStr, matchObj) => {
+  if (matchObj && matchObj.time && matchObj.time.includes("-")) return matchObj.time;
+  const start = (matchObj && matchObj.startTime) || timeStr || "19:00";
+  let end = matchObj && matchObj.endTime;
+  if (!end) {
+    const [h, m] = start.split(":").map(Number);
+    const totalM = (h || 19) * 60 + (m || 0) + 90;
+    const endH = String(Math.floor(totalM / 60) % 24).padStart(2, "0");
+    const endM = String(totalM % 60).padStart(2, "0");
+    end = `${endH}:${endM}`;
   }
-  return cleaned;
+  return `${start} - ${end}`;
 };
 
 const parseDate = (dateStr) => {
@@ -227,6 +249,48 @@ function UserRow({ user, label, badge, onPress, rightAction, isMe, showTeammates
   );
 }
 
+const getMatchStatusInfo = (m) => {
+  if (!m) return { label: "⏳ CHƯA BẮT ĐẦU", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
+  const isEnded = m.teamStatus === "ended" || m.status === "completed";
+  const isOngoing = m.teamStatus === "ongoing";
+  const isCancelled = m.status === "cancelled";
+
+  if (isCancelled) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ HỦY",
+      icon: "close-circle-outline",
+      bg: "#FEE2E2",
+      color: "#B91C1C",
+      borderColor: "#FCA5A5",
+    };
+  }
+  if (isEnded) {
+    return {
+      label: "TRẬN ĐẤU ĐÃ KẾT THÚC 🏁",
+      icon: "flag-outline",
+      bg: "#F3F4F6",
+      color: "#4B5563",
+      borderColor: "#E5E7EB",
+    };
+  }
+  if (isOngoing) {
+    return {
+      label: "🔴 TRẬN ĐẤU ĐANG DIỄN RA (LIVE)",
+      icon: "radio-button-on-outline",
+      bg: "#DCFCE7",
+      color: "#15803D",
+      borderColor: "#86EFAC",
+    };
+  }
+  return {
+    label: "⏳ TRẬN ĐẤU CHƯA BẮT ĐẦU",
+    icon: "time-outline",
+    bg: "#FFF7ED",
+    color: "#C2410C",
+    borderColor: "#FFD8A8",
+  };
+};
+
 export default function MatchDetailScreen({ navigation, route }) {
   const { matchId: routeMatchId } = route.params;
   const insets = useSafeAreaInsets();
@@ -235,6 +299,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const token = useSelector((state) => state.auth?.token);
   const matchId = routeMatchId || route?.params?.matchId;
   const initialMatch = route?.params?.match;
+  const socket = getSocket();
   const [match, setMatch] = useState(initialMatch || null);
   const [loading, setLoading] = useState(!initialMatch);
   const [actionLoading, setActionLoading] = useState(false);
@@ -250,10 +315,20 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [showJoinRequests, setShowJoinRequests] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showDetailsCollapsed, setShowDetailsCollapsed] = useState(false);
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
+  const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
 
   const userId = normalizeId(user?.id || user?._id);
+
+  const isUserParticipant = (matchObj) => {
+    const pList = matchObj?.participants || [];
+    return pList.some((p) => {
+      const pid = typeof p === 'object' ? p._id || p.id : p;
+      return normalizeId(pid) === userId;
+    });
+  };
 
   // Extract position data safely (before early return so useMemo is always called)
   const selectedPositionIds = match?.selectedPositionIds || [];
@@ -292,13 +367,57 @@ export default function MatchDetailScreen({ navigation, route }) {
     };
     processTeam(teamBreakdown.teamA.roles);
     processTeam(teamBreakdown.teamB.roles);
+    const benchTotal = Number(match?.benchMembersTeam1 || 0) + Number(match?.benchMembersTeam2 || 0);
+    if (benchTotal > 0) {
+      counts.bench = (counts.bench || 0) + benchTotal;
+    }
     return Object.entries(counts).map(([role, qty]) => ({ role, qty }));
-  }, [match?.sport, teamBreakdown]);
+  }, [match?.sport, teamBreakdown, match?.benchMembersTeam1, match?.benchMembersTeam2]);
 
   const reloadMatch = async () => {
     if (!matchId) return;
     const data = await getMatchById(matchId);
     setMatch(data);
+  };
+
+  const handleToggleTeamStatus = async (newStatus) => {
+    try {
+      setActionLoading(true);
+      await updateTeamStatus(matchId, newStatus);
+      Alert.alert(
+        "Thành công",
+        newStatus === "ongoing"
+          ? "Trận đấu đã BẮT ĐẦU!"
+          : "Trận đấu đã KẾT THÚC!"
+      );
+      await reloadMatch();
+    } catch (err) {
+      Alert.alert("Thông báo", err.message || "Không thể cập nhật trạng thái trận đấu");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStartMatch = () => {
+    Alert.alert(
+      "Xác nhận bắt đầu",
+      "Bạn có chắc chắn muốn BẮT ĐẦU trận đấu này ngay bây giờ?",
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Bắt đầu", onPress: () => handleToggleTeamStatus("ongoing") },
+      ]
+    );
+  };
+
+  const handleEndMatch = () => {
+    Alert.alert(
+      "Xác nhận kết thúc",
+      "Bạn có chắc chắn muốn KẾT THÚC trận đấu này?",
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Kết thúc", style: "destructive", onPress: () => handleToggleTeamStatus("ended") },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -316,18 +435,43 @@ export default function MatchDetailScreen({ navigation, route }) {
     })();
   }, [matchId, navigation]);
 
+  useEffect(() => {
+    if (!socket || !matchId) return;
+
+    const handleMatchUpdated = (data) => {
+      if (data && String(data.matchId) === String(matchId)) {
+        console.log('[SOCKET] Match updated real-time:', matchId);
+        if (data.isDeleted) {
+          Alert.alert("Thông báo", "Trận đấu này đã bị hủy hoặc xóa.");
+          navigation.goBack();
+        } else {
+          reloadMatch();
+        }
+      }
+    };
+
+    socket.on('match_updated', handleMatchUpdated);
+
+    return () => {
+      socket.off('match_updated', handleMatchUpdated);
+    };
+  }, [matchId, socket]);
+
   const creator = typeof match?.createdBy === "object" ? match.createdBy : null;
-  const creatorId = getUserId(creator || match.createdBy);
-  const ownerRoleEntry = Array.isArray(match.memberRoles)
+  const creatorId = getUserId(creator || match?.createdBy);
+  const ownerRoleEntry = Array.isArray(match?.memberRoles)
     ? match.memberRoles.find((entry) => entry?.role === "owner")
     : null;
-  const ownerId = getUserId(ownerRoleEntry?.userId || creator || match.createdBy);
+  const ownerId = getUserId(ownerRoleEntry?.userId || creator || match?.createdBy);
   const isOwner = !!ownerId && String(ownerId) === String(userId);
-  const currentCount = match.currentPlayers || match.participants?.length || 0;
-  const maxCount = match.maxPlayers || 10;
-  const coords = match.location;
-  const participants = match.participants || [];
-  const pendingRequests = match.pendingJoinRequests || [];
+  const maxCount = match?.maxPlayers || 10;
+  const coords = match?.location;
+  const participants = match?.participants || [];
+  const currentCount = participants.filter((participant) => {
+    const participantId = getUserId(participant);
+    return Boolean(participantId) && participantId !== ownerId;
+  }).length;
+  const pendingRequests = match?.pendingJoinRequests || [];
 
   // Merge creator into participant list (always show first)
   const allParticipants = useMemo(() => {
@@ -336,8 +480,64 @@ export default function MatchDetailScreen({ navigation, route }) {
     if (creatorInList) return participants;
     return [creator, ...participants];
   }, [creator, creatorId, participants]);
-  const pendingRequestPositions = match.pendingJoinRequestPositions || [];
-  const invitedMembers = match.invitedMembers || [];
+
+  const getParticipantPositionLabel = (pid) => {
+    const pStr = String(pid);
+
+    if (pStr === String(creatorId) || pStr === String(ownerId)) {
+      return "Người tạo trận";
+    }
+
+    // 1. Check memberPositions for assigned/saved playing position
+    const memberPosEntry = (match?.memberPositions || []).find(
+      (m) => getUserId(m.userId) === pStr
+    );
+    if (memberPosEntry && memberPosEntry.positionId && memberPosEntry.positionId.trim() !== "") {
+      const label = getPositionDisplayLabel(memberPosEntry.positionId);
+      if (label) return label;
+    }
+
+    // 2. Check pendingJoinRequestPositions for positions selected when applying
+    const pendingPosEntry = (match?.pendingJoinRequestPositions || []).find(
+      (entry) => getUserId(entry.userId) === pStr
+    );
+    if (pendingPosEntry && Array.isArray(pendingPosEntry.positionIds) && pendingPosEntry.positionIds.length > 0) {
+      const labels = pendingPosEntry.positionIds
+        .map((posId) => getPositionDisplayLabel(posId))
+        .filter(Boolean);
+      if (labels.length > 0) {
+        return Array.from(new Set(labels)).join(", ");
+      }
+    }
+
+    // 3. Smart resolution for football matches: Assign from match's selectedPositionIds or default formation by index
+    if (match?.sport === "football" || !match?.sport) {
+      const nonOwnerParticipants = (match?.participants || []).filter((p) => {
+        const id = getUserId(p);
+        return id && id !== creatorId && id !== ownerId;
+      });
+
+      const participantIndex = nonOwnerParticipants.findIndex((p) => getUserId(p) === pStr);
+      const posIds = match?.selectedPositionIds && match.selectedPositionIds.length > 0
+        ? match.selectedPositionIds
+        : ["t1_st", "t1_lb", "t1_dm1", "t2_st", "t2_lb", "t2_dm1"];
+
+      const validIndex = participantIndex >= 0 ? participantIndex : 0;
+      if (validIndex < posIds.length) {
+        return getPositionDisplayLabel(posIds[validIndex]);
+      }
+
+      const teamNo = (validIndex % 2 === 0) ? 1 : 2;
+      return `Tiền đạo Đội ${teamNo}`;
+    }
+
+    if (match?.sport === "badminton") return "VĐV Cầu lông";
+    if (match?.sport === "pickleball") return "VĐV Pickleball";
+    return "Thành viên";
+  };
+
+  const pendingRequestPositions = match?.pendingJoinRequestPositions || [];
+  const invitedMembers = match?.invitedMembers || [];
 
   const positionOptions = useMemo(() => {
     if (match?.sport !== "football") return [];
@@ -384,13 +584,14 @@ export default function MatchDetailScreen({ navigation, route }) {
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
+  const displayTotalNeeded = totalNeeded > 0 ? totalNeeded : maxCount;
   const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isInvited && !isEnded && !isFull;
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
     return Array.isArray(entry?.positionIds) ? entry.positionIds : [];
   };
-  const isFull = match?.status === "full" || currentCount >= maxCount;
+  const isFull = match?.status === "full" || currentCount >= displayTotalNeeded;
   const isEnded = match?.status === "completed" || match?.status === "cancelled";
 
   useEffect(() => {
@@ -409,20 +610,23 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleOpenMap = () => {
-    if (!coords?.lat || !coords?.lng) {
-      Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí trên bản đồ.");
-      return;
+    const fullAddress = match.specificAddress || match.location?.address || match.locationName;
+    if (fullAddress) {
+      const query = encodeURIComponent(fullAddress);
+      const url = Platform.select({
+        ios: `maps:0,0?q=${query}`,
+        android: `geo:0,0?q=${query}`,
+        default: `https://www.google.com/maps/search/?api=1&query=${query}`,
+      });
+      Linking.openURL(url).catch(() => {
+        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
+      });
+    } else if (coords?.lat != null && coords?.lng != null) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`;
+      Linking.openURL(url);
+    } else {
+      Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí chi tiết.");
     }
-    const label = encodeURIComponent(match.locationName || "Vị trí trận đấu");
-    const url = Platform.select({
-      ios: `maps:0,0?q=${coords.lat},${coords.lng}(${label})`,
-      android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${label})`,
-      default: `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`,
-    });
-    Linking.openURL(url).catch(() => {
-      // Fallback to Google Maps in browser
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`);
-    });
   };
 
   const handleRequestJoin = () => {
@@ -431,97 +635,172 @@ export default function MatchDetailScreen({ navigation, route }) {
       setShowPositionModal(true);
       return;
     }
-    handleConfirmJoin();
+    Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn gửi yêu cầu tham gia trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: () => handleConfirmJoin(),
+      },
+    ]);
   };
 
   const handleCancelRequest = async () => {
-    try {
-      setActionLoading(true);
-      const data = await cancelJoinRequest(match._id, userId);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã hủy yêu cầu tham gia");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn hủy yêu cầu tham gia này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await cancelJoinRequest(match._id, userId);
+            setMatch(data);
+            Alert.alert("Thành công", "Đã hủy yêu cầu tham gia");
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleConfirmJoin = async () => {
-    try {
-      setActionLoading(true);
-      // Currently the API does not accept positions; we just send join request
-      const data = await requestJoinMatch(match._id, userId);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-      setShowPositionModal(false);
-      setJoinSelectedPositions([]);
-    }
+    Alert.alert(
+      "Nhắc nhở dụng cụ",
+      "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn tham gia? (Người mới biết để thuê đồ)",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Đồng ý",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const data = await requestJoinMatch(match._id, userId);
+              setMatch(data);
+              Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+            } catch (err) {
+              Alert.alert("Lỗi", err.message);
+            } finally {
+              setActionLoading(false);
+              setShowPositionModal(false);
+              setJoinSelectedPositions([]);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleConfirmJoinWithPositions = async () => {
-    if (selectedPositions.length === 0) {
-      Alert.alert("Thông báo", "Vui lòng chọn ít nhất một vị trí");
+    if (selectedPositions.length !== 1) {
+      Alert.alert("Thông báo", "Vui lòng chọn đúng 1 vị trí để tham gia");
       return;
     }
-    try {
-      setActionLoading(true);
-      setShowPositionModal(false);
-      const data = await requestJoinMatch(match._id, userId, selectedPositions);
-      setMatch(data);
-      setSelectedPositions([]);
-      Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+
+    Alert.alert(
+      "Nhắc nhở dụng cụ",
+      "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn tham gia? ",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Đồng ý",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              setShowPositionModal(false);
+              const data = await requestJoinMatch(match._id, userId, selectedPositions);
+              setMatch(data);
+              setSelectedPositions([]);
+              Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+            } catch (err) {
+              Alert.alert("Lỗi", err.message);
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const togglePositionSelection = (option) => {
     if (option.disabled) return;
 
     const isAlreadySelected = selectedPositions.includes(option.id);
-    const hasSameRoleInSameTeamSelected = selectedPositions.some((selectedId) => {
-      const selectedOption = positionOptions.find((item) => item.id === selectedId);
-      return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
-    });
-
-    if (!isAlreadySelected && hasSameRoleInSameTeamSelected) {
+    if (isAlreadySelected) {
+      setSelectedPositions([]);
       return;
     }
 
-    setSelectedPositions((prev) =>
-      prev.includes(option.id) ? prev.filter((id) => id !== option.id) : [...prev, option.id]
-    );
+    if (selectedPositions.length >= 1) {
+      return;
+    }
+
+    setSelectedPositions([option.id]);
+  };
+
+  const handleChangePositionRequest = () => {
+    Alert.alert("Thay đổi vị trí", "Bạn có chắc muốn hủy yêu cầu cũ và tạo yêu cầu mới?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await cancelJoinRequest(match._id, userId);
+            setMatch(data);
+            setSelectedPositions([]);
+            setShowPositionModal(true);
+          } catch (err) {
+            Alert.alert("Thông báo", err.message || "Không thể đổi vị trí");
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleAcceptRequest = async (requestUserId) => {
-    try {
-      setActionLoading(true);
-      const data = await acceptJoinMatch(match._id, userId, requestUserId);
-      setMatch(data);
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn đồng ý yêu cầu này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await acceptJoinMatch(match._id, userId, requestUserId);
+            setMatch(data);
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleRejectRequest = async (requestUserId) => {
-    try {
-      setActionLoading(true);
-      const data = await rejectJoinMatch(match._id, userId, requestUserId);
-      setMatch(data);
-    } catch (err) {
-      Alert.alert("Lỗi", err.message);
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn từ chối yêu cầu này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await rejectJoinMatch(match._id, userId, requestUserId);
+            setMatch(data);
+          } catch (err) {
+            Alert.alert("Lỗi", err.message);
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleLeave = () => {
@@ -561,7 +840,7 @@ export default function MatchDetailScreen({ navigation, route }) {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteMatch(match._id);
+              await deleteMatch(match._id, token);
               Alert.alert("Thành công", "Đã xóa trận đấu");
               navigation.navigate("Home", { screen: "MatchesTab" });
             } catch (err) {
@@ -590,27 +869,43 @@ export default function MatchDetailScreen({ navigation, route }) {
       });
       setFollowingUsers(filtered);
     } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể tải danh sách");
+      Alert.alert("Thông báo", err.message || "Không thể tải danh sách");
     } finally {
       setInviteLoading(false);
     }
   };
 
   const handleInviteUser = async (targetUserId) => {
-    try {
-      setActionLoading(true);
-      const data = await inviteTeamMember(match._id, userId, targetUserId);
-      setMatch(data);
-      const message = String(ownerId) === String(userId)
-        ? "Người được mời có thể chấp nhận ngay."
-        : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
-      Alert.alert("Đã gửi lời mời", message);
-      setFollowingUsers(prev => prev.filter(u => String(u._id || u.id) !== String(targetUserId)));
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể mời");
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận mời", "Bạn có chắc muốn mời người này vào trận này?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const data = await inviteTeamMember(match._id, userId, targetUserId);
+            setMatch(data);
+            const message = String(ownerId) === String(userId)
+              ? "Người được mời có thể chấp nhận ngay."
+              : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
+            Alert.alert("Đã gửi lời mời", message);
+            setFollowingUsers((prev) =>
+              prev.map((user) => {
+                const userIdValue = String(user._id || user.id);
+                if (userIdValue === String(targetUserId)) {
+                  return { ...user, isInvited: true };
+                }
+                return user;
+              })
+            );
+          } catch (err) {
+            Alert.alert("Thông báo", err.message || "Không thể mời");
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const handleAcceptInvite = async () => {
@@ -648,20 +943,28 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   const handleKickUser = async () => {
     if (!kickTarget) return;
-    try {
-      setActionLoading(true);
-      const targetId = getUserId(kickTarget);
-      const data = await kickTeamMember(match._id, ownerId, targetId, kickReason);
-      setMatch(data);
-      Alert.alert("Thành công", "Đã kích thành viên ra khỏi trận");
-      setShowKickModal(false);
-      setKickTarget(null);
-      setKickReason("");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể kích");
-    } finally {
-      setActionLoading(false);
-    }
+    Alert.alert("Xác nhận", "Bạn có chắc muốn kích thành viên này khỏi trận?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đồng ý",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const targetId = getUserId(kickTarget);
+            const data = await kickTeamMember(match._id, ownerId, targetId, kickReason);
+            setMatch(data);
+            Alert.alert("Thành công", "Đã kích thành viên ra khỏi trận");
+            setShowKickModal(false);
+            setKickTarget(null);
+            setKickReason("");
+          } catch (err) {
+            Alert.alert("Thông báo", err.message || "Không thể kích");
+          } finally {
+            setActionLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const content = loading || !match ? (
@@ -701,6 +1004,17 @@ export default function MatchDetailScreen({ navigation, route }) {
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
+          {/* Match Status Bar */}
+          {(() => {
+            const statusInfo = getMatchStatusInfo(match);
+            return (
+              <View style={[styles.statusBarContainer, { backgroundColor: statusInfo.bg, borderColor: statusInfo.borderColor }]}>
+                <Ionicons name={statusInfo.icon} size={16} color={statusInfo.color} style={{ marginRight: 6 }} />
+                <Text style={[styles.statusBarText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+              </View>
+            );
+          })()}
+
           <View style={styles.cardHeader}>
             <View style={styles.sportSquare}>
               <TagIcon tagName={SPORT_TAG_MAP[match.sport] || "Bóng đá"} size={28} color="#fff" />
@@ -709,80 +1023,258 @@ export default function MatchDetailScreen({ navigation, route }) {
               <Text style={styles.title}>{match.title}</Text>
               <Text style={styles.timeAgoText}>{match.createdAt ? getRelativeTime(match.createdAt) : "Mới đăng"}</Text>
             </View>
+            <TouchableOpacity
+              style={styles.collapseBtn}
+              activeOpacity={0.7}
+              onPress={() => setShowDetailsCollapsed((prev) => !prev)}
+            >
+              <Ionicons
+                name={showDetailsCollapsed ? "chevron-down" : "chevron-up"}
+                size={20}
+                color="#666"
+              />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.infoSection}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
-              <Text style={styles.infoText}>{formatTimeLabel(match.startTime)} - {getDayLabel(match.date)} - {match.date}</Text>
-            </View>
+          {!showDetailsCollapsed && (
+            <>
+              <View style={styles.infoSection}>
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIcon}><Ionicons name="time-outline" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>{formatTimeLabel(match.startTime, match)} - {getDayLabel(match.date)} - {match.date}</Text>
+                </View>
 
-            {match.note ? (
-              <View style={styles.infoRow}>
-                <View style={styles.infoIcon}><MaterialCommunityIcons name="square-edit-outline" size={16} color="#333" /></View>
-                <Text style={styles.infoText}>{match.note}</Text>
-              </View>
-            ) : null}
-
-            <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}>
-              <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
-              <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
-            </View>
-          </View>
-
-          <View style={styles.gridContainer}>
-            <View style={styles.gridColumn}>
-              <Text style={styles.gridLabel}>Số người đã tuyển.</Text>
-              <View style={styles.gridBox}>
-                <Ionicons name="people-outline" size={16} color="#333" />
-                <Text style={styles.gridValue}>{currentCount}/{maxCount}</Text>
-              </View>
-            </View>
-            <View style={styles.gridColumn}>
-              <Text style={styles.gridLabel}>Tiền cọc sân.</Text>
-              <View style={styles.gridBox}>
-                <Ionicons name="wallet-outline" size={16} color="#333" />
-                <Text style={styles.gridValue} numberOfLines={1}>{formatCost(match.costPerPerson)}</Text>
-              </View>
-            </View>
-          </View>
-
-          {neededRolesList.length > 0 && (
-            <View style={{ marginBottom: 16 }}>
-              <Text style={styles.gridLabel}>Vị trí cần tìm.</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {neededRolesList.map(({ role, qty }) => (
-                  <View key={`needed_${role}`} style={styles.outlineRoleTag}>
-                    <Text style={styles.outlineRoleTagText}>{ROLE_LABELS[role] || role} x{qty}</Text>
+                {match.note ? (
+                  <View style={styles.infoRow}>
+                    <View style={styles.infoIcon}><MaterialCommunityIcons name="square-edit-outline" size={16} color="#333" /></View>
+                    <Text style={styles.infoText}>{match.note}</Text>
                   </View>
-                ))}
-              </View>
-            </View>
-          )}
+                ) : null}
 
-          <View style={styles.locationRowContainer}>
-            <View style={styles.locationInfoCol}>
-              <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
-              <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
-            </View>
-            {coords?.lat != null && coords?.lng != null && (
-              <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
-                <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
+                <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}> 
+                  <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+                </View>
+
+                {/* Skill Level */}
+                <View style={[styles.infoRow, { paddingTop: 5, paddingBottom: 5 }]}>
+                  <View style={styles.infoIcon}><Ionicons name="ribbon-outline" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>Trình độ: <Text style={{ fontWeight: "700", color: ORANGE }}>{match.skillLevel || "Người mới"}</Text></Text>
+                </View>
+
+                {/* Specific Address */}
+                {match.specificAddress ? (
+                  <View style={[styles.infoRow, { paddingBottom: 10 }]}>
+                    <View style={styles.infoIcon}><Ionicons name="map-outline" size={16} color="#333" /></View>
+                    <Text style={styles.infoText} numberOfLines={3}>Địa chỉ chi tiết: {match.specificAddress}</Text>
+                  </View>
+                ) : null}
+
+            
+               
+              </View>
+
+              {/* Flexible Centered Badges (Identical to TeamsScreen) */}
+              {(() => {
+                const totalHoursVal = match.totalHours || 1;
+                const totalCostVal = match.totalCourtCost || (match.costPerPerson * totalHoursVal);
+                const costPerPlayerVal = match.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / (displayTotalNeeded || match.maxPlayers || 10)) : match.costPerPerson);
+
+                return (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6, marginVertical: 12 }}>
+            
+                    {/* Giá 1 người */}
+                    <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center",marginRight:"5" }}>
+                      <Ionicons name="cash-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 14, color: "#059669", fontWeight: "700" }}>{formatCost(costPerPlayerVal)}</Text>
+                    </View>
+
+                    {/* Số người đã tìm/tuyển */}
+                    <View style={{ backgroundColor: "#FFF7ED", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FFD8A8", flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 14, color: "#C2410C", fontWeight: "700" }}>Đã tìm: {currentCount}/{displayTotalNeeded}</Text>
+                    </View>
+
+                    {/* Tiền dịch vụ ước tính */}
+                    <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:"15" }}>
+                      <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 14, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ≈ {formatCost(match.serviceCost || 31250)}</Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {neededRolesList.length > 0 && (
+                <View style={{ marginBottom: 3 }}>
+                  <Text style={styles.gridLabel}>Vị trí cần tìm.</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {neededRolesList.map(({ role, qty }) => (
+                      <View key={`needed_${role}`} style={styles.outlineRoleTag}>
+                        <Text style={styles.outlineRoleTagText}>{ROLE_LABELS[role] || role} x{qty}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.locationRowContainer}>
+                <View style={styles.locationInfoCol}>
+                  <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
+                  <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
+                </View>
+                {(Boolean(match.specificAddress) || Boolean(match.locationName) || (coords?.lat != null && coords?.lng != null)) && (
+                  <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
+                    <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Court Details Button */}
+              <TouchableOpacity
+                style={{
+                  marginTop: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "#EFF6FF",
+                  borderWidth: 1,
+                  borderColor: "#BFDBFE",
+                  padding: 10,
+                  borderRadius: 10,
+                  gap: 6,
+                }}
+                onPress={() => setShowCourtDetailModal(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="information-circle" size={18} color="#2563EB" />
+                <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>
+                  Chi tiết sân 
+                </Text>
               </TouchableOpacity>
-            )}
-          </View>
+
+              {/* Contact organizer block */}
+              {(match.contactPhone || match.contactZalo || match.contactFacebook || match.contactAppUser) ? (
+                <View style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#FFF7ED",
+                  borderWidth: 1,
+                  borderColor: "#FFD8A8",
+                }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#C2410C", marginBottom: 8 }}>
+                     LIÊN HỆ CHỦ SÂN 
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                    {match.contactAppUser ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 100,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: ORANGE,
+                          paddingVertical: 8,
+                          paddingHorizontal: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => openProfile(match.contactAppUser)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="person-circle" size={16} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }} numberOfLines={1}>
+                          {match.contactAppUser.name || "Tài khoản App"}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {match.contactPhone ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 80,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#16A34A",
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => Linking.openURL(`tel:${match.contactPhone}`)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="call" size={15} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Gọi điện</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    
+                    {match.contactZalo ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 70,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#0068FF",
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => {
+                          const cleanZalo = match.contactZalo.replace(/[^0-9]/g, "");
+                          const zaloUrl = match.contactZalo.startsWith("http")
+                            ? match.contactZalo
+                            : `https://zalo.me/${cleanZalo || match.contactZalo}`;
+                          Linking.openURL(zaloUrl);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialCommunityIcons name="chat-processing" size={15} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Zalo</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {match.contactFacebook ? (
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          minWidth: 90,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#1877F2",
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          gap: 6
+                        }}
+                        onPress={() => {
+                          const fbUrl = match.contactFacebook.startsWith("http")
+                            ? match.contactFacebook
+                            : `https://facebook.com/${match.contactFacebook}`;
+                          Linking.openURL(fbUrl);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="logo-facebook" size={15} color="#fff" />
+                        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Facebook</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+            </>
+          )}
         </View>
 
         {/* Creator is shown in participant list below with badge */}
 
-        <View style={styles.sectionCard}>
+        
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
-            {isOwner && (
-              <TouchableOpacity style={styles.inviteSmallBtn} onPress={handleOpenInvite} activeOpacity={0.7}>
-                <Text style={styles.inviteSmallBtnText}>Mời +</Text>
-              </TouchableOpacity>
-            )}
           </View>
           {allParticipants.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
@@ -795,25 +1287,85 @@ export default function MatchDetailScreen({ navigation, route }) {
                 <UserRow
                   key={pid || idx}
                   user={typeof p === "object" ? p : { name: "Người chơi" }}
-                  badge={isCreatorParticipant ? "Người tạo trận" : "Người tham gia"}
+                  badge={getParticipantPositionLabel(pid)}
                   isMe={isMe}
                   showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
-                  rightAction={
-                    isOwner && !isCreatorParticipant && !isEnded ? (
-                      <TouchableOpacity
-                        style={styles.kickSmallBtn}
-                        onPress={() => handleOpenKick(p)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.kickSmallBtnText}>Kích</Text>
-                      </TouchableOpacity>
-                    ) : null
-                  }
                 />
               );
             })
           )}
+
+          {/* Nút Mời thêm bạn bè tham gia (Hiển thị phía dưới Danh sách tham gia) */}
+          {isOwner && (
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#FFF7ED",
+                borderWidth: 1.5,
+                borderColor: "#FFD8A8",
+                paddingVertical: 10,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                marginTop: 10,
+                marginBottom: 8,
+                gap: 6,
+              }}
+              onPress={handleOpenInvite}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="person-add" size={18} color={ORANGE} />
+              <Text style={{ color: ORANGE, fontWeight: "700", fontSize: 13.5 }}>
+                + Mời thêm bạn bè tham gia
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Nhóm chat gắn với trận đấu */}
+          {match.chatGroupId ? (
+            <View style={{
+              marginTop: 12,
+              marginBottom: 8,
+              padding: 14,
+              backgroundColor: "#EFF6FF",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#BFDBFE",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="chatbubbles" size={22} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14.5, fontWeight: "700", color: "#1E3A8A" }} numberOfLines={1}>
+                    {match.chatGroupId.name || "Nhóm chat trận đấu"}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#3B82F6", marginTop: 2 }}>
+                    {isUserParticipant(match) ? "Tự động thêm khi tham gia trận" : "Chỉ thành viên trận mới có thể vào nhóm"}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: "#2563EB", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
+                onPress={() => {
+                  const convId = match.chatGroupId._id || match.chatGroupId;
+                  navigation.navigate("ChatDetail", {
+                    conversationId: convId,
+                    isGroup: true,
+                    peer: { name: match.chatGroupId.name || "Nhóm chat trận đấu" },
+                  });
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12.5 }}>Vào nhóm</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           {canJoinMatch && (
             <TouchableOpacity
@@ -827,16 +1379,58 @@ export default function MatchDetailScreen({ navigation, route }) {
           )}
 
           {hasPendingRequest && !isOwner && (
-            <TouchableOpacity
-              style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
-              onPress={handleCancelRequest}
-              disabled={actionLoading}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
-            </TouchableOpacity>
+            <View style={styles.actionStack}>
+              <TouchableOpacity
+                style={styles.joinBottomBtn}
+                onPress={handleChangePositionRequest}
+                disabled={actionLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.joinBottomBtnText}>Thay đổi vị trí</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
+                onPress={handleCancelRequest}
+                disabled={actionLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
+              </TouchableOpacity>
+            </View>
           )}
-        </View>
+
+          {/* Owner Match Status Control Buttons */}
+          {isOwner && (
+            <View style={styles.ownerMatchStatusContainer}>
+              {match.teamStatus === "ongoing" ? (
+                <TouchableOpacity
+                  style={[styles.statusControlBtn, styles.statusControlEndBtn]}
+                  onPress={handleEndMatch}
+                  disabled={actionLoading}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="stop-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.statusControlBtnText}>Kết thúc trận đấu</Text>
+                </TouchableOpacity>
+              ) : match.teamStatus === "ended" || match.status === "completed" ? (
+                <View style={[styles.statusControlBtn, styles.statusControlEndedBadge]}>
+                  <Ionicons name="flag-outline" size={20} color="#6B7280" style={{ marginRight: 8 }} />
+                  <Text style={[styles.statusControlBtnText, { color: "#4B5563" }]}>Trận đấu đã kết thúc</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.statusControlBtn, styles.statusControlStartBtn]}
+                  onPress={handleStartMatch}
+                  disabled={actionLoading}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="play-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.statusControlBtnText}>Bắt đầu trận đấu</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+      
 
         
 
@@ -937,7 +1531,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                   const selectedOption = positionOptions.find((item) => item.id === selectedId);
                   return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
                 });
-                const isDisabled = option.disabled || (!isSelected && hasSameRoleInSameTeamSelected);
+                const isDisabled = option.disabled || (!isSelected && selectedPositions.length >= 1);
 
                 return (
                   <TouchableOpacity
@@ -968,16 +1562,16 @@ export default function MatchDetailScreen({ navigation, route }) {
             <TouchableOpacity
               style={[
                 styles.positionModalConfirm,
-                selectedPositions.length === 0 && styles.positionModalConfirmDisabled
+                selectedPositions.length !== 1 && styles.positionModalConfirmDisabled
               ]}
               onPress={handleConfirmJoinWithPositions}
-              disabled={selectedPositions.length === 0 || actionLoading}
+              disabled={selectedPositions.length !== 1 || actionLoading}
             >
               {actionLoading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.positionModalConfirmText}>
-                  Xác nhận tham gia ({selectedPositions.length} vị trí)
+                  Xác nhận tham gia (1 vị trí)
                 </Text>
               )}
             </TouchableOpacity>
@@ -1024,6 +1618,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                 contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
                 renderItem={({ item }) => {
                   const uName = item.name || "Người dùng";
+                  const isInvited = Boolean(item.isInvited);
                   return (
                     <View style={styles.inviteUserCard}>
                       <View style={[styles.userAvatar, { backgroundColor: '#ef4444' }]}>
@@ -1037,12 +1632,12 @@ export default function MatchDetailScreen({ navigation, route }) {
                         <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
                       </View>
                       <TouchableOpacity
-                        style={styles.inviteActionBtn}
+                        style={[styles.inviteActionBtn, isInvited && styles.inviteActionBtnDisabled]}
                         onPress={() => handleInviteUser(String(item._id || item.id))}
-                        disabled={actionLoading}
+                        disabled={actionLoading || isInvited}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.inviteActionBtnText}>Mời</Text>
+                        <Text style={styles.inviteActionBtnText}>{isInvited ? "Đã mời" : "Mời"}</Text>
                       </TouchableOpacity>
                     </View>
                   );
@@ -1120,53 +1715,34 @@ export default function MatchDetailScreen({ navigation, route }) {
         </View>
       </Modal>
 
-
-      {/* ─── Custom Bottom Tab Bar ─── */}
-      <View style={[styles.bottomBarOuter, {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: insets.bottom + 12,
-      }]}>
-        <View style={styles.bottomBarWrap}>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'PostsTab' })}>
-            <View style={styles.iconFrame}>
-              <Ionicons name="home-outline" size={22} color="#1F2937" />
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'MatchesTab' })}>
-            <View style={[styles.iconFrame, styles.activeIconFrame]}>
-              <MaterialCommunityIcons name="soccer" size={28} color="#FFFFFF" />
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'TeamsTab' })}>
-            <View style={styles.iconFrame}>
-              <MaterialCommunityIcons name="account-group-outline" size={22} color="#1F2937" />
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'SocialTab' })}>
-            <View style={styles.iconFrame}>
-              <Ionicons name="chatbubble-outline" size={22} color="#1F2937" />
-              {chatUnreadCount > 0 && (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>
-                    {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.tabButton, pressed && styles.tabButtonPressed]} onPress={() => navigation.navigate('Home', { screen: 'ProfileTab' })}>
-            <View style={styles.iconFrame}>
-              <Ionicons name="person-outline" size={22} color="#1F2937" />
-            </View>
-          </Pressable>
-        </View>
-      </View>
+      {/* Court Detail Modal */}
+      <CourtDetailModal
+        visible={showCourtDetailModal}
+        court={
+          COURT_DIRECTORY.find(
+            (c) => c.name === match.locationName || c.address === match.specificAddress
+          ) || {
+            name: match.locationName,
+            address: match.specificAddress || match.locationName,
+            intro: match.courtDescription,
+            coords: coords,
+            phone: match.contactPhone,
+          }
+        }
+        onClose={() => setShowCourtDetailModal(false)}
+      />
     </Screen>
   );
 
-  return content;
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      {content}
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -1190,9 +1766,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
   },
-  backButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  backButton: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
   backArrow: { fontSize: 22, color: "#333" },
-  headerTitle: { flex: 1, fontSize: 20, fontWeight: "700", color: "#111", marginLeft: 8 },
+  headerTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {
     backgroundColor: "#fff",
@@ -1205,7 +1781,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  joinHeaderBtnText: { color: '#333', fontSize: 12, fontWeight: '700' },
+  joinHeaderBtnText: { color: '#333', fontSize: 17, fontWeight: '700' },
   joinBottomBtn: {
     marginTop: 12,
     backgroundColor: ORANGE,
@@ -1215,11 +1791,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   joinBottomBtnSecondary: {
-    backgroundColor: "#fff1f2",
+    backgroundColor: "#fa0414",
     borderWidth: 1,
-    borderColor: "#fecdd3",
+    borderColor: "#fa0414",
+
   },
-  joinBottomBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  joinBottomBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   redDot: {
     position: "absolute",
     top: 0,
@@ -1232,15 +1809,15 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 96 },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 2,
   },
   cardHeader: { flexDirection: "row", alignItems: "center" },
@@ -1256,6 +1833,15 @@ const styles = StyleSheet.create({
   titleBlock: { flex: 1, marginLeft: 12 },
   title: { fontSize: 18, fontWeight: "800", color: "#111" },
   timeAgoText: { fontSize: 12, color: "#888", marginTop: 4 },
+  collapseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f5f5f5",
+    marginLeft: 8,
+  },
   gridContainer: {
     flexDirection: "row",
     gap: 12,
@@ -1452,7 +2038,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  sectionTitle: { fontSize: 14, fontWeight: "800", color: "#333", marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#333", marginBottom: 12 },
   helperInfoText: { fontSize: 12, color: "#888", fontStyle: "italic", marginLeft: 4, flex: 1 },
   emptyText: { fontSize: 13, color: "#999" },
   userRowCard: {
@@ -1780,6 +2366,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
+    marginTop: 8,
   },
   inviteSmallBtn: {
     backgroundColor: "#fff",
@@ -1791,7 +2378,7 @@ const styles = StyleSheet.create({
   },
   inviteSmallBtnText: {
     color: "#333",
-    fontSize: 12,
+    fontSize: 17,
     fontWeight: "700",
   },
   kickSmallBtn: {
@@ -2064,5 +2651,48 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  statusBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  statusBarText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  ownerMatchStatusContainer: {
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  statusControlBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  statusControlStartBtn: {
+    backgroundColor: "#16A34A",
+  },
+  statusControlEndBtn: {
+    backgroundColor: "#DC2626",
+  },
+  statusControlEndedBadge: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  statusControlBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

@@ -6,8 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
  * @param {import('react-native-safe-area-context').Edge[]} edges — mặc định cả 4 cạnh; tab nội dung dùng ['top','left','right']
  */
 export function Screen({ children, style, edges = ['top', 'left', 'right', 'bottom'] }) {
+  const safePadding = {
+    paddingBottom: 16,
+  };
+
   return (
-    <SafeAreaView style={[styles.screen, style]} edges={edges}>
+    <SafeAreaView style={[styles.screen, safePadding, style]} edges={edges}>
       {children}
     </SafeAreaView>
   );

@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "../components/Screen";
@@ -277,7 +278,12 @@ export default function AreaPickerScreen({ navigation, route }) {
   };
 
   return (
-    <Screen style={styles.safe}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.safe}>
       <ScreenHeader style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -462,7 +468,8 @@ export default function AreaPickerScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
-    </Screen>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 

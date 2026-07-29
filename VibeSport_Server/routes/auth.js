@@ -117,6 +117,11 @@ router.post('/login', async (request, response) => {
       return;
     }
 
+    if (user.isLocked) {
+      response.status(403).json({ message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+      return;
+    }
+
     if (!user.passwordHash) {
       response.status(400).json({ message: 'Tài khoản này đang dùng Google. Vui lòng đăng nhập bằng Google.' });
       return;
@@ -195,6 +200,11 @@ router.post('/google', async (request, response) => {
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
+    if (user.isLocked) {
+      response.status(403).json({ message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+      return;
+    }
+
     const payload = createSessionPayload(user);
     await Session.create({ userId: user._id, token: payload.token });
     response.json(payload);
@@ -205,7 +215,7 @@ router.post('/google', async (request, response) => {
 
 router.put('/update-profile', async (request, response) => {
   try {
-    const { userId, name, phone, picture, favoriteSport, favoriteSports, position, area, bio, featuredPost } = request.body ?? {};
+    const { userId, name, phone, picture, favoriteSport, favoriteSports, position, area, bio, featuredPost, profileCompleted } = request.body ?? {};
 
     if (!userId) {
       response.status(400).json({ message: 'Thiếu thông tin ID người dùng (userId).' });
@@ -238,7 +248,9 @@ router.put('/update-profile', async (request, response) => {
     if (bio !== undefined) updateFields.bio = bio;
     if (featuredPost !== undefined) updateFields.featuredPost = featuredPost;
 
-    if (favoriteSport || position || area) {
+    if (profileCompleted !== undefined) {
+      updateFields.profileCompleted = Boolean(profileCompleted);
+    } else if (favoriteSport || position || area) {
       updateFields.profileCompleted = Boolean(favoriteSport && position && area);
     }
 

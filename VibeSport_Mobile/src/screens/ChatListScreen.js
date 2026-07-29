@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -35,7 +36,9 @@ import {
 import { API_BASE_URL } from '../components/constants/api';
 import { getMutualFriendsRequest } from '../services/userApi';
 import * as ImagePicker from 'expo-image-picker';
-import { isUserOnline } from '../utils/presence';
+import { getPresenceFromLastSeen, isUserOnline } from '../utils/presence';
+import { ScreenHeader } from '../components/ScreenHeader';
+import GroupCreationModal from '../components/GroupCreationModal';
 import { color } from '../theme/colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -1012,8 +1015,13 @@ export default function ChatListScreen({ navigation }) {
         : renderEmptyBlocked;
 
   return (
-    <Screen style={styles.screen}>
-      <View style={styles.logoHeaderCard}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.screen}>
+      <ScreenHeader style={styles.logoHeaderCard}>
         {isSearching ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <TouchableOpacity
@@ -1065,14 +1073,14 @@ export default function ChatListScreen({ navigation }) {
                 style={styles.logoHeaderIconBtn}
                 onPress={() => setIsSearching(true)}
               >
-                <Ionicons name="search-outline" size={20} color="#000000" />
+                <Ionicons name="search-outline" size={26} color="#1F2937" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.logoHeaderIconBtn}
                 onPress={() => setShowHeaderMenu(true)}
               >
-                <Ionicons name="ellipsis-vertical" size={20} color="#000000" />
+                <Ionicons name="ellipsis-vertical" size={26} color="#1F2937" />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1080,7 +1088,7 @@ export default function ChatListScreen({ navigation }) {
                 onPress={() => navigation.navigate('Notification')}
               >
                 <View style={{ position: 'relative' }}>
-                  <Ionicons name="notifications-outline" size={20} color="#000000" />
+                  <Ionicons name="notifications-outline" size={26} color="#1F2937" />
                   {unreadNotificationCount > 0 && (
                     <View style={styles.bellRedDot} />
                   )}
@@ -1103,7 +1111,7 @@ export default function ChatListScreen({ navigation }) {
             </View>
           </>
         )}
-      </View>
+      </ScreenHeader>
 
       {loadingConversations && activeData.length === 0 ? (
         <View style={styles.loadingWrap}>
@@ -1328,137 +1336,14 @@ export default function ChatListScreen({ navigation }) {
         </TouchableWithoutFeedback>
       </Modal>
 
-      <Modal
+      <GroupCreationModal
         visible={showCreateGroupModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCreateGroupModal(false)}
-        onDismiss={() => {
-          if (Platform.OS === 'ios' && pendingImageAction) {
-            processGroupImagePick(pendingImageAction);
-          }
+        onClose={() => setShowCreateGroupModal(false)}
+        onGroupCreated={() => {
+          setShowCreateGroupModal(false);
+          dispatch(fetchConversations());
         }}
-      >
-        <View style={styles.groupModalOverlay}>
-          <View style={styles.groupModalContainer}>
-            {groupCreationStep === 1 ? (
-              <>
-                <View style={styles.groupModalHeader}>
-                  <TouchableOpacity onPress={() => setShowCreateGroupModal(false)}>
-                    <Text style={styles.cancelBtnText}>Hủy</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.groupModalTitle}>Nhóm mới</Text>
-                  <TouchableOpacity
-                    onPress={handleNextStep}
-                    disabled={selectedUserIds.length < 2}
-                  >
-                    <Text
-                      style={[
-                        styles.nextBtnText,
-                        selectedUserIds.length < 2 && styles.nextBtnTextDisabled,
-                      ]}
-                    >
-                      Tiếp
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.modalSearchWrap}>
-                  <View style={styles.modalSearchBar}>
-                    <Ionicons name="search" size={16} color="#8E8E93" />
-                    <TextInput
-                      value={groupSearchText}
-                      onChangeText={setGroupSearchText}
-                      placeholder="Tìm kiếm"
-                      placeholderTextColor="#8E8E93"
-                      style={styles.modalSearchInput}
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.suggestionTitle}>Gợi ý</Text>
-                {loadingFriends ? (
-                  <View style={styles.modalLoadingWrap}>
-                    <ActivityIndicator size="small" color="#0A84FF" />
-                  </View>
-                ) : (
-                  <FlatList
-                    data={filteredFriends}
-                    keyExtractor={(item) => item._id || item.id}
-                    renderItem={renderFriendItem}
-                    contentContainerStyle={styles.friendsList}
-                    ListEmptyComponent={
-                      <Text style={styles.emptyFriendsText}>
-                        Không tìm thấy người dùng phù hợp
-                      </Text>
-                    }
-                  />
-                )}
-              </>
-            ) : (
-              <>
-                <View style={styles.groupModalHeader}>
-                  <TouchableOpacity onPress={() => setGroupCreationStep(1)}>
-                    <Text style={styles.cancelBtnText}>Quay lại</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.groupModalTitle}>Tên nhóm</Text>
-                  <TouchableOpacity
-                    onPress={handleCreateGroup}
-                    disabled={creatingGroup || !groupName.trim()}
-                  >
-                    {creatingGroup ? (
-                      <ActivityIndicator size="small" color="#0A84FF" />
-                    ) : (
-                      <Text
-                        style={[
-                          styles.nextBtnText,
-                          !groupName.trim() && styles.nextBtnTextDisabled,
-                        ]}
-                      >
-                        Tạo
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.groupCreationBody}>
-                  <TouchableOpacity
-                    onPress={handlePickGroupAvatar}
-                    style={styles.groupAvatarPicker}
-                    activeOpacity={0.8}
-                  >
-                    {selectedAvatarImage ? (
-                      <Image source={{ uri: selectedAvatarImage.uri }} style={styles.groupAvatarPreview} />
-                    ) : (
-                      <View style={styles.groupAvatarPreviewFallback}>
-                        <Ionicons name="camera" size={32} color="#8E8E93" />
-                        <Text style={styles.groupAvatarFallbackText}>Thêm ảnh</Text>
-                      </View>
-                    )}
-                    {selectedAvatarImage && (
-                      <View style={styles.groupAvatarBadge}>
-                        <Ionicons name="camera" size={14} color="#FFFFFF" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-
-                  <View style={styles.groupNameContainer}>
-                    <TextInput
-                      value={groupName}
-                      onChangeText={setGroupName}
-                      placeholder="Nhập tên nhóm..."
-                      placeholderTextColor="#8E8E93"
-                      style={styles.groupNameInput}
-                      autoFocus
-                      maxLength={50}
-                    />
-                  </View>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+      />
 
       <Modal
         visible={showJoinGroupModal}
@@ -1569,7 +1454,8 @@ export default function ChatListScreen({ navigation }) {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </Screen>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1718,11 +1604,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingTop: 0,
-    paddingBottom: 96,
+    paddingBottom: 150,
   },
   emptyList: {
     flexGrow: 1,
-    paddingBottom: 96,
+    paddingBottom: 30,
   },
   loadingWrap: {
     flex: 1,
@@ -1737,11 +1623,22 @@ const styles = StyleSheet.create({
     marginHorizontal: 9,
     marginVertical: 6,
     height: 78,
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 0,
-    elevation: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 4, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 0,
+      },
+      android: {
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.08)',
+        borderRightWidth: 4,
+        borderBottomWidth: 4,
+        borderRightColor: 'rgba(0, 0, 0, 0.25)',
+        borderBottomColor: 'rgba(0, 0, 0, 0.25)',
+      },
+    }),
   },
   conversationItemTouchable: {
     flex: 1,

@@ -12,6 +12,7 @@ const {
   deletePost,
   updatePost,
   likeComment,
+  reportPost,
 } = require('../controllers/postController');
 
 const router = express.Router();
@@ -42,6 +43,9 @@ router.post('/:id/comment', uploadPost.single('media'), commentPost);
 
 // POST /api/posts/:id/comments/:commentId/like — Thích / Bỏ thích bình luận
 router.post('/:id/comments/:commentId/like', likeComment);
+
+// POST /api/posts/:id/report — User báo cáo bài viết
+router.post('/:id/report', reportPost);
 
 // DELETE /api/posts/:id — Xóa bài viết
 router.delete('/:id', deletePost);

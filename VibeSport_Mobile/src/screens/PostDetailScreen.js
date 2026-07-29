@@ -23,6 +23,7 @@ import {
   getPostLikesRequest,
   deletePostRequest,
   likeCommentRequest,
+  reportPostRequest,
 } from '../services/postApi';
 import { API_BASE_URL } from '../components/constants/api';
 import {
@@ -44,6 +45,7 @@ import {
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
 import { PostImages } from '../components/PostImages';
+import { background, status } from '../theme';
 
 function fixMediaUrl(url) {
   if (!url) return url;
@@ -475,9 +477,20 @@ export default function PostDetailScreen({ route, navigation }) {
     ]);
   };
 
-  const handleReportPost = (reason) => {
-    setReportModalVisible(false);
-    Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+  const handleReportPost = async (reason) => {
+    if (!token) {
+      setReportModalVisible(false);
+      Alert.alert('Lỗi', 'Vui lòng đăng nhập để báo cáo bài viết');
+      return;
+    }
+    try {
+      setReportModalVisible(false);
+      await reportPostRequest(post._id, reason, token);
+      Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét bài viết này sớm nhất có thể!');
+    } catch (error) {
+      const msg = error?.message || 'Không thể gửi báo cáo. Vui lòng thử lại.';
+      Alert.alert('Lỗi', msg);
+    }
   };
 
   const formatTime = (dateString) => {
@@ -662,6 +675,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
   if (!post) return null;
 
+  const isRemoved = post.status === 'removed_by_admin' || post.isRemoved;
   const isOwner = currentUser && post.userId && String(currentUser._id || currentUser.id) === String(post.userId._id || post.userId.id || post.userId);
   const posterAvatarColor = getAvatarColor(post.userId?.name);
   const displayTags = post.tags?.length ? post.tags : post.sportType ? [post.sportType] : [];
@@ -690,27 +704,49 @@ export default function PostDetailScreen({ route, navigation }) {
             navigateToProfile(authorId);
           }}
         >
-          {post.userId?.picture ? (
-            <Image source={{ uri: post.userId.picture }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatarPlaceholder, { backgroundColor: posterAvatarColor }]}>
-              <Text style={styles.headerAvatarText}>{getInitials(post.userId?.name)}</Text>
-            </View>
-          )}
-          <View style={styles.headerNameCol}>
-            <View style={styles.headerNameRow}>
-              <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
-              {post.isFollowing ? (
-                <View style={styles.headerFollowBadge}>
-                  <Text style={styles.headerFollowBadgeText}>Đang theo dõi</Text>
+          {post.fcId && typeof post.fcId === 'object' ? (
+            <>
+              {post.fcId.avatar ? (
+                <Image source={{ uri: post.fcId.avatar }} style={styles.headerAvatar} />
+              ) : (
+                <View style={[styles.headerAvatarPlaceholder, { backgroundColor: '#f97316' }]}>
+                  <Text style={styles.headerAvatarText}>{post.fcId.name?.charAt(0).toUpperCase() || 'F'}</Text>
                 </View>
-              ) : null}
-            </View>
-            <Text style={styles.headerSubtext}>
-              {post.sportType ? `⚽ ${post.sportType} • ` : ''}
-              {formatTime(post.createdAt)}
-            </Text>
-          </View>
+              )}
+              <View style={styles.headerNameCol}>
+                <View style={styles.headerNameRow}>
+                  <Text style={styles.headerName} numberOfLines={1}>{post.fcId.name}</Text>
+                </View>
+                <Text style={styles.headerSubtext}>
+                  Đăng bởi {post.userId?.name || 'Thành viên'} • {formatTime(post.createdAt)}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              {post.userId?.picture ? (
+                <Image source={{ uri: post.userId.picture }} style={styles.headerAvatar} />
+              ) : (
+                <View style={[styles.headerAvatarPlaceholder, { backgroundColor: posterAvatarColor }]}>
+                  <Text style={styles.headerAvatarText}>{getInitials(post.userId?.name)}</Text>
+                </View>
+              )}
+              <View style={styles.headerNameCol}>
+                <View style={styles.headerNameRow}>
+                  <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
+                  {post.isFollowing ? (
+                    <View style={styles.headerFollowBadge}>
+                      <Text style={styles.headerFollowBadgeText}>Đang theo dõi</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.headerSubtext}>
+                  {post.sportType ? `⚽ ${post.sportType} • ` : ''}
+                  {formatTime(post.createdAt)}
+                </Text>
+              </View>
+            </>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -723,7 +759,7 @@ export default function PostDetailScreen({ route, navigation }) {
       </ScreenHeader>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardContainer}
         keyboardVerticalOffset={0}
       >
@@ -748,58 +784,86 @@ export default function PostDetailScreen({ route, navigation }) {
                 </View>
               ) : null}
 
-              {post.content ? <Text style={styles.postContent}>{post.content}</Text> : null}
-
-              {/* Media content – dùng PostImages grid giống feed */}
-              {post.mediaUrls && post.mediaUrls.length > 0 && (
-                <PostImages images={post.mediaUrls.map(fixMediaUrl)} />
-              )}
-
-              {(post.likesCount > 0 || post.commentsCount > 0) ? (
-                <View style={styles.engagementRow}>
-                  <ReactionsPreview
-                    likesCount={post.likesCount || 0}
-                    topReactions={post.topReactions || []}
-                    onPress={handleOpenLikes}
-                  />
-                  {post.commentsCount > 0 ? (
-                    <Text style={styles.commentSummaryText}>{post.commentsCount} bình luận</Text>
+              {/* Removed notice */}
+              {isRemoved ? (
+                <View style={styles.removedNotice}>
+                  <Ionicons name="shield-checkmark" size={40} color={status.danger} />
+                  <Text style={styles.removedTitle}>Bài viết đã bị gỡ</Text>
+                  <Text style={styles.removedSubtitle}>
+                    Bài viết này đã bị gỡ do vi phạm chính sách cộng đồng VibeSport.
+                  </Text>
+                  {post.removalReason ? (
+                    <View style={styles.removedDetail}>
+                      <Text style={styles.removedDetailLabel}>Lý do:</Text>
+                      <Text style={styles.removedDetailText}>{post.removalReason}</Text>
+                    </View>
+                  ) : null}
+                  {post.removalCategory ? (
+                    <View style={styles.removedDetail}>
+                      <Text style={styles.removedDetailLabel}>Danh mục vi phạm:</Text>
+                      <Text style={styles.removedDetailText}>{post.removalCategory}</Text>
+                    </View>
                   ) : null}
                 </View>
-              ) : null}
+              ) : (
+                <>
+                  {post.content ? <Text style={styles.postContent}>{post.content}</Text> : null}
+
+                  {/* Media content – dùng PostImages grid giống feed */}
+                  {post.mediaUrls && post.mediaUrls.length > 0 && (
+                    <PostImages images={post.mediaUrls.map(fixMediaUrl)} />
+                  )}
+
+                  {(post.likesCount > 0 || post.commentsCount > 0) ? (
+                    <View style={styles.engagementRow}>
+                      <ReactionsPreview
+                        likesCount={post.likesCount || 0}
+                        topReactions={post.topReactions || []}
+                        onPress={handleOpenLikes}
+                      />
+                      {post.commentsCount > 0 ? (
+                        <Text style={styles.commentSummaryText}>{post.commentsCount} bình luận</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </>
+              )}
 
               <View style={styles.divider} />
 
-              <View style={styles.actionsBar}>
-                <TouchableOpacity
-                  onPress={handleLikePost}
-                  style={styles.actionBtn}
-                >
-                  {post.isLiked ? (
-                    <VibeReactionIcon size={20} />
-                  ) : (
-                    <Ionicons name="heart-outline" size={20} color="#7C8190" />
-                  )}
-                  <Text
-                    style={[
-                      styles.actionText,
-                      post.isLiked && { color: VIBE_REACTION.color },
-                    ]}
+              {/* Actions — hidden when post is removed */}
+              {!isRemoved && (
+                <View style={styles.actionsBar}>
+                  <TouchableOpacity
+                    onPress={handleLikePost}
+                    style={styles.actionBtn}
                   >
-                    {post.isLiked ? VIBE_REACTION.label : 'Vibe'}
-                  </Text>
-                </TouchableOpacity>
+                    {post.isLiked ? (
+                      <VibeReactionIcon size={20} />
+                    ) : (
+                      <Ionicons name="heart-outline" size={20} color="#7C8190" />
+                    )}
+                    <Text
+                      style={[
+                        styles.actionText,
+                        post.isLiked && { color: VIBE_REACTION.color },
+                      ]}
+                    >
+                      {post.isLiked ? VIBE_REACTION.label : 'Vibe'}
+                    </Text>
+                  </TouchableOpacity>
 
-                <View style={styles.actionBtn}>
-                  <Ionicons name="chatbubble-outline" size={20} color="#7C8190" />
-                  <Text style={styles.actionText}>{post.commentsCount || 0} Bình luận</Text>
+                  <View style={styles.actionBtn}>
+                    <Ionicons name="chatbubble-outline" size={20} color="#7C8190" />
+                    <Text style={styles.actionText}>{post.commentsCount || 0} Bình luận</Text>
+                  </View>
+
+                  <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
+                    <Ionicons name="share-outline" size={20} color="#7C8190" />
+                    <Text style={styles.actionText}>Chia sẻ</Text>
+                  </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
-                  <Ionicons name="share-outline" size={20} color="#7C8190" />
-                  <Text style={styles.actionText}>Chia sẻ</Text>
-                </TouchableOpacity>
-              </View>
+              )}
 
               <View style={styles.commentsHeaderBar}>
                 <Text style={styles.commentsHeaderText}>
@@ -843,47 +907,49 @@ export default function PostDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Comment input row at bottom */}
-        <View style={styles.inputContainer}>
-          {currentUser?.picture ? (
-            <Image source={{ uri: currentUser.picture }} style={styles.inputAvatar} />
-          ) : (
-            <View style={[styles.inputAvatarPlaceholder, { backgroundColor: getAvatarColor(currentUser?.name) }]}>
-              <Text style={styles.inputAvatarText}>{getInitials(currentUser?.name)}</Text>
-            </View>
-          )}
+        {/* Comment input row at bottom — hidden when post is removed */}
+        {!isRemoved && (
+          <View style={styles.inputContainer}>
+            {currentUser?.picture ? (
+              <Image source={{ uri: currentUser.picture }} style={styles.inputAvatar} />
+            ) : (
+              <View style={[styles.inputAvatarPlaceholder, { backgroundColor: getAvatarColor(currentUser?.name) }]}>
+                <Text style={styles.inputAvatarText}>{getInitials(currentUser?.name)}</Text>
+              </View>
+            )}
 
-          <View style={styles.commentInputWrapper}>
-            <TextInput
-              ref={commentInputRef}
-              placeholder={replyingTo ? `Trả lời ${replyingTo.name}...` : 'Viết bình luận...'}
-              placeholderTextColor="#9CA3AF"
-              style={styles.commentTextInput}
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity onPress={handlePickImage} style={styles.cameraBtnInside}>
-              <Ionicons name="camera-outline" size={22} color="#7C8190" />
+            <View style={styles.commentInputWrapper}>
+              <TextInput
+                ref={commentInputRef}
+                placeholder={replyingTo ? `Trả lời ${replyingTo.name}...` : 'Viết bình luận...'}
+                placeholderTextColor="#9CA3AF"
+                style={styles.commentTextInput}
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity onPress={handlePickImage} style={styles.cameraBtnInside}>
+                <Ionicons name="camera-outline" size={22} color="#7C8190" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleCommentSubmit}
+              disabled={(!commentText.trim() && !selectedImage) || submittingComment}
+              style={[
+                styles.sendBtn,
+                ((!commentText.trim() && !selectedImage) || submittingComment) && styles.sendBtnDisabled,
+              ]}
+            >
+              {submittingComment ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="send" size={16} color="#FFFFFF" />
+              )}
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            onPress={handleCommentSubmit}
-            disabled={(!commentText.trim() && !selectedImage) || submittingComment}
-            style={[
-              styles.sendBtn,
-              ((!commentText.trim() && !selectedImage) || submittingComment) && styles.sendBtnDisabled,
-            ]}
-          >
-            {submittingComment ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="send" size={16} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
-        </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Bottom Sheet Modal for options */}
@@ -1436,5 +1502,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#7C8190',
+  },
+
+  /* Removed post notice */
+  removedNotice: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+  },
+  removedTitle: {
+    marginTop: 12,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: status.danger,
+    textAlign: 'center',
+  },
+  removedSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: status.dangerDark,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  removedDetail: {
+    marginTop: 12,
+    backgroundColor: background.error,
+    borderWidth: 1,
+    borderColor: status.dangerDark,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignSelf: 'stretch',
+  },
+  removedDetailLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: status.dangerDark,
+    marginBottom: 2,
+  },
+  removedDetailText: {
+    fontSize: 13,
+    color: status.dangerDarker,
   },
 });

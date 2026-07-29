@@ -11,6 +11,7 @@ import {
   Keyboard,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import * as Location from "expo-location";
@@ -349,7 +350,12 @@ export default function MapPickerScreen({ navigation, route }) {
   };
 
   return (
-    <Screen style={styles.safe}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <Screen style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <ScreenHeader style={styles.header}>
@@ -560,7 +566,8 @@ export default function MapPickerScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
       </View>
-    </Screen>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -1,3 +1,4 @@
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 /** Header cố định — zIndex/elevation để không bị ScrollView/Keyboard che nút trên Android */

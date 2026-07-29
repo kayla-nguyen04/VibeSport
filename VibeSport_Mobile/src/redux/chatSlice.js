@@ -459,6 +459,12 @@ const chatSlice = createSlice({
     accepting: false,
     processing: false,
     error: null,
+    // Trạng thái cuộc gọi đến (hiển thị modal)
+    incomingCall: null,
+    // Lỗi cuộc gọi (e.g. channel đã đầy)
+    callError: null,
+    // Tên channel cuộc gọi đang active (để socket emit leave khi cần)
+    activeCallChannel: null,
   },
   reducers: {
     setActiveConversation(state, action) {
@@ -697,6 +703,26 @@ const chatSlice = createSlice({
           conv.lastMessage = 'Tin nhắn đã bị thu hồi';
         }
       }
+    },
+
+    // ===== Cuộc gọi Agora =====
+    setIncomingCall(state, action) {
+      state.incomingCall = action.payload;
+    },
+    clearIncomingCall(state) {
+      state.incomingCall = null;
+    },
+    setCallError(state, action) {
+      state.callError = action.payload;
+    },
+    clearCallError(state) {
+      state.callError = null;
+    },
+    setActiveCallChannel(state, action) {
+      state.activeCallChannel = action.payload;
+    },
+    clearActiveCallChannel(state) {
+      state.activeCallChannel = null;
     },
   },
   extraReducers: (builder) => {
@@ -979,6 +1005,7 @@ const chatSlice = createSlice({
           conv.lastMessage = 'Tin nhắn đã bị thu hồi';
         }
       })
+      // Cuộc gọi đến từ socket
       .addCase(logoutUser.fulfilled, (state) => {
         state.activeConversationId = null;
         state.conversations = [];
@@ -990,7 +1017,10 @@ const chatSlice = createSlice({
         state.accepting = false;
         state.processing = false;
         state.error = null;
-      });
+      state.incomingCall = null;
+      state.callError = null;
+      state.activeCallChannel = null;
+    });
   },
 });
 
@@ -1012,5 +1042,11 @@ export const {
   resetChat,
   joinRequestUpdated,
   messageRecalled,
+  setIncomingCall,
+  clearIncomingCall,
+  setCallError,
+  clearCallError,
+  setActiveCallChannel,
+  clearActiveCallChannel,
 } = chatSlice.actions;
 export default chatSlice.reducer;

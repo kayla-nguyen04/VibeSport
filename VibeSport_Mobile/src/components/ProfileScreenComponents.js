@@ -220,6 +220,7 @@ export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPi
           customBgColor={isLongNguyen ? status.danger : undefined}
           customInitials={isLongNguyen ? 'L.' : undefined}
         />
+        {onPickAvatar ? (
         <TouchableOpacity
           accessibilityRole="button"
           activeOpacity={0.78}
@@ -228,6 +229,7 @@ export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPi
         >
           <MaterialCommunityIcons name="pencil" size={14} color={background.primary} />
         </TouchableOpacity>
+      ) : null}
       </View>
 
       <Text style={styles.profileName} numberOfLines={1}>
