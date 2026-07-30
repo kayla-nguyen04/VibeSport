@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Match = require("../models/Match");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
@@ -147,7 +148,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { sport, q, area, startTime, createdBy, participantId } = req.query;
+    const { sport, q, area, startTime, createdBy, participantId, userId } = req.query;
 
     const filter = {};
 
@@ -155,12 +156,20 @@ router.get("/", async (req, res) => {
       filter.sport = sport;
     }
 
-    if (createdBy && String(createdBy).trim()) {
-      filter.createdBy = String(createdBy).trim();
-    }
-
-    if (participantId && String(participantId).trim()) {
-      filter.participants = String(participantId).trim();
+    const targetUser = (userId || participantId || createdBy || "").trim();
+    if (targetUser) {
+      const userConditions = [
+        { createdBy: targetUser },
+        { participants: targetUser }
+      ];
+      if (mongoose.Types.ObjectId.isValid(targetUser)) {
+        const objId = new mongoose.Types.ObjectId(targetUser);
+        userConditions.push(
+          { createdBy: objId },
+          { participants: objId }
+        );
+      }
+      filter.$or = userConditions;
     }
 
     // Search by keyword (title or locationName)

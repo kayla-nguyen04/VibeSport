@@ -19,10 +19,15 @@ import { generateAgoraTokenRequest } from '../services/agoraApi';
 import { objectIdToUid } from '../utils/objectIdToUid';
 import { socketEmitter } from '../hooks/useSocket';
 import { setActiveCallChannel, clearActiveCallChannel, clearCallError } from '../redux/chatSlice';
-import {
-  RtcSurfaceView,
-  RenderModeType,
-} from 'react-native-agora';
+let RtcSurfaceView = View;
+let RenderModeType = {};
+try {
+  const agora = require('react-native-agora');
+  if (agora.RtcSurfaceView) RtcSurfaceView = agora.RtcSurfaceView;
+  if (agora.RenderModeType) RenderModeType = agora.RenderModeType;
+} catch (e) {
+  // Expo Go environment fallback
+}
 import { getAvatarColor } from '../theme/avatarPalette';
 import {
   primary,

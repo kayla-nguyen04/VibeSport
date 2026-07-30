@@ -12,14 +12,9 @@ function formatUserPublic(user) {
     _id: user._id,
     name: user.name,
     picture: user.picture,
-    phone: user.phone,
-    email: user.email,
-    favoriteSport: user.favoriteSport,
-    position: user.position,
-    area: user.area,
     bio: user.bio,
     rating: user.rating ?? 0,
-    courts: user.courts || [],
+    lastSeenAt: user.lastSeenAt,
     createdAt: user.createdAt,
   };
 }
@@ -43,40 +38,31 @@ exports.getUserProfile = async (req, res) => {
     const { id } = req.params;
     const viewerId = req.userId;
 
-    let user = await User.findById(id).populate('courts').select('-passwordHash');
+    const user = await User.findById(id).select('-passwordHash');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
-
-    // Lấy danh sách thô kết hợp xác thực sự tồn tại thực thể qua populate để loại trừ user ảo/rác
-    const [followersRaw, followingRaw] = await Promise.all([
-      Follow.find({ followingId: id }).populate('followerId', '_id'),
-      Follow.find({ followerId: id }).populate('followingId', '_id')
-    ]);
-
-    // Chỉ tính các bản ghi mà tài khoản đối phương thực tế vẫn còn tồn tại trong cơ sở dữ liệu
-    const followerCount = followersRaw.filter(f => f.followerId).length;
-    const followingCount = followingRaw.filter(f => f.followingId).length;
-
-    const followingByTarget = followingRaw.filter(f => f.followingId).map(f => f.followingId._id);
-
-    const [isFollowing, isFollowedBy, mutualFriends] = await Promise.all([
-      viewerId ? Follow.exists({ followerId: viewerId, followingId: id }) : false,
-      viewerId ? Follow.exists({ followerId: id, followingId: viewerId }) : false,
-      viewerId && String(viewerId) !== String(id)
-        ? Follow.countDocuments({ followerId: viewerId, followingId: { $in: followingByTarget } })
-        : 0,
-    ]);
 
     const storedStats =
       user.stats && typeof user.stats.toObject === 'function'
         ? user.stats.toObject()
         : user.stats || {};
 
-    const stats = await buildUserStats(user._id, {
-      ...storedStats,
-      rating: user.rating,
-    });
+    // Chạy các truy vấn độc lập cùng lúc để hồ sơ phản hồi nhanh hơn.
+    const [followersRaw, followingRaw, isFollowing, isFollowedBy, stats] = await Promise.all([
+      Follow.find({ followingId: id }).populate('followerId', '_id'),
+      Follow.find({ followerId: id }).populate('followingId', '_id'),
+      viewerId ? Follow.exists({ followerId: viewerId, followingId: id }) : false,
+      viewerId ? Follow.exists({ followerId: id, followingId: viewerId }) : false,
+      buildUserStats(user._id, {
+        ...storedStats,
+        rating: user.rating,
+      }),
+    ]);
+
+    // Chỉ tính bản ghi có tài khoản thật, không tính follow mồ côi.
+    const followerCount = followersRaw.filter(f => f.followerId).length;
+    const followingCount = followingRaw.filter(f => f.followingId).length;
 
     const presence = getPresenceFromLastSeen(user.lastSeenAt);
     const isSelf = String(viewerId) === String(id);
@@ -88,7 +74,6 @@ exports.getUserProfile = async (req, res) => {
         stats,
         followerCount,
         followingCount,
-        mutualFriends,
         isFollowing: Boolean(isFollowing),
         isFollowedBy: Boolean(isFollowedBy),
         isSelf,
@@ -266,7 +251,7 @@ exports.getMutualFriends = async (req, res) => {
     const mutualFollowers = await Follow.find({
       followerId: { $in: following },
       followingId: req.userId,
-    }).populate('followerId', '_id name picture phone favoriteSport position area lastSeenAt');
+    }).populate('followerId', '_id name picture bio lastSeenAt');
 
     const friends = mutualFollowers
       .map((f) => f.followerId)
@@ -288,18 +273,18 @@ exports.getFollowingList = async (req, res) => {
     const viewerId = req.userId;
 
     const followDocs = await Follow.find({ followerId: targetUserId })
-      .populate('followingId', '_id name picture phone favoriteSport position area lastSeenAt bio');
+      .populate('followingId', '_id name picture lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followingId).filter(Boolean);
     const userIds = users.map((u) => u._id);
 
-    const [viewerFollowing, targetFollowers] = await Promise.all([
+    const [viewerFollowing, viewerFollowers] = await Promise.all([
       viewerId ? Follow.find({ followerId: viewerId, followingId: { $in: userIds } }).distinct('followingId') : [],
-      Follow.find({ followerId: { $in: userIds }, followingId: targetUserId }).distinct('followerId')
+      viewerId ? Follow.find({ followerId: { $in: userIds }, followingId: viewerId }).distinct('followerId') : [],
     ]);
 
     const viewerFollowingSet = new Set(viewerFollowing.map(String));
-    const targetFollowersSet = new Set(targetFollowers.map(String));
+    const viewerFollowersSet = new Set(viewerFollowers.map(String));
 
     const data = users.map((user) => {
       const uIdStr = String(user._id);
@@ -307,7 +292,7 @@ exports.getFollowingList = async (req, res) => {
         ...formatUserPublic(user),
         _id: user._id,
         isFollowing: viewerFollowingSet.has(uIdStr),
-        isFollowedBy: targetFollowersSet.has(uIdStr),
+        isFollowedBy: viewerFollowersSet.has(uIdStr),
       };
     });
 
@@ -328,7 +313,7 @@ exports.getFollowersList = async (req, res) => {
     const viewerId = req.userId;
 
     const followDocs = await Follow.find({ followingId: targetUserId })
-      .populate('followerId', '_id name picture phone favoriteSport position area lastSeenAt bio');
+      .populate('followerId', '_id name picture lastSeenAt bio');
 
     const users = followDocs.map((f) => f.followerId).filter(Boolean);
     const userIds = users.map((u) => u._id);

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Post = require('../models/Post');
 const FC = require('../models/FC');
 const PostLike = require('../models/PostLike');
@@ -164,7 +165,9 @@ exports.getPosts = async (req, res) => {
     } else {
       filter.tags = { $ne: 'Tìm đội' };
     }
-    if (userId) filter.userId = userId;
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      filter.userId = new mongoose.Types.ObjectId(userId);
+    }
 
     // Ưu tiên bài viết từ người đang follow
     let followingIds = [];
@@ -283,8 +286,8 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
     } else {
       matchFilter.tags = { $ne: 'Tìm đội' };
     }
-    if (userId) {
-      matchFilter.userId = userId;
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      matchFilter.userId = new mongoose.Types.ObjectId(userId);
     }
 
     // Score branches: tên người (30) > tag (20) > sportType (15) > nội dung (10)
@@ -566,7 +569,7 @@ exports.likePost = async (req, res) => {
       const sender = await User.findById(userId);
       const senderName = sender ? sender.name : 'Một thành viên';
       
-      const message = `${senderName} đã Vibe bài viết của bạn`;
+      const message = `${senderName} đã thích bài viết của bạn`;
       const postThumbnail = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : null;
 
       await createAndSendNotification({

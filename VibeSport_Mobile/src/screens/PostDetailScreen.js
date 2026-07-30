@@ -37,6 +37,7 @@ import {
 } from '../redux/postSlice';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import {
   LikesModal,
   ReactionsPreview,
@@ -85,7 +86,7 @@ const renderCommentTextWithTags = (text) => {
 
 export default function PostDetailScreen({ route, navigation }) {
   const dispatch = useDispatch();
-  const { postId } = route.params;
+  const { postId, post: initialPost } = route.params;
   const currentUser = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
 
@@ -98,13 +99,13 @@ export default function PostDetailScreen({ route, navigation }) {
       // Chuyển về tab Profile của bản thân
       navigation.navigate('Home', { screen: 'ProfileTab' });
     } else {
-      navigation.navigate('UserProfile', { userId });
+      navigation.navigate('UserProfile', { userId, initialProfile: post?.userId });
     }
   };
 
-  const [post, setPost] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [post, setPost] = useState(initialPost || null);
+  const [comments, setComments] = useState(initialPost?.comments || []);
+  const [loading, setLoading] = useState(!initialPost);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [optionsVisible, setOptionsVisible] = useState(false);
@@ -176,21 +177,23 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const loadPostDetails = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!initialPost) setLoading(true);
       const res = await getPostByIdRequest(postId, token);
       if (res?.success && res?.data) {
         setPost(res.data);
         setComments(res.data.comments || []);
-      } else {
+      } else if (!initialPost) {
         Alert.alert('Lỗi', 'Không lấy được thông tin chi tiết bài viết');
       }
     } catch (err) {
+      if (!initialPost) {
       Alert.alert('Lỗi', err.message || 'Có lỗi xảy ra khi tải bài viết');
-      navigation.goBack();
+        navigation.goBack();
+      }
     } finally {
       setLoading(false);
     }
-  }, [postId, token, navigation]);
+  }, [initialPost, postId, token, navigation]);
 
   useEffect(() => {
     loadPostDetails();
@@ -655,13 +658,7 @@ export default function PostDetailScreen({ route, navigation }) {
     return (
       <Screen style={styles.safeArea}>
         <ScreenHeader style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={20} color="#1F2937" />
-          </TouchableOpacity>
+          <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
           <Text style={styles.headerTitle}>Chi tiết bài viết</Text>
           <View style={{ width: 36 }} />
         </ScreenHeader>
@@ -688,13 +685,7 @@ export default function PostDetailScreen({ route, navigation }) {
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={20} color="#1F2937" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
 
         <TouchableOpacity
           style={styles.headerUserInfo}

@@ -1083,17 +1083,6 @@ export default function ChatListScreen({ navigation }) {
                 <Ionicons name="ellipsis-vertical" size={26} color="#1F2937" />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.logoHeaderIconBtn}
-                onPress={() => navigation.navigate('Notification')}
-              >
-                <View style={{ position: 'relative' }}>
-                  <Ionicons name="notifications-outline" size={26} color="#1F2937" />
-                  {unreadNotificationCount > 0 && (
-                    <View style={styles.bellRedDot} />
-                  )}
-                </View>
-              </TouchableOpacity>
             </View>
           </>
         ) : (
@@ -1204,7 +1193,10 @@ export default function ChatListScreen({ navigation }) {
                       setShowOptionsModal(false);
                       const peerId = selectedConversation.peer?._id || selectedConversation.peer?.id;
                       if (peerId) {
-                        navigation.navigate('UserProfile', { userId: peerId });
+                        navigation.navigate('UserProfile', {
+                          userId: peerId,
+                          initialProfile: selectedConversation.peer,
+                        });
                       }
                     }}
                   >
@@ -1469,11 +1461,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
@@ -1518,11 +1510,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',

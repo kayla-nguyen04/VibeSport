@@ -475,7 +475,7 @@ export default function ChatDetailScreen({ route, navigation }) {
   };
 
   const handleViewProfile = () => {
-    navigation.navigate('UserProfile', { userId: peer?._id });
+    navigation.navigate('UserProfile', { userId: peer?._id, initialProfile: peer });
   };
 
   const handlePinMessage = async () => {
@@ -1174,18 +1174,18 @@ export default function ChatDetailScreen({ route, navigation }) {
       const m1 = otherMembers[1];
       return (
         <View style={styles.headerGroupAvatarGrid}>
-          <View style={[styles.headerGroupAvatarItem, { width: 32, height: 32, borderRadius: 16, top: 2, left: 2, backgroundColor: getAvatarColor(m0.name) }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 26, height: 26, borderRadius: 13, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
             {m0.picture ? (
-              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 29, height: 29, borderRadius: 14.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 23, height: 23, borderRadius: 11.5 }} resizeMode="cover" />
             ) : (
-              <Text style={[styles.headerGroupAvatarItemText, { fontSize: 10 }]}>{getInitials(m0.name)}</Text>
+              <Text style={[styles.headerGroupAvatarItemText, { fontSize: 9 }]}>{getInitials(m0.name)}</Text>
             )}
           </View>
-          <View style={[styles.headerGroupAvatarItem, { width: 32, height: 32, borderRadius: 16, bottom: 2, right: 2, backgroundColor: getAvatarColor(m1.name) }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 26, height: 26, borderRadius: 13, bottom: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
             {m1.picture ? (
-              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 29, height: 29, borderRadius: 14.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 23, height: 23, borderRadius: 11.5 }} resizeMode="cover" />
             ) : (
-              <Text style={[styles.headerGroupAvatarItemText, { fontSize: 10 }]}>{getInitials(m1.name)}</Text>
+              <Text style={[styles.headerGroupAvatarItemText, { fontSize: 9 }]}>{getInitials(m1.name)}</Text>
             )}
           </View>
         </View>
@@ -1198,23 +1198,23 @@ export default function ChatDetailScreen({ route, navigation }) {
       const m2 = otherMembers[2];
       return (
         <View style={styles.headerGroupAvatarGrid}>
-          <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, top: 0, left: 0, backgroundColor: getAvatarColor(m0.name) }]}>
             {m0.picture ? (
-              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
             ) : (
               <Text style={styles.headerGroupAvatarItemText}>{getInitials(m0.name)}</Text>
             )}
           </View>
-          <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, top: 0, right: 0, backgroundColor: getAvatarColor(m1.name) }]}>
             {m1.picture ? (
-              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
             ) : (
               <Text style={styles.headerGroupAvatarItemText}>{getInitials(m1.name)}</Text>
             )}
           </View>
-          <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, bottom: 1, left: 14, backgroundColor: getAvatarColor(m2.name) }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, bottom: 0, left: 11, backgroundColor: getAvatarColor(m2.name) }]}>
             {m2.picture ? (
-              <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
             ) : (
               <Text style={styles.headerGroupAvatarItemText}>{getInitials(m2.name)}</Text>
             )}
@@ -1232,35 +1232,35 @@ export default function ChatDetailScreen({ route, navigation }) {
     
     return (
       <View style={styles.headerGroupAvatarGrid}>
-        <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+        <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, top: 0, left: 0, backgroundColor: getAvatarColor(m0.name) }]}>
           {m0.picture ? (
-            <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+            <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
           ) : (
             <Text style={styles.headerGroupAvatarItemText}>{getInitials(m0.name)}</Text>
           )}
         </View>
-        <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+        <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, top: 0, right: 0, backgroundColor: getAvatarColor(m1.name) }]}>
           {m1.picture ? (
-            <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+            <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
           ) : (
             <Text style={styles.headerGroupAvatarItemText}>{getInitials(m1.name)}</Text>
           )}
         </View>
-        <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, bottom: 1, left: 1, backgroundColor: getAvatarColor(m2.name) }]}>
+        <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, bottom: 0, left: 0, backgroundColor: getAvatarColor(m2.name) }]}>
           {m2.picture ? (
-            <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+            <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
           ) : (
             <Text style={styles.headerGroupAvatarItemText}>{getInitials(m2.name)}</Text>
           )}
         </View>
         {hasMore ? (
-          <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, bottom: 1, right: 1, backgroundColor: '#07823b' }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, bottom: 0, right: 0, backgroundColor: '#07823b' }]}>
             <Text style={styles.headerGroupAvatarItemText}>{remainingText}</Text>
           </View>
         ) : (
-          <View style={[styles.headerGroupAvatarItem, { width: 28, height: 28, borderRadius: 14, bottom: 1, right: 1, backgroundColor: getAvatarColor(m3.name) }]}>
+          <View style={[styles.headerGroupAvatarItem, { width: 22, height: 22, borderRadius: 11, bottom: 0, right: 0, backgroundColor: getAvatarColor(m3.name) }]}>
             {m3.picture ? (
-              <Image source={{ uri: fixMediaUrl(m3.picture) }} style={{ width: 25, height: 25, borderRadius: 12.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m3.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
             ) : (
               <Text style={styles.headerGroupAvatarItemText}>{getInitials(m3.name)}</Text>
             )}
@@ -1269,6 +1269,8 @@ export default function ChatDetailScreen({ route, navigation }) {
       </View>
     );
   };
+
+  const subtitleText = presence ? presence.label : (isFriend ? 'Bạn bè' : (peer?.area || ''));
 
   return (
     <Screen style={[styles.screen, { paddingBottom: 5 }]}>
@@ -1290,7 +1292,7 @@ export default function ChatDetailScreen({ route, navigation }) {
             <Text style={styles.headerMeta} numberOfLines={1}>
               {`${conversationMeta?.participants?.length || 0} thành viên`}
             </Text>
-          ) : (
+          ) : subtitleText ? (
             <Text
               style={[
                 styles.headerMeta,
@@ -1298,16 +1300,9 @@ export default function ChatDetailScreen({ route, navigation }) {
               ]}
               numberOfLines={1}
             >
-              {presence ? presence.label : (isFriend ? 'Bạn bè' : (peer?.area || ''))}
+              {subtitleText}
             </Text>
-          )}
-          {!isGroup && !followStatus.loading && !mutualFollow && (
-            <Text style={styles.headerMetaWarn} numberOfLines={1}>
-              {followStatus.isFollowing
-                ? 'Hãy chờ đối phương follow lại để gọi'
-                : 'Cả hai cần follow nhau để gọi'}
-            </Text>
-          )}
+          ) : null}
         </View>
 
         {isMuted && (
@@ -1677,11 +1672,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 11,
-    marginTop: 10,
-    height: 74,
-    paddingTop: 5,
+    marginTop: 6,
+    height: 58,
+    paddingTop: 0,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
@@ -1689,40 +1684,45 @@ const styles = StyleSheet.create({
   },
   headerAvatarContainer: {
     position: 'relative',
-    marginLeft: 8,
+    marginLeft: 6,
+    padding: 1,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
   },
   headerOnlineDot: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    right: -1,
+    bottom: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#22C55E',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },
   headerAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#E5E7EB',
   },
   headerAvatarFallback: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerAvatarText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '800',
   },
   headerGroupAvatarGrid: {
-    width: 56,
-    height: 56,
+    width: 42,
+    height: 42,
     position: 'relative',
   },
   headerGroupAvatarItem: {
@@ -1752,6 +1752,7 @@ const styles = StyleSheet.create({
   headerInfo: {
     flex: 1,
     marginLeft: 10,
+    justifyContent: 'center',
   },
   headerName: {
     fontSize: 15,

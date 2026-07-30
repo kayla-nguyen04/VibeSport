@@ -8,22 +8,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { BackButton } from '../components/BackButton';
 import { Screen } from '../components/Screen';
 import { AuthCard } from '../components/AuthCard';
 import { clearAuthFeedback, loginUser, setAuthError } from '../redux/authSlice';
 import { sendOtp } from '../services/otpService';
 import { SplashScreen } from './SplashScreen';
 
-const LOGO = require('../../assets/logo_vibesport_icon.png');
+const LOGO = require('../../assets/logoVibe.png');
 
-const FONT_SIZE = 13;
 const HEADER_TEXT = {
   login: {
     title: 'Đăng nhập',
@@ -58,7 +55,7 @@ export function AuthScreen({ route }) {
     if (mode === 'register') {
       setSendingOtp(true);
       try {
-        const result = await sendOtp(values.email);
+        const result = await sendOtp(values.email, 'register');
 
         if (result.success) {
           setTimeout(() => {
@@ -101,12 +98,16 @@ export function AuthScreen({ route }) {
 
   return (
     <Screen style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.navRow}>
-            <BackButton onPress={() => setMode('splash')} />
-          </View>
-
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'height' : undefined}
+        keyboardVerticalOffset={0}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.headingGroup}>
             <Image source={LOGO} style={styles.logo} resizeMode="contain" />
             <Text style={styles.heading}>{HEADER_TEXT[mode].title}</Text>
@@ -148,11 +149,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingVertical: 22,
-  },
-  navRow: {
-    height: 56,
-    justifyContent: 'center',
+    paddingTop: 16,
+    paddingBottom: 22,
   },
   headingGroup: {
     marginTop: 8,

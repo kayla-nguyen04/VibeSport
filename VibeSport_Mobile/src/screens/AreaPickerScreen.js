@@ -15,6 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { BackButton } from "../components/BackButton";
 
 // Local fallback dataset in case of no internet
 const LOCAL_FALLBACK = [
@@ -285,12 +286,7 @@ export default function AreaPickerScreen({ navigation, route }) {
     >
       <Screen style={styles.safe}>
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backBtn} />
         <Text style={styles.headerTitle}>Chọn Khu Vực</Text>
         <View style={{ width: 40 }} />
       </ScreenHeader>

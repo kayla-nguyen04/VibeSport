@@ -38,6 +38,7 @@ import { getSocket } from "../hooks/useSocket";
 import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { BackButton } from "../components/BackButton";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { TagIcon } from "../components/TagIcon";
 import { primary } from "../theme";
@@ -606,7 +607,10 @@ export default function MatchDetailScreen({ navigation, route }) {
       navigation.navigate("Home", { screen: "ProfileTab" });
       return;
     }
-    navigation.navigate("UserProfile", { userId: profileUserId });
+    navigation.navigate("UserProfile", {
+      userId: profileUserId,
+      initialProfile: typeof profileUser === "object" ? profileUser : undefined,
+    });
   };
 
   const handleOpenMap = () => {
@@ -976,13 +980,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   ) : (
     <Screen style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
         
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1437,9 +1435,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         <Modal visible={showRequestModal} animationType="slide">
           <Screen style={styles.safeArea}>
             <View style={styles.header}>
-              <TouchableOpacity style={styles.backButton} onPress={() => setShowRequestModal(false)}>
-                <Ionicons name="arrow-back" size={24} color="#333" />
-              </TouchableOpacity>
+              <BackButton onPress={() => setShowRequestModal(false)} style={styles.backButton} />
               <Text style={styles.headerTitle}>Yêu cầu tham gia</Text>
               <View style={styles.headerSpacer} />
             </View>
@@ -1587,9 +1583,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       <Modal visible={showInviteModal} animationType="slide">
         <Screen style={styles.safeArea}>
           <ScreenHeader style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={() => setShowInviteModal(false)}>
-              <Text style={styles.backArrow}>←</Text>
-            </TouchableOpacity>
+            <BackButton onPress={() => setShowInviteModal(false)} style={styles.backButton} />
             <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
             <View style={styles.headerSpacer} />
           </ScreenHeader>
@@ -1755,9 +1749,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 9,
     marginTop: 8,
     marginBottom: 4,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(99, 94, 94, 0.19)",
     elevation: 2,
@@ -1767,7 +1761,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   backButton: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
-  backArrow: { fontSize: 22, color: "#333" },
   headerTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {

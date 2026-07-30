@@ -723,7 +723,10 @@ export default function TeamsScreen({ navigation }) {
             onPress={() => {
               const authorId = normalizeId(author?._id || author?.id || item.userId);
               if (authorId && authorId !== userId) {
-                navigation?.navigate?.("UserProfile", { userId: authorId });
+                navigation?.navigate?.("UserProfile", {
+                  userId: authorId,
+                  initialProfile: author,
+                });
               }
             }}
           >
@@ -1090,12 +1093,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 16,
     paddingHorizontal: 12,
-    height: 74,
+    height: 58,
     borderWidth: 1,
     borderColor: "rgba(99, 94, 94, 0.19)",
-    marginTop: 15,
+    marginTop: 8,
   },
   headerBrand: {
     flexDirection: "row",

@@ -34,6 +34,7 @@ import { getPostLikesRequest, searchPostsRequest, reportPostRequest } from '../s
 import { API_BASE_URL } from '../components/constants/api';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import {
   LikesModal,
   ReactionsPreview,
@@ -99,7 +100,10 @@ const navigateToProfile = (navigation, currentUser, userId, onGoToProfile) => {
       navigation.navigate('Home', { screen: 'ProfileTab' });
     }
   } else {
-    navigation.navigate('UserProfile', { userId: targetUserId });
+    navigation.navigate('UserProfile', {
+      userId: targetUserId,
+      initialProfile: typeof userId === 'object' ? userId : undefined,
+    });
   }
 };
 
@@ -129,7 +133,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
 
   useEffect(() => {
     if (error) {
-      console.error('Redux posts fetch error:', error);
+      console.warn('Redux posts fetch error:', error);
     }
   }, [error]);
 
@@ -137,7 +141,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     getTagsRequest(token, 'sport')
       .then((res) => setCatalogTags(res.data || []))
       .catch((err) => {
-        console.error('getTagsRequest failed:', err);
+        console.warn('getTagsRequest failed:', err);
         setCatalogTags([]);
       });
   }, [token]);
@@ -383,8 +387,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
 
   const renderPostItem = ({ item }) => {
     const isSelf = isPostOwner(user, item);
-    const rawName = item.userId?.name || 'Thành viên VibeSport';
-    const postOwnerName = (rawName === 'Long Nguyên' || rawName === 'Long Nguyễn' || rawName === 'Long') ? 'Longabc' : rawName;
+    const postOwnerName = item.userId?.name || 'Thành viên VibeSport';
     const firstLetter = postOwnerName ? postOwnerName.charAt(0).toUpperCase() : '?';
 
     const hasFC = item.fcId && typeof item.fcId === 'object';
@@ -410,7 +413,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 {/* Overlapping User Avatar Badge */}
                 {item.userId?.picture ? (
                   <Image
-                    source={{ uri: item.userId.picture }}
+                    source={{ uri: fixMediaUrl(item.userId.picture) }}
                     style={{
                       position: 'absolute',
                       bottom: -2,
@@ -466,7 +469,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 activeOpacity={0.8}
               >
                 {item.userId?.picture ? (
-                  <Image source={{ uri: item.userId.picture }} style={styles.avatar} />
+                  <Image source={{ uri: fixMediaUrl(item.userId.picture) }} style={styles.avatar} />
                 ) : (
                   <View style={styles.avatarPlaceholder}>
                     <Text style={styles.avatarPlaceholderText}>{firstLetter}</Text>
@@ -562,9 +565,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         {isSearchMode ? (
           // ─── Search mode header ──────────────────────────────────────
           <>
-            <TouchableOpacity onPress={handleCloseSearch} style={styles.searchBackBtn}>
-              <Ionicons name="arrow-back" size={22} color="#FF6B35" />
-            </TouchableOpacity>
+            <BackButton onPress={handleCloseSearch} color="#FF6B35" style={styles.searchBackBtn} />
             <View style={styles.searchInputWrapper}>
               <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
               <TextInput
@@ -696,7 +697,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
               <View style={styles.greetingRow}>
                 <Text style={styles.greetingText}>Xin chào</Text>
                 <View style={styles.userBadge}>
-                  <Text style={styles.userBadgeText}>{(user?.name === 'Long Nguyên' || user?.name === 'Long Nguyễn' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên')}</Text>
+                  <Text style={styles.userBadgeText}>{user?.name || 'Thành viên'}</Text>
                 </View>
                 <MaterialCommunityIcons name="hand-wave-outline" size={24} color="#000000" style={{ marginLeft: 2 }} />
               </View>
@@ -767,6 +768,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                   }}
                   style={styles.bottomSheetOption}
                 >
+                  <Ionicons
+                    name={optionsPost.isSaved ? 'bookmark' : 'bookmark-outline'}
+                    size={20}
+                    color="#1F2937"
+                    style={styles.bottomSheetOptionIcon}
+                  />
                   <Text style={styles.bottomSheetOptionText}>
                     {optionsPost.isSaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết'}
                   </Text>
@@ -782,6 +789,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                       }}
                       style={styles.bottomSheetOption}
                     >
+                      <Ionicons
+                        name="create-outline"
+                        size={20}
+                        color="#1F2937"
+                        style={styles.bottomSheetOptionIcon}
+                      />
                       <Text style={styles.bottomSheetOptionText}>Sửa bài viết</Text>
                     </TouchableOpacity>
 
@@ -793,6 +806,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                       }}
                       style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
                     >
+                      <Ionicons
+                        name="trash-outline"
+                        size={20}
+                        color="#EF4444"
+                        style={styles.bottomSheetOptionIcon}
+                      />
                       <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Xóa bài viết</Text>
                     </TouchableOpacity>
                   </>
@@ -806,6 +825,12 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                     }}
                     style={[styles.bottomSheetOption, { borderBottomWidth: 0 }]}
                   >
+                    <Ionicons
+                      name="flag-outline"
+                      size={20}
+                      color="#EF4444"
+                      style={styles.bottomSheetOptionIcon}
+                    />
                     <Text style={[styles.bottomSheetOptionText, { color: '#EF4444' }]}>Báo cáo bài viết</Text>
                   </TouchableOpacity>
                 )}
@@ -845,11 +870,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
@@ -1238,11 +1263,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bottomSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 0.5,
     borderBottomColor: '#E5E7EB',
-    alignItems: 'flex-start',
-    paddingLeft: 24,
+    paddingLeft: 8,
+  },
+  bottomSheetOptionIcon: {
+    width: 20,
+    marginRight: 12,
   },
   bottomSheetOptionText: {
     fontSize: 15,

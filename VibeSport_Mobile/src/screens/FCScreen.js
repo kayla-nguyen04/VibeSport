@@ -23,6 +23,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import { API_BASE_URL } from '../components/constants/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -731,7 +732,7 @@ export default function FCScreen({ navigation }) {
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <View style={{ paddingTop: insets.top }}>
           <View style={styles.appHeader}>
-            <TouchableOpacity 
+            <BackButton
               onPress={() => {
                 if (isEditingFC) {
                   setFcName('');
@@ -744,11 +745,9 @@ export default function FCScreen({ navigation }) {
                 } else {
                   setViewMode('search');
                 }
-              }} 
+              }}
               style={styles.headerBackBtn}
-            >
-              <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-            </TouchableOpacity>
+            />
             <Text style={styles.appTitle}>{isEditingFC ? 'Chỉnh sửa Fan Club' : 'Tạo Fan Club (FC)'}</Text>
             <View style={{ width: 40 }} />
           </View>
@@ -888,9 +887,7 @@ export default function FCScreen({ navigation }) {
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <View style={{ paddingTop: insets.top }}>
           <View style={styles.appHeader}>
-            <TouchableOpacity onPress={() => setViewMode('search')} style={styles.headerBackBtn}>
-              <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-            </TouchableOpacity>
+            <BackButton onPress={() => setViewMode('search')} style={styles.headerBackBtn} />
             <Text style={styles.appTitle} numberOfLines={1}>FC {fc.name}</Text>
             <View style={{ width: 40 }} />
           </View>
@@ -1401,11 +1398,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',

@@ -1,17 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { PermissionsAndroid, Platform } from 'react-native';
-import {
-  createAgoraRtcEngine,
-  ChannelProfileType,
-  ClientRoleType,
-  ChannelMediaOptions,
-  RenderModeType,
-  LocalAudioStreamState,
-  LocalAudioStreamReason,
-  RemoteVideoState,
-  AudioProfileType,
-  AudioScenarioType,
-} from 'react-native-agora';
+let AgoraModule = null;
+try {
+  AgoraModule = require('react-native-agora');
+} catch (e) {
+  console.warn('[Agora] react-native-agora native module not loaded (Expo Go environment).');
+}
+
+const createAgoraRtcEngine = AgoraModule?.createAgoraRtcEngine || (() => ({
+  initialize: () => {},
+  registerEventHandler: () => {},
+  enableAudio: () => {},
+  enableVideo: () => {},
+  joinChannel: () => {},
+  leaveChannel: () => {},
+  release: () => {},
+  muteLocalAudioStream: () => {},
+  muteLocalVideoStream: () => {},
+  startPreview: () => {},
+  stopPreview: () => {},
+}));
+
+const ChannelProfileType = AgoraModule?.ChannelProfileType || {};
+const ClientRoleType = AgoraModule?.ClientRoleType || {};
+const ChannelMediaOptions = AgoraModule?.ChannelMediaOptions || {};
+const RenderModeType = AgoraModule?.RenderModeType || {};
+const LocalAudioStreamState = AgoraModule?.LocalAudioStreamState || {};
+const LocalAudioStreamReason = AgoraModule?.LocalAudioStreamReason || {};
+const RemoteVideoState = AgoraModule?.RemoteVideoState || {};
+const AudioProfileType = AgoraModule?.AudioProfileType || {};
+const AudioScenarioType = AgoraModule?.AudioScenarioType || {};
 
 const APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID;
 const DEBUG = true;

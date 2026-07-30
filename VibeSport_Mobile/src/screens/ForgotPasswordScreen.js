@@ -38,7 +38,7 @@ export default function ForgotPasswordScreen({ navigation }) {
     setLoading(true);
 
     try {
-      const result = await sendOtp(normalizedEmail);
+      const result = await sendOtp(normalizedEmail, 'forgot_password');
 
       if (result.success) {
         navigation.navigate('OtpScreen', {

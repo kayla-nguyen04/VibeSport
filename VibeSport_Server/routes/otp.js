@@ -1,6 +1,7 @@
 const express = require("express");
 const otpGenerator = require("otp-generator");
 const sendOTP = require("../utils/sendOtp");
+const User = require("../models/User");
 
 const router = express.Router();
 
@@ -8,7 +9,35 @@ const otpStore = {};
 
 router.post("/send-otp", async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, type = "register" } = req.body;
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : "";
+
+    if (!normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Email không được để trống.",
+      });
+    }
+
+    // Kiểm tra sự tồn tại của email trước khi gửi OTP
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    if (type === "forgot_password" || type === "reset_password" || type === "forgot") {
+      if (!existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Email chưa được đăng ký trong hệ thống.",
+        });
+      }
+    } else {
+      // Đăng ký tài khoản mới: nếu email đã tồn tại thì báo lỗi ngay
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Email đã tồn tại. Vui lòng đăng nhập hoặc dùng email khác.",
+        });
+      }
+    }
 
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
@@ -16,13 +45,13 @@ router.post("/send-otp", async (req, res) => {
       specialChars: false,
     });
 
-    otpStore[email] = otp;
-    console.log(`[OTP ROUTE] Generated OTP for ${email}: ${otp}`);
+    otpStore[normalizedEmail] = otp;
+    console.log(`[OTP ROUTE] Generated OTP for ${normalizedEmail}: ${otp}`);
 
     // Dev bypass: nếu chưa cấu hình email thì in OTP ra console
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.log(`\n========================================`);
-      console.log(`[DEV MODE] OTP cho ${email}: ${otp}`);
+      console.log(`[DEV MODE] OTP cho ${normalizedEmail}: ${otp}`);
       console.log(`========================================\n`);
       return res.json({
         success: true,
@@ -31,7 +60,7 @@ router.post("/send-otp", async (req, res) => {
       });
     }
 
-    await sendOTP(email, otp);
+    await sendOTP(normalizedEmail, otp);
 
     res.json({
       success: true,
@@ -63,9 +92,10 @@ router.post("/send-otp", async (req, res) => {
 
 router.post("/verify-otp", (req, res) => {
   const { email, otp } = req.body;
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : "";
 
-  if (otpStore[email] === otp) {
-    delete otpStore[email];
+  if (normalizedEmail && otpStore[normalizedEmail] === String(otp).trim()) {
+    delete otpStore[normalizedEmail];
 
     return res.json({
       success: true,

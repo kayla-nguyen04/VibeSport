@@ -57,10 +57,6 @@ const userSchema = new Schema(
       type: String,
       default: null,
     },
-    featuredPost: {
-      type: String,
-      default: null,
-    },
     rating: {
       type: Number,
       default: 0,

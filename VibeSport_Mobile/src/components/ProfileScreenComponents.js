@@ -15,7 +15,6 @@ import {
 
 import Avatar from './Avatar';
 import { PostImages } from './PostImages';
-import { TagIcon } from './TagIcon';
 import { API_BASE_URL } from './constants/api';
 import { styles } from '../screens/ProfileScreen.styles';
 import {
@@ -29,19 +28,6 @@ import {
   text,
 } from '../theme';
 import { VibeReactionIcon, VIBE_REACTION } from './PostReactions';
-
-export const SPORTS = [
-  { key: 'Bóng đá', label: 'Bóng đá' },
-  { key: 'Cầu lông', label: 'Cầu lông' },
-  { key: 'Pickleball', label: 'Pickleball' },
-];
-
-export const POSITION_OPTIONS = {
-  'Bóng đá': ['Tiền đạo', 'Tiền vệ', 'Hậu vệ', 'Thủ môn'],
-  'Cầu lông': ['Đơn', 'Đôi', 'Đôi nam', 'Đôi nữ'],
-  Pickleball: ['Forehand', 'Backhand', 'Đôi'],
-};
-
 
 const HEADER_HEIGHT = Platform.OS === 'ios'
   ? spacing['4xl'] - spacing.xs
@@ -139,12 +125,6 @@ export function ProfileOptionsSheet({
       onPress: onEditProfile,
     },
     {
-      key: 'saved',
-      label: 'Lưu bài viết',
-      iconName: 'bookmark-outline',
-      onPress: onSavedPosts,
-    },
-    {
       key: 'settings',
       label: 'Cài đặt',
       iconName: 'settings-outline',
@@ -186,6 +166,12 @@ export function ProfileOptionsSheet({
                 onPress={option.onPress}
                 style={styles.sheetOption}
               >
+                <Ionicons
+                  name={option.iconName}
+                  size={20}
+                  color={option.destructive ? '#EF4444' : '#374151'}
+                  style={{ marginRight: 14 }}
+                />
                 <Text
                   style={[
                     styles.sheetOptionText,
@@ -204,166 +190,118 @@ export function ProfileOptionsSheet({
   );
 }
 
-export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPickAvatar }) {
-  const rawDisplayName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
-  const displayName = (rawDisplayName === 'Long Nguyên' || rawDisplayName === 'Long Nguyễn' || rawDisplayName === 'Long') ? 'Longabc' : rawDisplayName;
-  const bio = profile?.bio || 'Chưa cập nhật tiểu sử';
-  const isLongNguyen = displayName === 'Long Nguyen';
+import { isUserOnline } from '../utils/presence';
 
-  return (
-    <View style={styles.profileCard}>
-      <View style={styles.profileAvatarFrame}>
-        <Avatar
-          source={profile?.picture}
-          name={displayName}
-          size="xl"
-          customBgColor={isLongNguyen ? status.danger : undefined}
-          customInitials={isLongNguyen ? 'L.' : undefined}
-        />
-        {onPickAvatar ? (
-        <TouchableOpacity
-          accessibilityRole="button"
-          activeOpacity={0.78}
-          onPress={onPickAvatar}
-          style={styles.cameraBadge}
-        >
-          <MaterialCommunityIcons name="pencil" size={14} color={background.primary} />
-        </TouchableOpacity>
-      ) : null}
-      </View>
+function formatTimeShort48h(dateString) {
+  if (!dateString) return null;
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  if (isNaN(diffMs)) return null;
 
-      <Text style={styles.profileName} numberOfLines={1}>
-        {displayName}
-      </Text>
-      <Text style={styles.profileBio} numberOfLines={2}>
-        {bio}
-      </Text>
-
-      <View style={styles.activePill}>
-        <Text style={styles.activeText}>Đang hoạt động</Text>
-      </View>
-    </View>
-  );
-});
-
-function StatColumn({ value, label, onPress }) {
-  const content = (
-    <>
-      <Text style={styles.statValue} numberOfLines={1}>
-        {value}
-      </Text>
-      <Text style={styles.statLabel} numberOfLines={2}>
-        {label}
-      </Text>
-    </>
-  );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity
-        activeOpacity={0.75}
-        onPress={onPress}
-        style={styles.statColumn}
-      >
-        {content}
-      </TouchableOpacity>
-    );
+  const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+  if (diffMs > FORTY_EIGHT_HOURS_MS) {
+    return null; // Hide badge if over 48 hours
   }
 
-  return (
-    <View style={styles.statColumn}>
-      {content}
-    </View>
-  );
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 5) return 'vừa xong';
+  if (diffMins < 60) return `${diffMins} phút`;
+  if (diffHours < 24) return `${diffHours} giờ`;
+  if (diffDays <= 2) return `${diffDays} ngày`;
+
+  return null;
 }
 
-export const StatsCard = memo(function StatsCard({ profile, onOpenFollowList }) {
+export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, isSelf = false, onOpenFollowList }) {
+  const displayName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
+  const rawBio = profile?.bio;
+  const bio = rawBio && rawBio.length > 60 ? `${rawBio.slice(0, 60)}...` : rawBio;
+
+  let isOnline = false;
+  if (isSelf) {
+    isOnline = true;
+  } else if (typeof profile?.isOnline === 'boolean') {
+    isOnline = profile.isOnline;
+  } else if (profile?.lastSeenAt) {
+    isOnline = isUserOnline(profile.lastSeenAt);
+  }
+
+  const offlineText48h = !isOnline ? formatTimeShort48h(profile?.lastSeenAt) : null;
+
   const stats = profile?.stats || {};
+  const matchesPlayed = stats.matchesPlayed ?? profile?.matchesPlayed ?? 0;
+  const followerCount = profile?.followerCount ?? 0;
+  const followingCount = profile?.followingCount ?? 0;
   const rating = Number(profile?.rating ?? stats.rating ?? 0) || 0;
   const ratingDisplay = rating > 0 ? `${rating.toFixed(0)}/5` : '5/5';
 
   return (
-    <View style={styles.statsCard2x2}>
-      <View style={styles.statsRow}>
-        <TouchableOpacity
-          activeOpacity={0.75}
-          onPress={() => onOpenFollowList('following')}
-          style={styles.statCell}
-        >
-          <Text style={styles.statValue}>{profile?.followingCount ?? 0}</Text>
-          <Text style={styles.statLabel}>Đang theo dõi</Text>
-        </TouchableOpacity>
-
-        <View style={styles.statVerticalDivider} />
-
-        <TouchableOpacity
-          activeOpacity={0.75}
-          onPress={() => onOpenFollowList('followers')}
-          style={styles.statCell}
-        >
-          <Text style={styles.statValue}>{profile?.followerCount ?? 0}</Text>
-          <Text style={styles.statLabel}>Người theo dõi</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.statHorizontalDivider} />
-
-      <View style={styles.statsRow}>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{stats.matchesPlayed ?? 0}</Text>
-          <Text style={styles.statLabel}>Trận đã chơi</Text>
-        </View>
-
-        <View style={styles.statVerticalDivider} />
-
-        <View style={styles.statCell}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-            <Text style={styles.statValue}>{ratingDisplay}</Text>
-            <Ionicons name="star" size={14} color="#CCCCCC" />
+    <View style={styles.profileCardLeftLayout}>
+      <View style={styles.profileTopRow}>
+        <View style={styles.avatarColumnContainer}>
+          <View style={styles.avatarStatusWrap}>
+            <Avatar
+              source={fixMediaUrl(profile?.picture)}
+              name={displayName}
+              size="md"
+            />
+            {isOnline ? (
+              <View style={styles.onlineDotBadge} />
+            ) : offlineText48h ? (
+              <View style={styles.offlinePillBadge}>
+                <Text style={styles.offlinePillText}>{offlineText48h}</Text>
+              </View>
+            ) : null}
           </View>
-          <Text style={styles.statLabel}>Đánh giá</Text>
+
+          <View style={styles.avatarRatingBadge}>
+            <Text style={styles.avatarRatingText}>{ratingDisplay}</Text>
+            <Ionicons name="star" size={11} color="#F59E0B" />
+          </View>
+        </View>
+
+        <View style={styles.profileRightContent}>
+          <Text style={styles.profileNameLeft} numberOfLines={1}>
+            {displayName}
+          </Text>
+
+          <View style={styles.statsInlineRow}>
+            <View style={styles.statInlineItem}>
+              <Text style={styles.statInlineValue}>{matchesPlayed}</Text>
+              <Text style={styles.statInlineLabel}>trận đã chơi</Text>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => onOpenFollowList?.('followers')}
+              style={styles.statInlineItem}
+            >
+              <Text style={styles.statInlineValue}>{followerCount}</Text>
+              <Text style={styles.statInlineLabel}>người theo dõi</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => onOpenFollowList?.('following')}
+              style={styles.statInlineItem}
+            >
+              <Text style={styles.statInlineValue}>{followingCount}</Text>
+              <Text style={styles.statInlineLabel}>đang theo dõi</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </View>
-  );
-});
 
-function InfoRow({ iconNode, label, value }) {
-  return (
-    <View style={styles.infoRowCard}>
-      <View style={styles.infoIconWrap}>{iconNode}</View>
-      <View style={styles.infoTextBlock}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue} numberOfLines={2}>
-          {value || 'Chưa cập nhật'}
+      {bio ? (
+        <Text style={styles.profileBioBottom} numberOfLines={2}>
+          {bio}
         </Text>
-      </View>
-    </View>
-  );
-}
-
-export const InfoCard = memo(function InfoCard({ profile }) {
-  return (
-    <View style={styles.infoSection}>
-      <InfoRow
-        iconNode={<TagIcon tagName={profile?.favoriteSport} size={spacing.xl} color={primary.DEFAULT} />}
-        label="Môn thể thao ưa thích"
-        value={profile?.favoriteSport}
-      />
-      <InfoRow
-        iconNode={<MaterialCommunityIcons name="soccer-field" size={spacing.xl} color={primary.DEFAULT} />}
-        label="Vị trí thi đấu ưa thích"
-        value={profile?.position}
-      />
-      <InfoRow
-        iconNode={<Ionicons name="location-outline" size={spacing.xl} color={primary.DEFAULT} />}
-        label="Khu vực"
-        value={profile?.area}
-      />
+      ) : null}
     </View>
   );
 });
-
 
 export function EmptyState({ iconName, title, loading }) {
   if (loading) {
@@ -392,27 +330,43 @@ function formatCount(num) {
   return String(num);
 }
 
-export const ProfilePostCard = memo(function ProfilePostCard({ post, profile, onOpenPost, onToggleLike, onShare, onOpenMenu }) {
-  const author = post.userId || {};
-  const rawAuthorName = author.name || profile?.name || 'Thành viên VibeSport';
-  const authorName = (rawAuthorName === 'Long Nguyên' || rawAuthorName === 'Long Nguyễn' || rawAuthorName === 'Long') ? 'Longabc' : rawAuthorName;
-  const authorPicture = author.picture || profile?.picture;
+export const ProfilePostCard = memo(function ProfilePostCard({
+  post,
+  profile,
+  onOpenPost,
+  onOpenAuthor,
+  onToggleLike,
+  onShare,
+  onOpenMenu,
+}) {
+  const author = post.userId && typeof post.userId === 'object' ? post.userId : null;
+  const authorId = author?._id || author?.id || post.userId;
+  const profileId = profile?._id || profile?.id;
+  const belongsToProfile = Boolean(
+    profileId
+    && authorId
+    && String(profileId) === String(authorId)
+  );
+  const authorName = author?.name || (belongsToProfile ? profile?.name : null) || 'Thành viên VibeSport';
+  const authorPicture = author?.picture || (belongsToProfile ? profile?.picture : null);
   const isLiked = Boolean(post.isLiked);
-  const isLongNguyen = authorName === 'Long Nguyen';
 
   return (
     <View style={styles.postCard}>
       <View style={styles.postHeader}>
-        <Avatar
-          source={authorPicture}
-          name={authorName}
-          size="sm"
-          customBgColor={isLongNguyen ? '#FF0000' : undefined}
-        />
+        <TouchableOpacity activeOpacity={0.78} onPress={() => onOpenAuthor?.(post)}>
+          <Avatar
+            source={fixMediaUrl(authorPicture)}
+            name={authorName}
+            size="sm"
+          />
+        </TouchableOpacity>
         <View style={styles.postAuthorBlock}>
-          <Text style={styles.postAuthorName} numberOfLines={1}>
-            {authorName}
-          </Text>
+          <TouchableOpacity activeOpacity={0.78} onPress={() => onOpenAuthor?.(post)}>
+            <Text style={styles.postAuthorName} numberOfLines={1}>
+              {authorName}
+            </Text>
+          </TouchableOpacity>
           <Text style={styles.postTime}>{formatTime(post.createdAt)}</Text>
         </View>
         <TouchableOpacity style={styles.postMenuButton} activeOpacity={0.7} onPress={() => onOpenMenu?.(post)}>
@@ -575,14 +529,9 @@ export function EditProfileModal({
   setEditName,
   editPhone,
   setEditPhone,
-  editFavoriteSport,
-  setEditFavoriteSport,
-  editPosition,
-  setEditPosition,
-  editArea,
-  setEditArea,
   editBio,
   setEditBio,
+  onPickAvatar,
   onClose,
   onSave,
   saving,
@@ -611,6 +560,18 @@ export function EditProfileModal({
             contentContainerStyle={styles.editBody}
             renderItem={() => (
               <>
+                <View style={styles.avatarEditCenter}>
+                  <TouchableOpacity activeOpacity={0.8} onPress={onPickAvatar} style={styles.avatarEditTouch}>
+                    <Avatar source={user?.picture} name={user?.name} size="xl" />
+                    <View style={styles.avatarEditOverlay}>
+                      <MaterialCommunityIcons name="camera" size={18} color="#FFFFFF" />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.7} onPress={onPickAvatar}>
+                    <Text style={styles.changeAvatarBtnText}>Thay đổi ảnh đại diện</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <Text style={styles.inputLabel}>Tên hiển thị</Text>
                 <TextInput
                   style={styles.modalInput}
@@ -631,74 +592,14 @@ export function EditProfileModal({
                   keyboardType="phone-pad"
                 />
 
-                <Text style={styles.inputLabel}>Môn thể thao</Text>
-                <View style={styles.optionRow}>
-                  {SPORTS.map((sport) => (
-                    <TouchableOpacity
-                      key={sport.key}
-                      activeOpacity={0.78}
-                      onPress={() => {
-                        setEditFavoriteSport(sport.key);
-                        const positions = POSITION_OPTIONS[sport.key] || [];
-                        setEditPosition(positions[0] || '');
-                      }}
-                      style={[
-                        styles.optionCard,
-                        editFavoriteSport === sport.key && styles.optionCardActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.optionText,
-                          editFavoriteSport === sport.key && styles.optionTextActive,
-                        ]}
-                      >
-                        {sport.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={styles.inputLabel}>Vị trí chơi</Text>
-                <View style={styles.optionRow}>
-                  {(POSITION_OPTIONS[editFavoriteSport] || []).map((posOption) => (
-                    <TouchableOpacity
-                      key={posOption}
-                      activeOpacity={0.78}
-                      onPress={() => setEditPosition(posOption)}
-                      style={[
-                        styles.positionCard,
-                        editPosition === posOption && styles.optionCardActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.optionText,
-                          editPosition === posOption && styles.optionTextActive,
-                        ]}
-                      >
-                        {posOption}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={styles.inputLabel}>Khu vực</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={editArea}
-                  onChangeText={setEditArea}
-                  placeholder="Ví dụ: Cầu Giấy, Hà Nội"
-                  placeholderTextColor={text.hint}
-                />
-
-                <Text style={styles.inputLabel}>Mô tả ngắn</Text>
+                <Text style={styles.inputLabel}>Mô tả ngắn (tối đa 60 ký tự)</Text>
                 <TextInput
                   style={[styles.modalInput, styles.modalTextarea]}
                   value={editBio}
-                  onChangeText={setEditBio}
-                  placeholder="Viết vài dòng về bạn"
+                  onChangeText={(val) => setEditBio(val.slice(0, 60))}
+                  placeholder="Viết vài dòng về bạn (tối đa 60 ký tự)"
                   placeholderTextColor={text.hint}
+                  maxLength={60}
                   multiline
                 />
 
@@ -734,6 +635,39 @@ export function EditProfileModal({
         </View>
       </View>
     </Modal>
+  );
+}
+
+export function ProfileTabBar({ activeTab, onSelectTab, includeSaved = true }) {
+  const tabs = [
+    { key: 'posts', label: 'Bài viết', icon: 'newspaper-outline' },
+    ...(includeSaved ? [{ key: 'saved', label: 'Bài đã lưu', icon: 'bookmark-outline' }] : []),
+    { key: 'history', label: 'Lịch sử', icon: 'time-outline' },
+  ];
+
+  return (
+    <View style={styles.tabBarContainer}>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            activeOpacity={0.75}
+            onPress={() => onSelectTab(tab.key)}
+            style={[styles.tabItem, isActive && styles.tabItemActive]}
+          >
+            <Ionicons
+              name={isActive ? tab.icon.replace('-outline', '') : tab.icon}
+              size={18}
+              color={isActive ? primary.DEFAULT : '#6B7280'}
+            />
+            <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 

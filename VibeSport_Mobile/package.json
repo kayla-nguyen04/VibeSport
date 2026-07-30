@@ -29,7 +29,8 @@
     "socket.io-client": "^4.8.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --go --offline",
+    "tunnel": "expo start --go --tunnel",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web"
