@@ -54,7 +54,6 @@ const getAvatarColor = (name) => {
 // Fix URL ảnh khi IP server thay đổi
 function fixMediaUrl(url) {
   if (!url) return url;
-  // Thay thế bất kỳ IP:port cũ bằng API_BASE_URL hiện tại
   return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
 }
 
@@ -66,6 +65,13 @@ const getTagDisplayName = (tagName) => {
     default: return tagName;
   }
 };
+
+// Danh sách Tab lọc bài viết mới theo đúng yêu cầu
+const FEED_TABS = [
+  { key: null, label: 'Đề xuất' },
+  { key: 'following', label: 'Đang follow' },
+  { key: 'followed', label: 'Đã follow' },
+];
 
 const formatCount = (count) => {
   if (!count) return '0';
@@ -225,9 +231,10 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     dispatch(fetchPosts({ page: page + 1, limit: 10, tag: activeTag }));
   };
 
-  const handleTagPress = (tagName) => {
-    const nextTag = activeTag === tagName ? null : tagName;
-    dispatch(setActiveTag(nextTag));
+  // Hàm chuyển đổi giữa các Tab lọc bài viết (Đề xuất / Đang follow / Đã follow)
+  const handleTagPress = (tagKey) => {
+    if (activeTag === tagKey) return;
+    dispatch(setActiveTag(tagKey));
   };
 
   const handleLike = (post) => {
@@ -364,23 +371,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
     return `${diffDays} ngày trước`;
   };
 
-  const renderTagBadge = (tagName, key) => (
-    <TouchableOpacity
-      key={key}
-      onPress={() => handleTagPress(tagName)}
-      style={[styles.sportBadge, activeTag === tagName && styles.sportBadgeActive]}
-    >
-      <TagIcon
-        color={activeTag === tagName ? '#FFFFFF' : '#FF6B35'}
-        size={12}
-        tagName={tagName}
-      />
-      <Text style={[styles.sportBadgeText, activeTag === tagName && styles.sportBadgeTextActive]}>
-        {tagName}
-      </Text>
-    </TouchableOpacity>
-  );
-
   const renderPostItem = ({ item }) => {
     const isSelf = isPostOwner(user, item);
     const rawName = item.userId?.name || 'Thành viên VibeSport';
@@ -398,7 +388,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         <View style={styles.postHeader}>
           {hasFC ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              {/* Overlapping Avatars: Club Avatar with User Avatar Badge */}
               <View style={{ width: 44, height: 44, position: 'relative' }}>
                 {fcAvatar ? (
                   <Image source={{ uri: fixMediaUrl(fcAvatar) }} style={styles.avatar} />
@@ -407,7 +396,6 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                     <Text style={styles.avatarPlaceholderText}>{fcFirstLetter}</Text>
                   </View>
                 )}
-                {/* Overlapping User Avatar Badge */}
                 {item.userId?.picture ? (
                   <Image
                     source={{ uri: item.userId.picture }}
@@ -663,54 +651,50 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
         ListHeaderComponent={
           isSearchMode ? null : (
             <View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tagFilterRow}
-            >
-              <TouchableOpacity
-                onPress={() => handleTagPress(null)}
-                style={[styles.filterChip, !activeTag && styles.filterChipActive]}
-              >
-                <Text style={[styles.filterChipText, !activeTag && styles.filterChipTextActive]}>
-                  Tất cả
-                </Text>
-              </TouchableOpacity>
-              {catalogTags.map((tag) => (
-                <TouchableOpacity
-                  key={tag._id}
-                  onPress={() => handleTagPress(tag.name)}
-                  style={[styles.filterChip, activeTag === tag.name && styles.filterChipActive]}
-                >
-                  <Text
-                    style={[styles.filterChipText, activeTag === tag.name && styles.filterChipTextActive]}
+              {/* THANH LỌC 3 TAB MỚI: Đề xuất / Đang follow / Đã follow */}
+              <View style={styles.tagFilterRow}>
+                {FEED_TABS.map((tab) => (
+                  <TouchableOpacity
+                    key={tab.label}
+                    onPress={() => handleTagPress(tab.key)}
+                    style={[
+                      styles.filterChip,
+                      styles.flexTabChip,
+                      activeTag === tab.key && styles.filterChipActive,
+                    ]}
                   >
-                    {getTagDisplayName(tag.name)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-          <View style={styles.bannerContainer}>
-            <View style={styles.bannerCard}>
-              <View style={styles.greetingRow}>
-                <Text style={styles.greetingText}>Xin chào</Text>
-                <View style={styles.userBadge}>
-                  <Text style={styles.userBadgeText}>{(user?.name === 'Long Nguyên' || user?.name === 'Long Nguyễn' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên')}</Text>
-                </View>
-                <MaterialCommunityIcons name="hand-wave-outline" size={24} color="#000000" style={{ marginLeft: 2 }} />
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        activeTag === tab.key && styles.filterChipTextActive,
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('CreatePost')}
-                style={styles.createPostBtn}
-              >
-                <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
-                <Text style={styles.createPostBtnText}>Đăng bài lên cộng đồng</Text>
-              </TouchableOpacity>
+
+              <View style={styles.bannerContainer}>
+                <View style={styles.bannerCard}>
+                  <View style={styles.greetingRow}>
+                    <Text style={styles.greetingText}>Xin chào</Text>
+                    <View style={styles.userBadge}>
+                      <Text style={styles.userBadgeText}>{(user?.name === 'Long Nguyên' || user?.name === 'Long Nguyễn' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên')}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="hand-wave-outline" size={24} color="#000000" style={{ marginLeft: 2 }} />
+                  </View>
+                  <Text style={styles.bannerSubtext}>Hôm nay bạn muốn chia sẻ gì?</Text>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('CreatePost')}
+                    style={styles.createPostBtn}
+                  >
+                    <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
+                    <Text style={styles.createPostBtnText}>Đăng bài lên cộng đồng</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          </View>
-          </View>
           )
         }
         ListFooterComponent={
@@ -986,10 +970,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tagFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 4,
     gap: 8,
+  },
+  flexTabChip: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChip: {
     flexDirection: 'row',
