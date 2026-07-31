@@ -42,7 +42,6 @@ export const POSITION_OPTIONS = {
   Pickleball: ['Forehand', 'Backhand', 'Đôi'],
 };
 
-
 const HEADER_HEIGHT = Platform.OS === 'ios'
   ? spacing['4xl'] - spacing.xs
   : spacing['4xl'] + spacing.sm;
@@ -61,7 +60,6 @@ function withOpacity(hexColor, opacity) {
   const b = intValue & 255;
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
-
 
 export function fixMediaUrl(url) {
   if (!url) return url;
@@ -94,7 +92,6 @@ function formatTeamPeriod(team) {
   const left = `${String(leftDate.getMonth() + 1).padStart(2, '0')}/${leftDate.getFullYear()}`;
   return `Tham gia từ ${joined} - ${left}`;
 }
-
 
 export function HeaderIconButton({ children, onPress }) {
   return (
@@ -204,6 +201,7 @@ export function ProfileOptionsSheet({
   );
 }
 
+// 🟢 NGUYÊN BẢN GỐC CHUẨN 100%: ProfileHeaderCard sạch sẽ, không có nút thừa dưới tiểu sử
 export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPickAvatar }) {
   const rawDisplayName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
   const displayName = (rawDisplayName === 'Long Nguyên' || rawDisplayName === 'Long Nguyễn' || rawDisplayName === 'Long') ? 'Longabc' : rawDisplayName;
@@ -221,15 +219,15 @@ export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, onPi
           customInitials={isLongNguyen ? 'L.' : undefined}
         />
         {onPickAvatar ? (
-        <TouchableOpacity
-          accessibilityRole="button"
-          activeOpacity={0.78}
-          onPress={onPickAvatar}
-          style={styles.cameraBadge}
-        >
-          <MaterialCommunityIcons name="pencil" size={14} color={background.primary} />
-        </TouchableOpacity>
-      ) : null}
+          <TouchableOpacity
+            accessibilityRole="button"
+            activeOpacity={0.78}
+            onPress={onPickAvatar}
+            style={styles.cameraBadge}
+          >
+            <MaterialCommunityIcons name="pencil" size={14} color={background.primary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <Text style={styles.profileName} numberOfLines={1}>
@@ -277,10 +275,11 @@ function StatColumn({ value, label, onPress }) {
   );
 }
 
-export const StatsCard = memo(function StatsCard({ profile, onOpenFollowList }) {
+// 🟢 CHUẨN THIẾT KẾ: Gắn sự kiện click mở danh sách nhận xét trực tiếp vào đúng ô "5/5 Đánh giá"
+export const StatsCard = memo(function StatsCard({ profile, onOpenFollowList, onOpenRatings }) {
   const stats = profile?.stats || {};
-  const rating = Number(profile?.rating ?? stats.rating ?? 0) || 0;
-  const ratingDisplay = rating > 0 ? `${rating.toFixed(0)}/5` : '5/5';
+  const rating = Number(profile?.rating ?? stats.rating ?? 5) || 5;
+  const ratingDisplay = `${rating.toFixed(0)}/5`;
 
   return (
     <View style={styles.statsCard2x2}>
@@ -316,13 +315,18 @@ export const StatsCard = memo(function StatsCard({ profile, onOpenFollowList }) 
 
         <View style={styles.statVerticalDivider} />
 
-        <View style={styles.statCell}>
+        {/* Ô ĐÁNH GIÁ CHUẨN THIẾT KẾ BAN ĐẦU - BẤM VÀO SẼ BẬT MODAL NHẬN XÉT */}
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={onOpenRatings}
+          style={styles.statCell}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
             <Text style={styles.statValue}>{ratingDisplay}</Text>
-            <Ionicons name="star" size={14} color="#CCCCCC" />
+            <Ionicons name="star" size={14} color="#F59E0B" />
           </View>
           <Text style={styles.statLabel}>Đánh giá</Text>
-        </View>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -363,7 +367,6 @@ export const InfoCard = memo(function InfoCard({ profile }) {
     </View>
   );
 });
-
 
 export function EmptyState({ iconName, title, loading }) {
   if (loading) {
@@ -736,4 +739,3 @@ export function EditProfileModal({
     </Modal>
   );
 }
-
