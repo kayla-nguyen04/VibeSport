@@ -63,7 +63,7 @@ const userSchema = new Schema(
     },
     rating: {
       type: Number,
-      default: 0,
+      default: 5,
       min: 0,
       max: 5,
     },

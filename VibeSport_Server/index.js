@@ -16,7 +16,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
 const { Server } = require('socket.io');
-
+const ratingRoutes = require('./routes/ratingRoutes');
 const authRouter = require('./routes/auth');
 const agoraRouter = require('./routes/agora');
 const otpRoutes = require("./routes/otp");
@@ -39,6 +39,7 @@ const { sendSystemCallMessage } = require('./controllers/chatController');
 
 const app = express();
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -307,10 +308,6 @@ io.on('connection', (socket) => {
   // Agora call signaling via Socket.IO
   // ================================
 
-  // User A gọi User B hoặc nhóm
-  // payload: { peerId, channelName, callType, isGroup, callerId, callerName, memberIds }
-  //   - peerId: string | null (peer id khi 1-1, null khi group)
-  //   - memberIds: string[] (danh sách user id thành viên nhóm, bỏ qua caller)
   socket.on('start_call', async (payload) => {
     const {
       peerId,
@@ -324,16 +321,13 @@ io.on('connection', (socket) => {
 
     console.log('[SOCKET] start_call:', payload);
 
-    // Lưu pending call để call_rejected/call_busy/timeout có thể gửi tin nhắn "Cuộc gọi nhỡ"
     const conversationId = channelName?.match(/^call_(.+)$/)?.[1];
     if (conversationId) {
-      // Cancel timer cũ nếu có (channelName trùng giữa các cuộc gọi trong cùng conversation)
       const existing = pendingCalls.get(channelName);
       if (existing) {
         clearTimeout(existing.timerId);
       }
       const timerId = setTimeout(async () => {
-        // ATOMIC: lấy + xóa NGAY để prevent race với call_rejected/call_busy
         const pending = pendingCalls.get(channelName);
         pendingCalls.delete(channelName);
         if (!pending) return;
@@ -350,22 +344,14 @@ io.on('connection', (socket) => {
         ? memberIds.filter((id) => String(id) !== String(callerId)).map(String)
         : peerId ? [String(peerId)] : [];
       pendingCalls.set(channelName, { conversationId, callType, callerId, timerId, targetIds });
-      // Lưu callerId vào callCallerIds để handleLeaveChannel có thể dùng
-      // khi gửi "Cuộc gọi kết thúc (X phút)" — pendingCalls có thể đã bị
-      // delete sau khi có người join đầu tiên, nên cần map độc lập.
       callCallerIds.set(channelName, String(callerId));
       console.log(`[SOCKET] pendingCalls.set + callCallerIds.set for ${channelName} (timeout=30s, callerId=${callerId}, targetIds=${targetIds.length})`);
     }
 
     if (isGroup) {
-      // Mời tất cả thành viên trong nhóm (trừ caller) + đánh dấu busy
       const targets = memberIds.filter((id) => String(id) !== String(callerId));
       console.log(`[SOCKET] Group call to ${targets.length} members in channel ${channelName}`);
 
-      // === Lấy tên nhóm để gửi kèm incoming_call (UI hiển thị biết cuộc gọi
-      // đến từ nhóm nào). Tránh query khi conversationId không hợp lệ.
-      // Failure an toàn: emit incoming_call không có groupName, modal vẫn
-      // hoạt động bình thường (fallback về layout 1-1 style). ===
       let groupName = null;
       if (conversationId) {
         try {
@@ -396,24 +382,18 @@ io.on('connection', (socket) => {
           isGroup: true,
           callerId,
           callerName,
-          // groupName có thể null nếu DB lỗi / conv không có name — client
-          // sẽ fallback về layout cũ khi groupName null.
           groupName,
         });
       }
     } else if (peerId) {
-      // 1-1 call: kiểm tra B có đang bận không TRƯỚC KHI emit incoming_call
       const peerBusyState = busyUsers.get(peerId.toString());
       if (peerBusyState) {
         console.log(`[SOCKET] start_call BLOCKED — peer ${peerId} is busy (${peerBusyState})`);
         io.to(callerId.toString()).emit('call_busy', { channelName });
-        // Cleanup pendingCalls entry đã tạo phía trên
-        // ATOMIC: lấy + xóa NGAY để prevent race với timeout callback
         const pendingEntry = pendingCalls.get(channelName);
         pendingCalls.delete(channelName);
         if (pendingEntry) {
           clearTimeout(pendingEntry.timerId);
-          // Gửi tin nhắn "Cuộc gọi nhỡ" sau khi atomic delete — tránh timeout gửi trùng
           try {
             await sendSystemCallMessage(pendingEntry.conversationId, pendingEntry.callType, 0, true, pendingEntry.callerId);
             console.log(`[SOCKET] Missed call (peer busy) message sent for ${channelName} (callerId=${pendingEntry.callerId})`);
@@ -423,9 +403,6 @@ io.on('connection', (socket) => {
         }
         return;
       }
-      // 1-1 call: forward tới đúng peer + đánh dấu B là pending
-      // Kiểm tra quan hệ follow MUTUAL giữa caller và peer (cả 2 follow nhau).
-      // Dùng cả 2 chiều vì Follow là 1 chiều (Follow.findOne({follower, following})).
       const [aFollowsB, bFollowsA] = await Promise.all([
         Follow.exists({ followerId: callerId, followingId: peerId }),
         Follow.exists({ followerId: peerId, followingId: callerId }),
@@ -437,7 +414,6 @@ io.on('connection', (socket) => {
           aFollowsB: !!aFollowsB,
           bFollowsA: !!bFollowsA,
         });
-        // Cleanup pendingCalls (đã tạo ở trên)
         const pendingEntry = pendingCalls.get(channelName);
         pendingCalls.delete(channelName);
         if (pendingEntry) clearTimeout(pendingEntry.timerId);
@@ -462,9 +438,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Người nhận bấm "Nhận" → gửi yêu cầu join channel
-  // Dùng Socket.IO acknowledgement callback thay vì emit event riêng
-  // Lấy agoraUid từ socket.data (server-side), KHÔNG tin client gửi lên
   socket.on('join_channel_request', ({ channelName }, ackFn) => {
     if (typeof ackFn !== 'function') {
       console.warn('[SOCKET] join_channel_request: ackFn missing');
@@ -478,7 +451,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Extract conversationId từ channelName (dạng call_<conversationId>)
     const match = channelName?.match(/^call_(.+)$/);
     if (!match) {
       ackFn({ ok: false, reason: 'invalid_channel' });
@@ -487,7 +459,6 @@ io.on('connection', (socket) => {
     }
     const conversationId = match[1];
 
-    // Kiểm tra quyền: user phải là participant của conversation đó
     Conversation.findById(conversationId)
       .select('participants')
       .lean()
@@ -505,27 +476,21 @@ io.on('connection', (socket) => {
           return;
         }
 
-        // Kiểm tra giới hạn số người
         if (isChannelFull(channelName)) {
           ackFn({ ok: false, reason: 'full', maxParticipants: MAX_PARTICIPANTS_PER_CHANNEL });
           console.log(`[SOCKET] Channel ${channelName} full`);
           return;
         }
 
-        // Tất cả kiểm tra qua — cho phép join
         const userId = socket.data.userId;
         const isFirstJoinInChannel = !callStartTimes.has(channelName);
         addParticipant(channelName, agoraUid);
         updatePeakParticipants(channelName);
         socket.join(channelName);
-        socket.data.currentChannel = channelName; // track để cleanup khi disconnect
+        socket.data.currentChannel = channelName;
 
-        // Ghi nhận thời điểm join (cập nhật mỗi lần có user join)
         lastJoinTimes.set(channelName, Date.now());
 
-        // Ghi nhận thời điểm BẮT ĐẦU cuộc gọi thật sự — chỉ set khi
-        // chưa có start time (người đầu tiên join). Dùng để tính duration
-        // chính xác, không bị ghi đè khi user thứ 2/3/... join.
         if (isFirstJoinInChannel) {
           callStartTimes.set(channelName, Date.now());
           console.log(`[SOCKET] callStartTimes.set for ${channelName} (FIRST join)`);
@@ -533,19 +498,12 @@ io.on('connection', (socket) => {
 
         const pending = pendingCalls.get(channelName);
 
-        // ⚠️ QUAN TRỌNG: Phân biệt caller tự join vs callee join.
-        // - Caller tự join channel của chính mình ngay sau start_call:
-        //     KHÔNG được coi là "cuộc gọi đã được trả lời", vì callee chưa hề bấm Nhận.
-        //     Tránh emit call_answered_elsewhere sai + clear pendingCalls sai.
-        // - Callee join: mới là dấu hiệu cuộc gọi được chấp nhận.
         const isCallerSelfJoin =
           pending &&
           pending.callerId &&
           String(pending.callerId) === String(userId);
 
         if (isCallerSelfJoin) {
-          // Caller tự vào channel — KHÔNG thay đổi busy/pending state.
-          // Chỉ log để debug và cho phép caller thấy CallScreen hoạt động.
           console.log(
             `[SOCKET] join_channel_request: caller (userId=${userId}, agoraUid=${agoraUid}) ` +
             `joined own channel ${channelName} — NOT treating as call answered (still waiting for callee)`
@@ -559,27 +517,22 @@ io.on('connection', (socket) => {
           return;
         }
 
-        // === Callee thực sự join → cuộc gọi được trả lời ===
-        // Chuyển trạng thái busy: 'pending' → 'active'
         if (busyUsers.get(userId) === 'pending') {
           busyUsers.set(userId, 'active');
           console.log(`[SOCKET] busyUsers(${userId}): pending → active`);
         }
 
         if (pending) {
-          // Cancel timeout timer và xóa pendingCalls để tránh gửi "Cuộc gọi nhỡ" sau này
           clearTimeout(pending.timerId);
           pendingCalls.delete(channelName);
-          // Lưu callType server-side để dùng trong handleLeaveChannel (disconnect-safe)
           activeCallTypes.set(channelName, pending.callType);
           console.log(
             `[SOCKET] pendingCalls cleared + activeCallTypes.set for ${channelName} ` +
             `(call answered by userId=${userId}, agoraUid=${agoraUid})`
           );
 
-          // Báo cho các member KHÔNG bắt máy: cuộc gọi đã được người khác nhận
           for (const tid of pending.targetIds ?? []) {
-            if (String(tid) === String(userId)) continue; // skip chính mình
+            if (String(tid) === String(userId)) continue;
             if (busyUsers.get(tid) === 'pending') {
               busyUsers.delete(tid);
               console.log(`[SOCKET] busyUsers.delete(${tid}) — call_answered_elsewhere (another member answered)`);
@@ -601,16 +554,12 @@ io.on('connection', (socket) => {
       });
   });
 
-  // Người rời khỏi channel (bấm kết thúc hoặc tắt app)
-  // Lấy agoraUid từ socket.data — KHÔNG tin client gửi
   socket.on('leave_channel', async ({ channelName, callType }, ackFn) => {
     console.log('[SOCKET] leave_channel:', { channelName, callType });
     await handleLeaveChannel(socket, channelName, callType);
     if (typeof ackFn === 'function') ackFn({ ok: true });
   });
 
-  // User B đang bận → thông báo lại cho A + gửi tin nhắn "Cuộc gọi nhỡ" cho caller
-  // ─── Auth guard: chỉ callee/target mới được emit call_busy / call_rejected ───
   function getAuthGuard(channelName, calleeId, eventName) {
     const pending = pendingCalls.get(channelName);
     if (!pending) {
@@ -621,13 +570,11 @@ io.on('connection', (socket) => {
     const myId = socket.data.userId;
 
     if (isGroup) {
-      // Group call: người emit phải nằm trong danh sách target đang được mời
       if (!pending.targetIds.includes(myId)) {
         console.warn(`[SOCKET] ${eventName}/auth: user ${myId} not in targetIds for channel ${channelName}`);
         return false;
       }
     } else {
-      // 1-1 call: người emit phải trùng với calleeId trong payload
       if (!calleeId || String(myId) !== String(calleeId)) {
         console.warn(`[SOCKET] ${eventName}/auth: callee mismatch — myId=${myId}, calleeId=${calleeId}`);
         return false;
@@ -641,17 +588,14 @@ io.on('connection', (socket) => {
     console.log('[SOCKET] call_busy:', { callerId: callerIdPayload, channelName, calleeId });
     const pending = pendingCalls.get(channelName);
 
-    // Dùng callerId từ payload nếu có; fallback về callerId đã lưu lúc start_call
     const callerId = callerIdPayload || pending?.callerId;
 
-    // Xóa busyUsers cho tất cả target đang pending trong group call
     if (pending?.targetIds?.length) {
       clearBusyForChannel(channelName, 'call_busy (group)');
       for (const tid of pending.targetIds) {
         io.to(tid).emit('call_busy', { channelName });
       }
     } else if (calleeId) {
-      // 1-1 call: giữ nguyên logic cũ
       const key = calleeId.toString();
       if (busyUsers.get(key) === 'pending') {
         busyUsers.delete(key);
@@ -664,8 +608,6 @@ io.on('connection', (socket) => {
       io.to(callerId.toString()).emit('call_busy', { channelName });
     }
 
-    // Gửi tin nhắn "Cuộc gọi nhỡ" cho caller (không ai nhận)
-    // ATOMIC: lấy + xóa NGAY để prevent race với timeout callback
     const pendingToSend = pendingCalls.get(channelName);
     pendingCalls.delete(channelName);
     if (pendingToSend) {
@@ -679,23 +621,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  // User B từ chối → thông báo lại cho A + gửi tin nhắn "Cuộc gọi nhỡ" cho caller
   socket.on('call_rejected', async ({ callerId: callerIdPayload, channelName, calleeId }) => {
     if (!getAuthGuard(channelName, calleeId, 'call_rejected')) return;
     console.log('[SOCKET] call_rejected:', { callerId: callerIdPayload, channelName, calleeId });
     const pending = pendingCalls.get(channelName);
 
-    // Dùng callerId từ payload nếu có; fallback về callerId đã lưu lúc start_call
     const callerId = callerIdPayload || pending?.callerId;
 
-    // Xóa busyUsers + notify tất cả target đang pending trong group call
     if (pending?.targetIds?.length) {
       clearBusyForChannel(channelName, 'call_rejected (group)');
       for (const tid of pending.targetIds) {
         io.to(tid).emit('call_rejected', { channelName });
       }
     } else if (calleeId) {
-      // 1-1 call: giữ nguyên logic cũ
       const key = calleeId.toString();
       if (busyUsers.get(key) === 'pending') {
         busyUsers.delete(key);
@@ -708,8 +646,6 @@ io.on('connection', (socket) => {
       io.to(callerId.toString()).emit('call_rejected', { channelName });
     }
 
-    // Gửi tin nhắn "Cuộc gọi nhỡ" cho caller (không ai nhận)
-    // ATOMIC: lấy + xóa NGAY để prevent race với timeout callback
     const pendingToSend = pendingCalls.get(channelName);
     pendingCalls.delete(channelName);
     if (pendingToSend) {
@@ -723,19 +659,16 @@ io.on('connection', (socket) => {
     }
   });
 
-  // User A hủy trước khi B nhận → thông báo B + cleanup pendingCalls + busyUsers
   socket.on('call_cancelled', ({ peerId, channelName }) => {
     console.log('[SOCKET] call_cancelled:', { peerId, channelName });
     const pending = pendingCalls.get(channelName);
 
-    // Notify tất cả target đang pending trong group call
     if (pending?.targetIds?.length) {
       clearBusyForChannel(channelName, 'call_cancelled (group)');
       for (const tid of pending.targetIds) {
         io.to(tid).emit('call_cancelled', { channelName });
       }
     } else if (peerId) {
-      // 1-1 call: giữ nguyên logic cũ
       const key = peerId.toString();
       if (busyUsers.get(key) === 'pending') {
         busyUsers.delete(key);
@@ -743,40 +676,32 @@ io.on('connection', (socket) => {
       io.to(key).emit('call_cancelled', { channelName });
     }
 
-    // Gửi tin nhắn hệ thống "Cuộc gọi nhỡ" vì không ai nhấc máy.
-    // pending còn tồn tại → chưa ai join thật sự → duration = 0.
     if (pending) {
       const convId = pending.conversationId;
       const callType = pending.callType;
       const callerId = pending.callerId;
       clearTimeout(pending.timerId);
       pendingCalls.delete(channelName);
-      // Gửi async, không block — fire-and-forget
       sendSystemCallMessage(convId, callType, 0, true, callerId)
         .then(() => console.log(`[SOCKET] Missed call (cancelled) message sent for ${channelName} (callerId=${callerId})`))
         .catch((err) => console.error('[SOCKET] sendSystemCallMessage (missed/cancelled) error:', err));
     }
   });
 
-  // Khi socket bị disconnect → cleanup channel
   socket.on('disconnect', () => {
     console.log('[SOCKET] Client disconnected:', socket.id);
     const uidOnDisconnect = socket.data?.agoraUid;
     const currentChannel = socket.data?.currentChannel;
     const userIdOnDisconnect = socket.data?.userId;
 
-    // 1. Xóa busyUsers nếu user disconnect trong trạng thái pending/active
     if (userIdOnDisconnect) {
       busyUsers.delete(userIdOnDisconnect.toString());
     }
 
-    // 2. Xử lý channel hiện tại (nếu có)
     if (currentChannel && uidOnDisconnect) {
-      // callType không có trong disconnect → truyền null
       handleLeaveChannel(socket, currentChannel, null);
     }
 
-    // 2. Cleanup dangling participant entries (phòng trường hợp join không qua join_channel_request)
     if (uidOnDisconnect) {
       for (const [cn, participants] of channelParticipants.entries()) {
         if (participants.has(uidOnDisconnect) && cn !== currentChannel) {
@@ -796,6 +721,10 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesp
 app.use(cors());
 // Cho phép upload ảnh đại diện dạng base64 trong JSON (mặc định express chỉ ~100KB)
 app.use(express.json({ limit: '10mb' }));
+
+// ĐÃ SỬA: Đăng ký Router Ratings ĐÚNG VỊ TRÍ (sau app.use(express.json()))
+app.use('/api/ratings', ratingRoutes);
+
 app.use('/api/agora', agoraRouter);
 app.use("/api/otp", otpRoutes);
 app.use("/api/matches", matchRoutes);
@@ -835,7 +764,6 @@ app.get('/health', (_, response) => {
 // Mount authentication routes
 app.use('/auth', authRouter);
 
-
 mongoose
   .connect(MONGODB_URI)
   .then(async () => {
@@ -843,7 +771,6 @@ mongoose
     await seedTags();
     console.log('Tag catalog ready');
 
-    // Clean up Mojibake lastMessage records in database
     try {
       const Conversation = require('./models/Conversation');
       const result = await Conversation.updateMany(
@@ -866,4 +793,3 @@ mongoose
     console.error('Failed to connect to MongoDB', error);
     process.exit(1);
   });
-

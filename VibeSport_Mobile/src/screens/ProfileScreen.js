@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { RatingsListModal } from '../components/RatingsListModal';
 import { fetchUnreadCount } from '../redux/notificationSlice';
 import { getUserProfileRequest } from '../services/userApi';
 import { background, icon, primary, spacing } from '../theme';
@@ -50,7 +51,7 @@ function canNavigateToRoute(navigation, routeName) {
   return false;
 }
 
-export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCreateMatch, user }) {
+export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
   const unreadCount = useSelector((state) => state.notifications.unreadCount);
@@ -61,6 +62,9 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
   const [isOptionsSheetVisible, setIsOptionsSheetVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // State điều khiển Modal xem danh sách Đánh giá
+  const [showRatingsModal, setShowRatingsModal] = useState(false);
 
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
@@ -338,7 +342,13 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={primary.DEFAULT} />}
         >
           <ProfileHeaderCard profile={displayProfile} onPickAvatar={handlePickAvatar} />
-          <StatsCard profile={displayProfile} onOpenFollowList={openFollowList} />
+          
+          {/* TRUYỀN HÀM MỞ MÀN ĐÁNH GIÁ VÀO ĐÚNG STATS CARD */}
+          <StatsCard 
+            profile={displayProfile} 
+            onOpenFollowList={openFollowList}
+            onOpenRatings={() => setShowRatingsModal(true)}
+          />
           <InfoCard profile={displayProfile} />
 
           {managementCards.map((card) => (
@@ -362,6 +372,14 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
           ))}
         </ScrollView>
       )}
+
+      {/* Modal hiển thị danh sách đánh giá */}
+      <RatingsListModal
+        visible={showRatingsModal}
+        onClose={() => setShowRatingsModal(false)}
+        userId={userId}
+        token={token}
+      />
 
       <ProfileOptionsSheet
         visible={isOptionsSheetVisible}
