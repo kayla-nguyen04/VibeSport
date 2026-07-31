@@ -527,11 +527,11 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
             style={styles.actionBtn}
           >
             {item.isLiked ? (
-              <VibeReactionIcon size={20} />
+              <Ionicons name="heart" size={20} color="#EF4444" />
             ) : (
               <Ionicons name="heart-outline" size={20} color="#7C8190" />
             )}
-            <Text style={[styles.actionText, item.isLiked && { color: VIBE_REACTION.color }]}>
+            <Text style={[styles.actionText, item.isLiked && { color: '#EF4444' }]}>
               {formatCount(item.likesCount)}
             </Text>
           </TouchableOpacity>
@@ -593,6 +593,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                 source={require('../../assets/logovibe_tachnen.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
+                fadeDuration={0}
               />
               <Text style={styles.logoText}>
                 Vibe<Text style={styles.logoHighlight}>Sport</Text>
@@ -1245,7 +1246,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 60,
   },
   bottomSheetHandle: {
     width: 40,

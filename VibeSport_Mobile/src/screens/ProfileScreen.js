@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -119,6 +119,25 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('posts');
+  const scrollViewRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(240);
+  const scrollOffsetRef = useRef(0);
+
+  const handleSelectTab = (tabKey) => {
+    if (tabKey === activeTab) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      if (tabKey === 'posts') {
+        handleRefresh();
+      }
+    } else {
+      setActiveTab(tabKey);
+      if (scrollOffsetRef.current >= headerHeight) {
+        requestAnimationFrame(() => {
+          scrollViewRef.current?.scrollTo({ y: headerHeight, animated: false });
+        });
+      }
+    }
+  };
 
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
@@ -520,7 +539,7 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
 
   const handleOpenSettings = () => {
     closeOptionsSheet();
-    Alert.alert('Cài đặt', 'Màn Cài đặt chưa được cấu hình.');
+    navigation.navigate('Settings');
   };
 
   const handleRequestLogout = () => {
@@ -573,9 +592,18 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
     <Screen edges={['top', 'left', 'right']} style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor={background.primary} />
       <ScreenHeader style={styles.headerBar}>
-        <View style={styles.headerSide} />
-        <Text style={styles.headerTitle}>Hồ Sơ</Text>
-        <View style={[styles.headerSide, styles.headerRightSide]}>
+        <View style={styles.headerBrand}>
+          <Image
+            source={require('../../assets/logovibe_tachnen.png')}
+            style={styles.headerLogo}
+            resizeMode="contain"
+            fadeDuration={0}
+          />
+          <Text style={styles.headerTitle}>
+            Hồ<Text style={styles.headerTitleOrange}>Sơ</Text>
+          </Text>
+        </View>
+        <View style={styles.headerRightSide}>
           <HeaderIconButton onPress={() => setIsOptionsSheetVisible(true)}>
             <Ionicons name="ellipsis-vertical" size={spacing.xl} color={icon.dark} />
           </HeaderIconButton>
@@ -589,20 +617,31 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
         </View>
       ) : (
         <ScrollView
+          ref={scrollViewRef}
           style={{ flex: 1 }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           stickyHeaderIndices={[1]}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={primary.DEFAULT} />}
         >
           {/* Child 0: Thông tin cá nhân (Avatar + Bio) */}
-          <View style={styles.profileInfoCardBox}>
+          <View
+            style={styles.profileInfoCardBox}
+            onLayout={(e) => {
+              const h = e.nativeEvent.layout.height;
+              if (h > 0) setHeaderHeight(h);
+            }}
+          >
             <ProfileHeaderCard profile={displayProfile} isSelf={true} onOpenFollowList={openFollowList} onPickAvatar={handlePickAvatar} />
           </View>
 
           {/* Child 1: Thanh Tab Bar Sticky cố định khi cuộn */}
           <View style={styles.stickyTabBarWrap}>
-            <ProfileTabBar activeTab={activeTab} onSelectTab={setActiveTab} />
+            <ProfileTabBar activeTab={activeTab} onSelectTab={handleSelectTab} />
           </View>
 
           {/* Child 2: Nội dung bài viết / bài đã lưu / lịch sử */}

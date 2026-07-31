@@ -99,14 +99,15 @@ export function AuthScreen({ route }) {
   return (
     <Screen style={styles.screen}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'height' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         style={styles.flex}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.headingGroup}>
             <Image source={LOGO} style={styles.logo} resizeMode="contain" />
@@ -150,7 +151,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 22,
+    paddingBottom: 100,
   },
   headingGroup: {
     marginTop: 8,

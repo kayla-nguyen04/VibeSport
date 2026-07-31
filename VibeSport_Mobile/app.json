@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "VibeSport_Mobile",
-    "slug": "vibesport-mobile",
+    "slug": "VibeSport-Mobile",
     "scheme": "vibesportmobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -57,7 +57,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "38291326-cb79-4581-b31a-a91b27ce4da4"
+        "projectId": "2a008692-d344-4b00-8f7d-517b43014dda"
       }
     }
   }

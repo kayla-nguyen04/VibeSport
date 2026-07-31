@@ -521,11 +521,8 @@ export function CallScreen({ route, navigation }) {
                 style={styles.videoSurface}
                 canvas={{
                   uid: remote.uid,
-                  renderMode: RenderModeType.RenderModeFit,
-                  // Bước 2: remote nổi lên trên. Bước 3: thêm keepSurfaceOnTop=true
-                  // (Agora SDK property, không phải RN prop) để ép native surface
-                  // luôn ở layer cao nhất trong window.
-                  zOrderMediaOverlay: true,
+                  renderMode: RenderModeType.RenderModeHidden,
+                  zOrderMediaOverlay: false,
                   zOrderOnTop: false,
                 }}
               />
@@ -552,9 +549,9 @@ export function CallScreen({ route, navigation }) {
                 style={styles.videoSurface}
                 canvas={{
                   uid: 0,
-                  renderMode: RenderModeType.RenderModeFit,
-                  zOrderMediaOverlay: false,
-                  zOrderOnTop: false,
+                  renderMode: RenderModeType.RenderModeHidden,
+                  zOrderMediaOverlay: true,
+                  zOrderOnTop: true,
                 }}
               />
             ) : (

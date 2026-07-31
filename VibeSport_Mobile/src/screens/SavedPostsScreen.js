@@ -159,8 +159,6 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -222,7 +220,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   coverImage: {
-    width: 86,
     height: 86,
     borderRadius: 12,
     backgroundColor: '#E5E7EB',

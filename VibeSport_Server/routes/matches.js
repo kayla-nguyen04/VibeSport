@@ -31,6 +31,37 @@ const autoAddParticipantToChatGroup = async (chatGroupId, userId) => {
   }
 };
 
+const sendMatchNotification = async ({ userId, fromUserId, type = "match", message, matchId }) => {
+  try {
+    const notif = await Notification.create({
+      userId,
+      fromUserId,
+      type,
+      message,
+      matchId,
+    });
+
+    if (global.io) {
+      const populated = await Notification.findById(notif._id)
+        .populate("fromUserId", "name picture avatar")
+        .populate("matchId", "title sport date startTime");
+      const targetRoom = String(userId);
+      global.io.to(targetRoom).emit("new_notification", populated);
+
+      const unreadCount = await Notification.countDocuments({
+        userId,
+        read: false,
+        type: { $ne: "message" },
+      });
+      global.io.to(targetRoom).emit("unread_count", { unreadCount });
+      console.log(`[SOCKET] Realtime match notification sent to user ${targetRoom}, unread: ${unreadCount}`);
+    }
+    return notif;
+  } catch (err) {
+    console.error("sendMatchNotification error:", err);
+  }
+};
+
 const getPositionLabel = (posId) => {
   if (!posId) return "";
   if (posId.includes("bench")) return "Dự bị";
@@ -566,7 +597,7 @@ router.post("/:id/request-join", async (req, res) => {
     const requesterName = requester?.name || "Một người dùng";
 
     if (match.createdBy) {
-      await Notification.create({
+      await sendMatchNotification({
         userId: match.createdBy,
         type: "match",
         fromUserId: userId,
@@ -691,7 +722,7 @@ router.post("/:id/accept-join", async (req, res) => {
     await match.save();
 
     const owner = await User.findById(ownerId).select("name");
-    await Notification.create({
+    await sendMatchNotification({
       userId,
       type: "match",
       fromUserId: ownerId,

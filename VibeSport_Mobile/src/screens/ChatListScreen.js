@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -272,6 +272,7 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
+  const flatListRef = useRef(null);
   const [searchText, setSearchText] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('inbox');
@@ -567,6 +568,10 @@ export default function ChatListScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData();
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      }, 50);
+      return () => clearTimeout(timer);
     }, [loadData])
   );
 
@@ -1021,7 +1026,7 @@ export default function ChatListScreen({ navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <Screen style={styles.screen}>
-      <ScreenHeader style={styles.logoHeaderCard}>
+      <ScreenHeader style={styles.header}>
         {isSearching ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <TouchableOpacity
@@ -1108,9 +1113,12 @@ export default function ChatListScreen({ navigation }) {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={activeData}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
           refreshControl={
             <RefreshControl
               refreshing={loadingConversations}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -125,6 +125,25 @@ export function UserProfileScreen({ route, navigation }) {
   const [historyMatches, setHistoryMatches] = useState(cachedHistory);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('posts');
+  const scrollViewRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(240);
+  const scrollOffsetRef = useRef(0);
+
+  const handleSelectTab = (tabKey) => {
+    if (tabKey === activeTab) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      if (tabKey === 'posts') {
+        handleRefresh();
+      }
+    } else {
+      setActiveTab(tabKey);
+      if (scrollOffsetRef.current >= headerHeight) {
+        requestAnimationFrame(() => {
+          scrollViewRef.current?.scrollTo({ y: headerHeight, animated: false });
+        });
+      }
+    }
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
@@ -397,10 +416,15 @@ export function UserProfileScreen({ route, navigation }) {
       </ScreenHeader>
 
       <ScrollView
+        ref={scrollViewRef}
         style={{ flex: 1 }}
         contentContainerStyle={profileStyles.listContent}
         showsVerticalScrollIndicator={false}
         stickyHeaderIndices={[1]}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -409,7 +433,13 @@ export function UserProfileScreen({ route, navigation }) {
           />
         }
       >
-        <View style={profileStyles.profileInfoCardBox}>
+        <View
+          style={profileStyles.profileInfoCardBox}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setHeaderHeight(h);
+          }}
+        >
           <ProfileHeaderCard
             profile={profile}
             isSelf={false}
@@ -456,7 +486,7 @@ export function UserProfileScreen({ route, navigation }) {
         <View style={profileStyles.stickyTabBarWrap}>
           <ProfileTabBar
             activeTab={activeTab}
-            onSelectTab={setActiveTab}
+            onSelectTab={handleSelectTab}
             includeSaved={false}
           />
         </View>

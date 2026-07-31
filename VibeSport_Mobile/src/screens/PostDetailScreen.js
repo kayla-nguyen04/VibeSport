@@ -46,6 +46,8 @@ import {
 } from '../components/PostReactions';
 import { ReportModal } from '../components/ReportModal';
 import { PostImages } from '../components/PostImages';
+import { useFocusEffect } from '@react-navigation/native';
+import { socketEmitter } from '../hooks/useSocket';
 import { background, status } from '../theme';
 
 function fixMediaUrl(url) {
@@ -68,6 +70,13 @@ const getAvatarColor = (name) => {
   const charCodeSum = name.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return AVATAR_COLORS[charCodeSum % AVATAR_COLORS.length];
 };
+
+function formatCount(count) {
+  const value = Number(count) || 0;
+  if (value < 1000) return String(value);
+  const thousands = (value / 1000).toFixed(1);
+  return `${thousands.endsWith('.0') ? Math.floor(value / 1000) : thousands} K`;
+}
 
 const renderCommentTextWithTags = (text) => {
   if (!text) return null;
@@ -121,136 +130,6 @@ export default function PostDetailScreen({ route, navigation }) {
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const toggleShowReplies = (commentId) => {
-    setShowReplies((prev) => ({
-      ...prev,
-      [commentId]: !prev[commentId],
-    }));
-  };
-
-  const toggleExpandComment = (commentId) => {
-    setExpandedComments((prev) => ({
-      ...prev,
-      [commentId]: !prev[commentId],
-    }));
-  };
-
-  const handleLikeComment = async (commentId) => {
-    const updateLike = (list) =>
-      list.map((c) => {
-        if (c._id === commentId) {
-          return {
-            ...c,
-            isLiked: !c.isLiked,
-            likesCount: (c.likesCount || 0) + (c.isLiked ? -1 : 1),
-          };
-        }
-        if (c.replies && c.replies.length > 0) {
-          return { ...c, replies: updateLike(c.replies) };
-        }
-        return c;
-      });
-
-    setComments((prev) => updateLike(prev));
-
-    try {
-      await likeCommentRequest(post._id, commentId, token);
-    } catch (err) {
-      console.error('Like comment error:', err);
-      // Rollback on error
-      setComments((prev) => updateLike(prev));
-    }
-  };
-
-  const handleReply = (comment) => {
-    const name = comment.userId?.name || 'Thành viên';
-    setReplyingTo({
-      _id: comment.parentId || comment._id,
-      name: name,
-    });
-    setCommentText(''); // Keep input blank like Facebook
-    setTimeout(() => commentInputRef.current?.focus(), 100);
-  };
-
-  const cancelReply = () => {
-    setReplyingTo(null);
-  };
-
-  const loadPostDetails = useCallback(async () => {
-    try {
-      if (!initialPost) setLoading(true);
-      const res = await getPostByIdRequest(postId, token);
-      if (res?.success && res?.data) {
-        setPost(res.data);
-        setComments(res.data.comments || []);
-      } else if (!initialPost) {
-        Alert.alert('Lỗi', 'Không lấy được thông tin chi tiết bài viết');
-      }
-    } catch (err) {
-      if (!initialPost) {
-      Alert.alert('Lỗi', err.message || 'Có lỗi xảy ra khi tải bài viết');
-        navigation.goBack();
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [initialPost, postId, token, navigation]);
-
-  useEffect(() => {
-    loadPostDetails();
-  }, [loadPostDetails]);
-
-  const applyPostReaction = (payload) => {
-    setPost((prev) => prev ? ({
-      ...prev,
-      isLiked: payload.isLiked,
-      reactionType: payload.reactionType,
-      likesCount: payload.likesCount,
-      topReactions: payload.topReactions,
-    }) : prev);
-  };
-
-  const handleReactToPost = async (reactionType) => {
-    if (!post) return;
-
-    const previousPost = post;
-    setPost((prev) => prev ? ({
-      ...prev,
-      isLiked: true,
-      reactionType,
-      likesCount: (prev.likesCount || 0) + (prev.isLiked ? 0 : 1),
-      topReactions: [reactionType, ...(prev.topReactions || []).filter((item) => item !== reactionType)].slice(0, 2),
-    }) : prev);
-
-    try {
-      const response = await dispatch(likePostInFeed({ postId: post._id, reactionType })).unwrap();
-      applyPostReaction(response);
-    } catch (err) {
-      setPost(previousPost);
-      Alert.alert('Lỗi', err?.error || 'Không thể gửi cảm xúc. Thử lại sau.');
-    }
-  };
-
-  const handleUnlikePost = async () => {
-    if (!post) return;
-
-    const previousPost = post;
-    setPost((prev) => prev ? ({
-      ...prev,
-      isLiked: false,
-      reactionType: null,
-      likesCount: Math.max(0, (prev.likesCount || 0) - (prev.isLiked ? 1 : 0)),
-    }) : prev);
-
-    try {
-      const response = await dispatch(unlikePostInFeed(post._id)).unwrap();
-      applyPostReaction(response);
-    } catch (err) {
-      setPost(previousPost);
-      Alert.alert('Lỗi', err?.error || 'Không thể bỏ cảm xúc. Thử lại sau.');
-    }
-  };
-
-  const handleLikePost = () => {
     if (!post) return;
     if (post.isLiked) {
       handleUnlikePost();
@@ -755,6 +634,7 @@ export default function PostDetailScreen({ route, navigation }) {
         keyboardVerticalOffset={0}
       >
         <FlatList
+          style={styles.commentsList}
           data={comments}
           keyExtractor={(item) => item._id}
           renderItem={renderCommentItem}
@@ -805,24 +685,19 @@ export default function PostDetailScreen({ route, navigation }) {
                     <PostImages images={post.mediaUrls.map(fixMediaUrl)} />
                   )}
 
-                  {(post.likesCount > 0 || post.commentsCount > 0) ? (
+                  {post.likesCount > 0 ? (
                     <View style={styles.engagementRow}>
                       <ReactionsPreview
                         likesCount={post.likesCount || 0}
                         topReactions={post.topReactions || []}
                         onPress={handleOpenLikes}
                       />
-                      {post.commentsCount > 0 ? (
-                        <Text style={styles.commentSummaryText}>{post.commentsCount} bình luận</Text>
-                      ) : null}
                     </View>
                   ) : null}
                 </>
               )}
 
               <View style={styles.divider} />
-
-              {/* Actions — hidden when post is removed */}
               {!isRemoved && (
                 <View style={styles.actionsBar}>
                   <TouchableOpacity
@@ -830,37 +705,33 @@ export default function PostDetailScreen({ route, navigation }) {
                     style={styles.actionBtn}
                   >
                     {post.isLiked ? (
-                      <VibeReactionIcon size={20} />
+                      <Ionicons name="heart" size={20} color="#EF4444" />
                     ) : (
                       <Ionicons name="heart-outline" size={20} color="#7C8190" />
                     )}
                     <Text
                       style={[
                         styles.actionText,
-                        post.isLiked && { color: VIBE_REACTION.color },
+                        post.isLiked && { color: '#EF4444' },
                       ]}
                     >
-                      {post.isLiked ? VIBE_REACTION.label : 'Vibe'}
+                      {formatCount(post.likesCount)}
                     </Text>
                   </TouchableOpacity>
 
                   <View style={styles.actionBtn}>
                     <Ionicons name="chatbubble-outline" size={20} color="#7C8190" />
-                    <Text style={styles.actionText}>{post.commentsCount || 0} Bình luận</Text>
+                    <Text style={styles.actionText}>
+                      {post.commentsCount > 0 ? `${formatCount(post.commentsCount)} Bình luận` : 'Bình luận'}
+                    </Text>
                   </View>
 
                   <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
-                    <Ionicons name="share-outline" size={20} color="#7C8190" />
+                    <Ionicons name="share-social-outline" size={20} color="#7C8190" />
                     <Text style={styles.actionText}>Chia sẻ</Text>
                   </TouchableOpacity>
                 </View>
               )}
-
-              <View style={styles.commentsHeaderBar}>
-                <Text style={styles.commentsHeaderText}>
-                  {comments.length} BÌNH LUẬN
-                </Text>
-              </View>
             </View>
           }
           ListEmptyComponent={
@@ -1034,6 +905,9 @@ const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
   },
+  commentsList: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1055,8 +929,6 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1339,7 +1211,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 60,
   },
   bottomSheetHandle: {
     width: 40,

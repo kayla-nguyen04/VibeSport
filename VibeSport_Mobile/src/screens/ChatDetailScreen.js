@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +16,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
@@ -67,11 +69,25 @@ function fixMediaUrl(url) {
   return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
 }
 
-const formatMessageTime = (dateString) => {
+function formatMessageTime(dateString) {
   if (!dateString) return '';
   const date = new Date(dateString);
   return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-};
+}
+
+function formatTime(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  } else if (diffDays < 7) {
+    const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    return `${days[date.getDay()]} ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+}
 
 export default function ChatDetailScreen({ route, navigation }) {
   const { conversationId, peer } = route.params;
@@ -88,6 +104,7 @@ export default function ChatDetailScreen({ route, navigation }) {
   const [viewingImages, setViewingImages] = useState([]);
   const [viewingImageIndex, setViewingImageIndex] = useState(0);
 
+  const insets = useSafeAreaInsets();
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
 
@@ -285,6 +302,53 @@ export default function ChatDetailScreen({ route, navigation }) {
   const canCall = isGroup || (!followStatus.loading && mutualFollow);
 
   const [presenceTick, setPresenceTick] = useState(0);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+
+  const messageSearchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.trim().toLowerCase();
+    const results = [];
+
+    allMessages.forEach((msg) => {
+      if (!msg.isRecalled && msg.type !== 'image' && msg.content) {
+        const text = String(msg.content);
+        if (text.toLowerCase().includes(q)) {
+          results.push(msg);
+        }
+      }
+    });
+
+    return results;
+  }, [searchQuery, allMessages]);
+
+  const handleSelectSearchResult = (msg) => {
+    setShowSearchModal(false);
+    const msgId = String(msg._id);
+    setHighlightedMessageId(msgId);
+
+    const index = groupedMessages.findIndex((item) => {
+      if (item.isGroupedImages) {
+        return item.images.some((img) => String(img._id) === msgId);
+      }
+      return String(item._id) === msgId;
+    });
+
+    if (index !== -1 && flatListRef.current) {
+      setTimeout(() => {
+        try {
+          flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+        } catch (e) {
+          // ignore
+        }
+      }, 350);
+    }
+
+    setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 4500);
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setPresenceTick((t) => t + 1), 60000);
@@ -331,9 +395,18 @@ export default function ChatDetailScreen({ route, navigation }) {
 
   useEffect(() => {
     if (allMessages.length > 0) {
-      flatListRef.current?.scrollToEnd({ animated: false });
+      const timer1 = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 50);
+      const timer2 = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 300);
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
     }
-  }, [allMessages.length]);
+  }, [conversationId, allMessages.length]);
 
   const handleSend = async () => {
     const trimmed = input.trim();
@@ -511,13 +584,51 @@ export default function ChatDetailScreen({ route, navigation }) {
 
 
 
-  const renderMessageContent = (content, isMine) => {
+  const highlightSearchText = (text, query, isHighlightedMsg) => {
+    if (!text || typeof text !== 'string') return text;
+    const activeQuery = (query || '').trim();
+
+    if (!activeQuery) {
+      return text;
+    }
+
+    const qLower = activeQuery.toLowerCase();
+    if (!text.toLowerCase().includes(qLower)) {
+      return text;
+    }
+
+    const parts = text.split(new RegExp(`(${activeQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+
+    return (
+      <Text>
+        {parts.map((part, i) =>
+          part.toLowerCase() === qLower ? (
+            <Text
+              key={i}
+              style={{
+                backgroundColor: isHighlightedMsg ? '#FACC15' : '#FEF08A',
+                color: '#0F172A',
+                fontWeight: 'bold',
+                borderRadius: 2,
+              }}
+            >
+              {part}
+            </Text>
+          ) : (
+            part
+          )
+        )}
+      </Text>
+    );
+  };
+
+  const renderMessageContent = (content, isMine, isHighlightedMsg = false) => {
     if (!content) return '';
     const regex = /vibesport:\/\/chat\/invite\/([a-fA-F0-9]+)/gi;
     
     // Quick check to avoid regex if not containing invite scheme
     if (!content.toLowerCase().includes('vibesport://chat/invite/')) {
-      return content;
+      return highlightSearchText(content, searchQuery, isHighlightedMsg);
     }
 
     const parts = [];
@@ -851,6 +962,8 @@ export default function ChatDetailScreen({ route, navigation }) {
       return item.senderId?.name || 'Thành viên';
     };
 
+    const isHighlightedMsg = String(item._id) === String(highlightedMessageId);
+
     return (
       <TouchableOpacity
         activeOpacity={isRecalled ? 1 : 0.8}
@@ -866,13 +979,29 @@ export default function ChatDetailScreen({ route, navigation }) {
             {!isMine && isGroup && (
               <Text style={styles.senderName}>{getSenderName()}</Text>
             )}
-            <View style={[styles.messageBubble, bubbleStyle]}>
+            <View
+              style={[
+                styles.messageBubble,
+                bubbleStyle,
+                isHighlightedMsg && {
+                  borderWidth: 2,
+                  borderColor: '#F59E0B',
+                  backgroundColor: isMine ? '#0284C7' : '#FEF3C7',
+                  shadowColor: '#F59E0B',
+                  shadowRadius: 8,
+                  shadowOpacity: 0.5,
+                  elevation: 6,
+                },
+              ]}
+            >
               {isRecalled ? (
                 <Text style={[textStyle, isMine ? styles.recalledTextMine : styles.recalledText]}>
                   Tin nhắn đã bị thu hồi
                 </Text>
               ) : (
-                <Text style={textStyle}>{renderMessageContent(item.content, isMine)}</Text>
+                <Text style={textStyle}>
+                  {renderMessageContent(item.content, isMine, isHighlightedMsg)}
+                </Text>
               )}
               <Text style={timeStyle}>{formatMessageTime(item.createdAt)}</Text>
             </View>
@@ -1366,9 +1495,10 @@ export default function ChatDetailScreen({ route, navigation }) {
             renderItem={renderMessage}
             contentContainerStyle={[
               styles.messagesContent,
-              { paddingBottom: 100, paddingTop: 5 },
+              { paddingBottom: 12, paddingTop: 5 },
             ]}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
           />
         )}
 
@@ -1421,7 +1551,7 @@ export default function ChatDetailScreen({ route, navigation }) {
                   style={[styles.menuItem, styles.menuItemBorder]}
                   onPress={() => {
                     setShowMenu(false);
-                    Alert.alert('Tìm kiếm tin nhắn', 'Tính năng tìm kiếm tin nhắn trong cuộc trò chuyện đang được phát triển.');
+                    setShowSearchModal(true);
                   }}
                 >
                   <Ionicons name="search-outline" size={22} color="#374151" />
@@ -1656,8 +1786,113 @@ export default function ChatDetailScreen({ route, navigation }) {
           />
         </View>
       </Modal>
+
+      {renderSearchModal()}
     </Screen>
   );
+
+  function renderSearchModal() {
+    return (
+      <Modal
+        visible={showSearchModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {
+          setShowSearchModal(false);
+          setSearchQuery('');
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+          <StatusBar barStyle="dark-content" />
+          <View style={[styles.searchModalHeader, { paddingTop: Math.max(insets.top, 20) + 4 }]}>
+            <TouchableOpacity
+              onPress={() => {
+                setShowSearchModal(false);
+                setSearchQuery('');
+              }}
+              style={styles.searchModalBackBtn}
+            >
+              <Ionicons name="arrow-back" size={24} color="#1E293B" />
+            </TouchableOpacity>
+
+            <View style={styles.searchModalInputWrap}>
+              <Ionicons name="search" size={20} color="#64748B" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.searchModalInput}
+                placeholder="Tìm kiếm tin nhắn..."
+                placeholderTextColor="#94A3B8"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus
+                returnKeyType="search"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {searchQuery.trim().length === 0 ? (
+            <View style={styles.searchEmptyWrap}>
+              <Ionicons name="search-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.searchEmptyText}>Nhập từ khóa để tìm kiếm tin nhắn</Text>
+            </View>
+          ) : messageSearchResults.length === 0 ? (
+            <View style={styles.searchEmptyWrap}>
+              <Ionicons name="chatbox-ellipses-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.searchEmptyText}>Không tìm thấy tin nhắn nào trùng khớp</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={messageSearchResults}
+              keyExtractor={(item) => String(item._id)}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingVertical: 8 }}
+              renderItem={({ item }) => {
+                const sId = item.senderId?._id || item.senderId;
+                const isMine = String(sId) === String(currentUserId);
+                const senderName = item.senderId?.name || (isMine ? 'Bạn' : peerName);
+                const avatarUri = item.senderId?.picture ? fixMediaUrl(item.senderId.picture) : null;
+                const avatarColor = getAvatarColor(senderName);
+
+                return (
+                  <TouchableOpacity
+                    style={styles.searchResultItem}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectSearchResult(item)}
+                  >
+                    <View style={[styles.searchResultAvatar, { backgroundColor: avatarColor }]}>
+                      {avatarUri ? (
+                        <Image source={{ uri: avatarUri }} style={styles.searchResultAvatarImg} />
+                      ) : (
+                        <Text style={styles.searchResultAvatarText}>{getInitials(senderName)}</Text>
+                      )}
+                    </View>
+
+                    <View style={styles.searchResultInfo}>
+                      <View style={styles.searchResultRow}>
+                        <Text style={styles.searchResultSender} numberOfLines={1}>
+                          {senderName}
+                        </Text>
+                        <Text style={styles.searchResultTime}>
+                          {formatTime(item.createdAt)}
+                        </Text>
+                      </View>
+                      <Text style={styles.searchResultContent} numberOfLines={2}>
+                        {highlightSearchText(item.content, searchQuery, false)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+        </View>
+      </Modal>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
@@ -1964,15 +2199,15 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 40,
     maxHeight: 100,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 22,
+    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 12 : 10,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 10,
-    textAlignVertical: 'top',
+    paddingTop: Platform.OS === 'ios' ? 9 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 9 : 8,
+    textAlignVertical: 'center',
     fontSize: 15,
     color: '#1F2937',
     backgroundColor: '#F3F4F6',
@@ -2364,5 +2599,96 @@ const styles = StyleSheet.create({
   recalledTextMine: {
     fontStyle: 'italic',
     color: '#E2E8F0',
+  },
+  searchModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+  },
+  searchModalBackBtn: {
+    marginRight: 12,
+    padding: 4,
+  },
+  searchModalInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  searchModalInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#0F172A',
+    padding: 0,
+  },
+  searchEmptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  searchEmptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  searchResultAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  searchResultAvatarImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  searchResultAvatarText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  searchResultSender: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  searchResultTime: {
+    fontSize: 12,
+    color: '#94A3B8',
+  },
+  searchResultContent: {
+    fontSize: 14,
+    color: '#475569',
   },
 });

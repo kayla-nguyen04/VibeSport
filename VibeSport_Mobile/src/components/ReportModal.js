@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
-    paddingBottom: Platform.OS === 'ios' ? 10 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 60,
   },
   bottomSheetHandle: {
     width: 36,

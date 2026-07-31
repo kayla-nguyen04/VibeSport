@@ -335,8 +335,6 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -349,11 +347,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
   },
-  headerSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#64748B',
-  },
   headerSpacer: {
     width: 36,
   },
@@ -361,6 +354,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
+    paddingTop: 10,
     paddingBottom: 12,
     gap: 8,
   },
@@ -376,6 +370,69 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  tabLabelActive: {
+    color: '#0b74ff',
+  },
+  listContent: {
+    paddingBottom: 24,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E5E7EB',
+  },
+  avatarFallback: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  userName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  mutualLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0b74ff',
+  },
+  followBtn: {
+    minWidth: 96,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#0b74ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followBtnActive: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  followBtnBack: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
+  },
+  followBtnText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
   },

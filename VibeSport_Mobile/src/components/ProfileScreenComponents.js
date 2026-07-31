@@ -394,14 +394,14 @@ export const ProfilePostCard = memo(function ProfilePostCard({
           style={styles.postActionButton}
         >
           {isLiked ? (
-            <VibeReactionIcon size={spacing.lg} />
+            <Ionicons name="heart" size={spacing.lg} color="#EF4444" />
           ) : (
             <Ionicons name="heart-outline" size={spacing.lg} color={surface.muted} />
           )}
           <Text
             style={[
               styles.postActionText,
-              isLiked && { color: VIBE_REACTION.color },
+              isLiked && { color: '#EF4444' },
             ]}
           >
             {formatCount(post.likesCount)}

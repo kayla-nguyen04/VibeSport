@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../components/constants/api';
 import { addNotification, setUnreadCount } from '../redux/notificationSlice';
+import { requestNotificationPermission, showLocalNotification } from '../utils/localNotifications';
 import {
   fetchChatUnreadCount,
   receiveMessage,
@@ -86,6 +87,8 @@ export function useSocket() {
     const userId = user.id || user._id;
     if (!userId) return;
 
+    requestNotificationPermission();
+
     if (!socketInstance) {
       console.log('[SOCKET] Connecting to:', API_BASE_URL);
       socketInstance = io(API_BASE_URL, {
@@ -99,6 +102,7 @@ export function useSocket() {
         console.log('[SOCKET] Connected with socket ID:', socketInstance.id);
         socketInstance.emit('join');
         dispatch(fetchChatUnreadCount());
+        requestNotificationPermission();
       });
 
       socketInstance.on('connect_error', (err) => {
@@ -109,6 +113,14 @@ export function useSocket() {
         if (notification?.type === 'message') return;
         console.log('[SOCKET] Received new notification:', notification);
         dispatch(addNotification(notification));
+
+        const authorName = notification.fromUserId?.name || 'VibeSport';
+        const body = notification.message || 'Bạn có thông báo mới!';
+        showLocalNotification({
+          title: authorName,
+          body,
+          data: { notification },
+        });
       });
 
       socketInstance.on('unread_count', ({ unreadCount }) => {
@@ -118,6 +130,17 @@ export function useSocket() {
 
       socketInstance.on('new_message', (payload) => {
         dispatch(receiveMessage({ ...payload, currentUserId: userId }));
+        const sender = payload?.message?.senderId;
+        const senderId = typeof sender === 'object' ? sender?._id : sender;
+        if (senderId && senderId !== userId) {
+          const senderName = typeof sender === 'object' ? sender?.name : 'Tin nhắn mới';
+          const text = payload?.message?.content || payload?.message?.text || 'Bạn có tin nhắn mới';
+          showLocalNotification({
+            title: senderName,
+            body: text,
+            data: { message: payload?.message },
+          });
+        }
       });
 
       socketInstance.on('new_pending_message', (payload) => {
@@ -134,6 +157,10 @@ export function useSocket() {
 
       socketInstance.on('conversation_blocked', (payload) => {
         dispatch(conversationBlocked(payload));
+      });
+
+      socketInstance.on('post_comment_updated', (payload) => {
+        socketEmitter.emit('post_comment_updated', payload);
       });
 
       socketInstance.on('conversation_unblocked', (payload) => {
