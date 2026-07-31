@@ -19,10 +19,15 @@ import { generateAgoraTokenRequest } from '../services/agoraApi';
 import { objectIdToUid } from '../utils/objectIdToUid';
 import { socketEmitter } from '../hooks/useSocket';
 import { setActiveCallChannel, clearActiveCallChannel, clearCallError } from '../redux/chatSlice';
-import {
-  RtcSurfaceView,
-  RenderModeType,
-} from 'react-native-agora';
+let RtcSurfaceView = View;
+let RenderModeType = {};
+try {
+  const agora = require('react-native-agora');
+  if (agora.RtcSurfaceView) RtcSurfaceView = agora.RtcSurfaceView;
+  if (agora.RenderModeType) RenderModeType = agora.RenderModeType;
+} catch (e) {
+  // Expo Go environment fallback
+}
 import { getAvatarColor } from '../theme/avatarPalette';
 import {
   primary,
@@ -516,11 +521,8 @@ export function CallScreen({ route, navigation }) {
                 style={styles.videoSurface}
                 canvas={{
                   uid: remote.uid,
-                  renderMode: RenderModeType.RenderModeFit,
-                  // Bước 2: remote nổi lên trên. Bước 3: thêm keepSurfaceOnTop=true
-                  // (Agora SDK property, không phải RN prop) để ép native surface
-                  // luôn ở layer cao nhất trong window.
-                  zOrderMediaOverlay: true,
+                  renderMode: RenderModeType.RenderModeHidden,
+                  zOrderMediaOverlay: false,
                   zOrderOnTop: false,
                 }}
               />
@@ -547,9 +549,9 @@ export function CallScreen({ route, navigation }) {
                 style={styles.videoSurface}
                 canvas={{
                   uid: 0,
-                  renderMode: RenderModeType.RenderModeFit,
-                  zOrderMediaOverlay: false,
-                  zOrderOnTop: false,
+                  renderMode: RenderModeType.RenderModeHidden,
+                  zOrderMediaOverlay: true,
+                  zOrderOnTop: true,
                 }}
               />
             ) : (

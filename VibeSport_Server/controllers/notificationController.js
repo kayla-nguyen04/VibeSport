@@ -1,5 +1,10 @@
 const Notification = require('../models/Notification');
 
+function normalizeNotificationMessage(message) {
+  if (typeof message !== 'string') return message;
+  return message.replace(/đã Vibe bài viết của bạn/gi, 'đã thích bài viết của bạn');
+}
+
 // 1. Get notifications (paginated)
 exports.getNotifications = async (req, res) => {
   try {
@@ -19,9 +24,15 @@ exports.getNotifications = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
+    const normalizedNotifications = notifications.map((notification) => {
+      const data = notification.toObject();
+      data.message = normalizeNotificationMessage(data.message);
+      return data;
+    });
+
     res.status(200).json({
       success: true,
-      data: notifications,
+      data: normalizedNotifications,
       page,
       limit,
     });

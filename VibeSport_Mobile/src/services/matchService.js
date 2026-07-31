@@ -54,7 +54,8 @@ export async function getMatches(filters = {}, token = null) {
   if (filters.area) params.append("area", filters.area);
   if (filters.startTime) params.append("startTime", filters.startTime);
   if (filters.createdBy) params.append("createdBy", filters.createdBy);
-  if (filters.participantId) params.append("participantId", filters.participantId); // Thêm tham số lọc người tham gia
+  if (filters.participantId) params.append("participantId", filters.participantId);
+  if (filters.userId) params.append("userId", filters.userId);
 
   const query = params.toString() ? `?${params.toString()}` : "";
 

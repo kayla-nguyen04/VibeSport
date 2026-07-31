@@ -34,7 +34,6 @@ export function AuthCard({
 
   const isRegisterMode = mode === 'register';
   const isForgotMode = mode === 'forgot';
-
   const helperText = useMemo(() => validationError || error || successMessage, [error, successMessage, validationError]);
 
   useEffect(() => {
@@ -51,6 +50,12 @@ export function AuthCard({
     setValidationError(null);
   };
 
+  const bindField = (field) => ({
+    onChange: (event) => updateField(field, event.nativeEvent.text),
+    onChangeText: (value) => updateField(field, value),
+    value: form[field],
+  });
+
   const handleSubmit = async () => {
     const fullName = form.fullName.trim();
     const email = form.email.trim().toLowerCase();
@@ -59,7 +64,6 @@ export function AuthCard({
     const confirmPassword = form.confirmPassword.trim();
 
     const nextFieldErrors = {};
-
     if (isRegisterMode) {
       if (!fullName) nextFieldErrors.fullName = 'Vui lòng nhập họ và tên';
       if (!email) nextFieldErrors.email = 'Vui lòng nhập email';
@@ -68,6 +72,8 @@ export function AuthCard({
       if (!confirmPassword) nextFieldErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu';
     } else if (isForgotMode) {
       if (!email) nextFieldErrors.email = 'Vui lòng nhập email';
+      if (!password) nextFieldErrors.password = 'Vui lòng nhập mật khẩu mới';
+      if (!confirmPassword) nextFieldErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu mới';
     } else {
       if (!email) nextFieldErrors.email = 'Vui lòng nhập email';
       if (!password) nextFieldErrors.password = 'Vui lòng nhập mật khẩu';
@@ -76,15 +82,12 @@ export function AuthCard({
     if (email && !email.includes('@')) {
       nextFieldErrors.email = 'Email không hợp lệ';
     }
-
     if (isRegisterMode && phone && phone.length < 9) {
       nextFieldErrors.phone = 'Số điện thoại chưa hợp lệ';
     }
-
     if (password && password.length < 6) {
       nextFieldErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
     }
-
     if ((isRegisterMode || isForgotMode) && password && confirmPassword && password !== confirmPassword) {
       nextFieldErrors.confirmPassword = 'Mật khẩu nhập lại không khớp';
     }
@@ -105,11 +108,39 @@ export function AuthCard({
         : { email, password };
 
     const resultAction = await onSubmit(payload);
-
     if (!resultAction?.error) {
       setForm(INITIAL_FORM);
     }
   };
+
+  const renderPasswordInput = ({
+    field = 'password',
+    placeholder,
+    isNewPassword,
+    isVisible,
+    setVisible,
+    returnKeyType = 'done',
+    onSubmitEditing,
+  }) => (
+    <View style={[styles.passwordWrap, fieldErrors[field] ? styles.inputError : null]}>
+      <TextInput
+        autoCapitalize="none"
+        autoComplete={isNewPassword ? 'new-password' : 'current-password'}
+        importantForAutofill="yes"
+        placeholder={placeholder}
+        placeholderTextColor="#9c9c9c"
+        returnKeyType={returnKeyType}
+        secureTextEntry={!isVisible}
+        style={styles.passwordInput}
+        textContentType={isNewPassword ? 'newPassword' : 'password'}
+        onSubmitEditing={onSubmitEditing}
+        {...bindField(field)}
+      />
+      <TouchableOpacity hitSlop={12} onPress={() => setVisible((visible) => !visible)}>
+        <Text style={styles.toggleText}>{isVisible ? 'Ẩn' : 'Hiện'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const submitTitle = isRegisterMode ? 'Tiếp tục' : isForgotMode ? 'Đặt lại mật khẩu' : 'Đăng nhập';
 
@@ -120,12 +151,15 @@ export function AuthCard({
           <Text style={styles.label}>Họ và tên</Text>
           <TextInput
             autoCapitalize="words"
-            onChangeText={(value) => updateField('fullName', value)}
+            autoComplete="name"
+            importantForAutofill="yes"
+            maxLength={30}
             placeholder="Nhập họ và tên"
             placeholderTextColor="#9c9c9c"
+            returnKeyType="next"
             style={[styles.input, fieldErrors.fullName ? styles.inputError : null]}
-            value={form.fullName}
-            maxLength={30}
+            textContentType="name"
+            {...bindField('fullName')}
           />
           {fieldErrors.fullName ? <Text style={styles.fieldErrorText}>{fieldErrors.fullName}</Text> : null}
 
@@ -133,61 +167,51 @@ export function AuthCard({
           <TextInput
             autoCapitalize="none"
             autoComplete="email"
+            importantForAutofill="yes"
             keyboardType="email-address"
-            onChangeText={(value) => updateField('email', value)}
             placeholder="Nhập email của bạn"
             placeholderTextColor="#9c9c9c"
+            returnKeyType="next"
             style={[styles.input, fieldErrors.email ? styles.inputError : null]}
-            value={form.email}
+            textContentType="username"
+            {...bindField('email')}
           />
           {fieldErrors.email ? <Text style={styles.fieldErrorText}>{fieldErrors.email}</Text> : null}
 
           <Text style={styles.label}>Số điện thoại</Text>
           <TextInput
             autoCapitalize="none"
+            autoComplete="tel"
+            importantForAutofill="yes"
             keyboardType="phone-pad"
-            onChangeText={(value) => updateField('phone', value)}
             placeholder="Nhập số điện thoại"
             placeholderTextColor="#9c9c9c"
+            returnKeyType="next"
             style={[styles.input, fieldErrors.phone ? styles.inputError : null]}
-            value={form.phone}
+            textContentType="telephoneNumber"
+            {...bindField('phone')}
           />
           {fieldErrors.phone ? <Text style={styles.fieldErrorText}>{fieldErrors.phone}</Text> : null}
 
           <Text style={styles.label}>Mật khẩu</Text>
-          <View style={[styles.passwordWrap, fieldErrors.password ? styles.inputError : null]}>
-            <TextInput
-              autoCapitalize="none"
-              autoComplete="new-password"
-              onChangeText={(value) => updateField('password', value)}
-              placeholder="Tạo mật khẩu"
-              placeholderTextColor="#9c9c9c"
-              secureTextEntry={!showPassword}
-              style={styles.passwordInput}
-              value={form.password}
-            />
-            <TouchableOpacity hitSlop={12} onPress={() => setShowPassword((visible) => !visible)}>
-              <Text style={styles.toggleText}>{showPassword ? 'Ẩn' : 'Hiện'}</Text>
-            </TouchableOpacity>
-          </View>
+          {renderPasswordInput({
+            isNewPassword: true,
+            isVisible: showPassword,
+            placeholder: 'Tạo mật khẩu',
+            returnKeyType: 'next',
+            setVisible: setShowPassword,
+          })}
           {fieldErrors.password ? <Text style={styles.fieldErrorText}>{fieldErrors.password}</Text> : null}
 
           <Text style={styles.label}>Xác nhận mật khẩu</Text>
-          <View style={[styles.passwordWrap, fieldErrors.confirmPassword ? styles.inputError : null]}>
-            <TextInput
-              autoCapitalize="none"
-              autoComplete="new-password"
-              onChangeText={(value) => updateField('confirmPassword', value)}
-              placeholder="Nhập lại mật khẩu"
-              placeholderTextColor="#9c9c9c"
-              secureTextEntry={!showConfirmPassword}
-              style={styles.passwordInput}
-              value={form.confirmPassword}
-            />
-            <TouchableOpacity hitSlop={12} onPress={() => setShowConfirmPassword((visible) => !visible)}>
-              <Text style={styles.toggleText}>{showConfirmPassword ? 'Ẩn' : 'Hiện'}</Text>
-            </TouchableOpacity>
-          </View>
+          {renderPasswordInput({
+            field: 'confirmPassword',
+            isNewPassword: true,
+            isVisible: showConfirmPassword,
+            onSubmitEditing: handleSubmit,
+            placeholder: 'Nhập lại mật khẩu',
+            setVisible: setShowConfirmPassword,
+          })}
           {fieldErrors.confirmPassword ? <Text style={styles.fieldErrorText}>{fieldErrors.confirmPassword}</Text> : null}
         </>
       ) : (
@@ -195,52 +219,40 @@ export function AuthCard({
           <Text style={styles.label}>Email</Text>
           <TextInput
             autoCapitalize="none"
-            autoComplete="email"
+            autoComplete="username"
+            importantForAutofill="yes"
             keyboardType="email-address"
-            onChangeText={(value) => updateField('email', value)}
             placeholder="Nhập email của bạn"
             placeholderTextColor="#9c9c9c"
+            returnKeyType="next"
             style={[styles.input, fieldErrors.email ? styles.inputError : null]}
-            value={form.email}
+            textContentType="username"
+            {...bindField('email')}
           />
           {fieldErrors.email ? <Text style={styles.fieldErrorText}>{fieldErrors.email}</Text> : null}
 
           <Text style={styles.label}>{isForgotMode ? 'Mật khẩu mới' : 'Mật khẩu'}</Text>
-          <View style={[styles.passwordWrap, fieldErrors.password ? styles.inputError : null]}>
-            <TextInput
-              autoCapitalize="none"
-              autoComplete={isRegisterMode || isForgotMode ? 'new-password' : 'current-password'}
-              onChangeText={(value) => updateField('password', value)}
-              placeholder={isForgotMode ? 'Nhập mật khẩu mới' : 'Nhập mật khẩu'}
-              placeholderTextColor="#9c9c9c"
-              secureTextEntry={!showPassword}
-              style={styles.passwordInput}
-              value={form.password}
-            />
-            <TouchableOpacity hitSlop={12} onPress={() => setShowPassword((visible) => !visible)}>
-              <Text style={styles.toggleText}>{showPassword ? 'Ẩn' : 'Hiện'}</Text>
-            </TouchableOpacity>
-          </View>
+          {renderPasswordInput({
+            isNewPassword: isForgotMode,
+            isVisible: showPassword,
+            onSubmitEditing: isForgotMode ? undefined : handleSubmit,
+            placeholder: isForgotMode ? 'Nhập mật khẩu mới' : 'Nhập mật khẩu',
+            returnKeyType: isForgotMode ? 'next' : 'done',
+            setVisible: setShowPassword,
+          })}
           {fieldErrors.password ? <Text style={styles.fieldErrorText}>{fieldErrors.password}</Text> : null}
 
           {isForgotMode ? (
             <>
               <Text style={styles.label}>Nhập lại mật khẩu mới</Text>
-              <View style={[styles.passwordWrap, fieldErrors.confirmPassword ? styles.inputError : null]}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoComplete="new-password"
-                  onChangeText={(value) => updateField('confirmPassword', value)}
-                  placeholder="Nhập lại mật khẩu"
-                  placeholderTextColor="#9c9c9c"
-                  secureTextEntry={!showConfirmPassword}
-                  style={styles.passwordInput}
-                  value={form.confirmPassword}
-                />
-                <TouchableOpacity hitSlop={12} onPress={() => setShowConfirmPassword((visible) => !visible)}>
-                  <Text style={styles.toggleText}>{showConfirmPassword ? 'Ẩn' : 'Hiện'}</Text>
-                </TouchableOpacity>
-              </View>
+              {renderPasswordInput({
+                field: 'confirmPassword',
+                isNewPassword: true,
+                isVisible: showConfirmPassword,
+                onSubmitEditing: handleSubmit,
+                placeholder: 'Nhập lại mật khẩu',
+                setVisible: setShowConfirmPassword,
+              })}
               {fieldErrors.confirmPassword ? <Text style={styles.fieldErrorText}>{fieldErrors.confirmPassword}</Text> : null}
             </>
           ) : null}
@@ -266,7 +278,6 @@ export function AuthCard({
           <Text style={styles.submitButtonText}>{submitTitle}</Text>
         )}
       </TouchableOpacity>
-
 
       <View style={styles.footerRow}>
         <Text style={styles.footerText}>
@@ -370,36 +381,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     textTransform: 'uppercase',
-  },
-  separatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e2e8f0',
-  },
-  separatorText: {
-    marginHorizontal: 12,
-    color: '#9ca3af',
-    fontSize: FONT_SIZE,
-    fontWeight: '700',
-  },
-  googleButton: {
-    minHeight: 56,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  googleButtonText: {
-    color: '#111111',
-    fontSize: FONT_SIZE,
-    fontWeight: '700',
   },
   footerRow: {
     marginTop: 22,

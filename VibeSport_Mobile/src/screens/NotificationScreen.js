@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,9 +11,10 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
-import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -35,14 +36,23 @@ function fixMediaUrl(url) {
   return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
 }
 
+function normalizeNotificationMessage(message) {
+  if (typeof message !== 'string') return '';
+  return message.replace(/đã Vibe bài viết của bạn/gi, 'đã thích bài viết của bạn');
+}
+
 export function NotificationScreen({ navigation }) {
   const dispatch = useDispatch();
-  const token = useSelector((state) => state.auth.token);
+  const insets = useSafeAreaInsets();
   const currentUser = useSelector((state) => state.auth.user);
-  const { notifications, loading, unreadCount } = useSelector((state) => state.notifications);
+  const { notifications, loading } = useSelector((state) => state.notifications);
   const conversations = useSelector((state) => state.chat.conversations);
   const { enqueue } = useNotificationNavigationQueue(navigation);
-  const visibleNotifications = notifications.filter((item) => item.type !== 'message');
+  const [refreshing, setRefreshing] = useState(false);
+  const visibleNotifications = useMemo(
+    () => notifications.filter((item) => item.type !== 'message'),
+    [notifications]
+  );
 
   const handleAvatarPress = (fromUser) => {
     const userId = fromUser?._id || fromUser?.id || fromUser;
@@ -59,8 +69,15 @@ export function NotificationScreen({ navigation }) {
     dispatch(fetchNotifications());
   }, [dispatch]);
 
-  const handleRefresh = () => {
-    dispatch(fetchNotifications());
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await dispatch(fetchNotifications()).unwrap();
+    } catch {
+      // The slice already exposes the request error; only reset the native refresh control here.
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleMarkAllRead = () => {
@@ -92,7 +109,10 @@ export function NotificationScreen({ navigation }) {
     if (item.type === 'follow') {
       const senderId = item.fromUserId?._id || item.fromUserId;
       if (senderId) {
-        navigation.navigate('UserProfile', { userId: senderId });
+        navigation.navigate('UserProfile', {
+          userId: senderId,
+          initialProfile: typeof item.fromUserId === 'object' ? item.fromUserId : undefined,
+        });
       }
       return;
     }
@@ -180,7 +200,7 @@ export function NotificationScreen({ navigation }) {
 
         <View style={styles.contentInfo}>
           <Text style={[styles.messageText, isUnread && styles.unreadMessageText]}>
-            {item.message}
+            {normalizeNotificationMessage(item.message)}
           </Text>
           <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
         </View>
@@ -193,28 +213,34 @@ export function NotificationScreen({ navigation }) {
   };
 
   return (
-    <Screen style={styles.safeArea}>
+    <View
+      style={[
+        styles.safeArea,
+        {
+          paddingTop: insets.top,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
+    >
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitleNormal}>Thông </Text>
-          <Text style={styles.headerTitleHighlight}>Báo</Text>
+        <View style={styles.headerSide}>
+          <BackButton onPress={() => navigation.goBack()} />
         </View>
 
-        <TouchableOpacity
-          onPress={handleHeaderMorePress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.moreHeaderBtn}
-        >
-          <Ionicons name="ellipsis-vertical" size={24} color="#000000" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          Thông <Text style={styles.headerTitleHighlight}>Báo</Text>
+        </Text>
+
+        <View style={[styles.headerSide, styles.headerSideRight]}>
+          <TouchableOpacity
+            onPress={handleHeaderMorePress}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.headerIconButton}
+          >
+            <Ionicons name="ellipsis-vertical" size={24} color="#000000" />
+          </TouchableOpacity>
+        </View>
       </ScreenHeader>
 
       <FlatList
@@ -222,21 +248,26 @@ export function NotificationScreen({ navigation }) {
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={handleRefresh} colors={['#FF6B35']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={['#FF6B35']}
+            tintColor="#FF6B35"
+          />
         }
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          !loading ? (
+          loading && visibleNotifications.length === 0 ? (
+            <ActivityIndicator size="large" color="#FF6B35" style={styles.loader} />
+          ) : (
             <View style={styles.emptyContainer}>
               <Ionicons name="notifications-off-outline" size={64} color="#D1D5DB" />
               <Text style={styles.emptyText}>Bạn chưa có thông báo nào.</Text>
             </View>
-          ) : (
-            <ActivityIndicator size="large" color="#FF6B35" style={styles.loader} />
           )
         }
       />
-    </Screen>
+    </View>
   );
 }
 
@@ -249,31 +280,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    height: 56,
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
   },
-  backButton: {
-    padding: 4,
-  },
-  headerTitleContainer: {
-    flexDirection: 'row',
+  headerSide: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerTitleNormal: {
+  headerSideRight: {
+    marginLeft: 'auto',
+  },
+  headerTitle: {
+    position: 'absolute',
+    left: 60,
+    right: 60,
+    textAlign: 'center',
     fontSize: 18,
     fontWeight: 'bold',
     color: '#000000',
   },
   headerTitleHighlight: {
-    fontSize: 18,
-    fontWeight: 'bold',
     color: '#FF5F3D',
   },
-  moreHeaderBtn: {
-    padding: 4,
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listContent: {
     flexGrow: 1,

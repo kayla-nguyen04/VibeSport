@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,11 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import {
   getFollowersListRequest,
   getFollowingListRequest,
@@ -30,6 +31,7 @@ const TABS = [
   { key: 'following', label: 'Đang theo dõi' },
   { key: 'followers', label: 'Người theo dõi' },
 ];
+const followListCache = new Map();
 
 const getAvatarColor = (name) => {
   if (!name) return AVATAR_COLORS[0];
@@ -59,13 +61,24 @@ export default function FollowListScreen({ route, navigation }) {
   const targetUserId = route.params?.userId || currentUserId;
   const isSelf = String(targetUserId) === String(currentUserId);
   const ownerName = route.params?.ownerName;
+  const cacheKey = `${String(currentUserId || '')}:${String(targetUserId || '')}`;
+  const cachedLists = followListCache.get(cacheKey);
 
   const [activeTab, setActiveTab] = useState(route.params?.initialTab || 'following');
-  const [followingList, setFollowingList] = useState([]);
-  const [followersList, setFollowersList] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [followingList, setFollowingList] = useState(cachedLists?.following || []);
+  const [followersList, setFollowersList] = useState(cachedLists?.followers || []);
+  const [loading, setLoading] = useState(!cachedLists);
   const [refreshing, setRefreshing] = useState(false);
   const [actionUserId, setActionUserId] = useState(null);
+  const hasLoadedRef = useRef(Boolean(cachedLists));
+
+  useEffect(() => {
+    if (!hasLoadedRef.current) return;
+    followListCache.set(cacheKey, {
+      following: followingList,
+      followers: followersList,
+    });
+  }, [cacheKey, followersList, followingList]);
 
   const loadLists = useCallback(async (silent = false) => {
     if (!token || !targetUserId) return;
@@ -78,6 +91,7 @@ export default function FollowListScreen({ route, navigation }) {
       ]);
       setFollowingList(followingRes?.data || []);
       setFollowersList(followersRes?.data || []);
+      hasLoadedRef.current = true;
     } catch (error) {
       const errorMessage = error instanceof APIError 
         ? error.message 
@@ -99,7 +113,7 @@ export default function FollowListScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      loadLists();
+      loadLists(hasLoadedRef.current);
     }, [loadLists])
   );
 
@@ -113,28 +127,37 @@ export default function FollowListScreen({ route, navigation }) {
 
   const handleToggleFollow = async (item) => {
     const userId = item._id || item.id;
-    if (!userId || String(userId) === String(currentUserId)) return;
+    if (!userId || String(userId) === String(currentUserId) || actionUserId === userId) return;
 
+    const previousFollowingList = followingList;
+    const previousFollowersList = followersList;
+    const nextFollowing = !item.isFollowing;
     setActionUserId(userId);
+
+    updateUserInLists(userId, { isFollowing: nextFollowing });
+    if (!nextFollowing && isSelf && activeTab === 'following') {
+      setFollowingList((prev) => prev.filter(
+        (user) => String(user._id || user.id) !== String(userId)
+      ));
+    }
+
     try {
       const res = await toggleFollowRequest(userId, token);
-      const nextFollowing = Boolean(res.following);
+      const confirmedFollowing = Boolean(res.following);
 
       updateUserInLists(userId, {
-        isFollowing: nextFollowing,
+        isFollowing: confirmedFollowing,
         isFollowedBy: res.isFollowedBy ?? item.isFollowedBy,
       });
 
       if (isSelf) {
-        dispatch(updateUserFollowCounts({ followingIncrement: nextFollowing ? 1 : -1 }));
+        dispatch(updateUserFollowCounts({ followingIncrement: confirmedFollowing ? 1 : -1 }));
       }
 
-      if (!nextFollowing && isSelf && activeTab === 'following') {
-        setFollowingList((prev) => prev.filter((user) => String(user._id || user.id) !== String(userId)));
-      }
-
-      dispatch(updatePostFollowStatus({ userId, isFollowing: nextFollowing }));
+      dispatch(updatePostFollowStatus({ userId, isFollowing: confirmedFollowing }));
     } catch (error) {
+      setFollowingList(previousFollowingList);
+      setFollowersList(previousFollowersList);
       const errorMessage = error instanceof APIError 
         ? error.message 
         : error?.message || 'Không thể cập nhật theo dõi. Vui lòng thử lại.';
@@ -162,9 +185,6 @@ export default function FollowListScreen({ route, navigation }) {
     const name = item.name || 'Thành viên VibeSport';
     const isMe = String(userId) === String(currentUserId);
     const isMutual = item.isFollowing && item.isFollowedBy;
-    const sportInfo = [item.favoriteSport, item.position, item.area]
-      .filter(Boolean)
-      .join(' • ') || 'Thành viên VibeSport';
 
     return (
       <TouchableOpacity
@@ -172,7 +192,7 @@ export default function FollowListScreen({ route, navigation }) {
         activeOpacity={0.85}
         onPress={() => {
           if (!isMe) {
-            navigation.navigate('UserProfile', { userId });
+            navigation.navigate('UserProfile', { userId, initialProfile: item });
           }
         }}
       >
@@ -194,12 +214,9 @@ export default function FollowListScreen({ route, navigation }) {
             <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
               {name}
             </Text>
-            <Text style={styles.userMeta} numberOfLines={2} ellipsizeMode="tail">
-              {sportInfo}
-            </Text>
             {isMutual && (
               <View style={styles.mutualLabelContainer}>
-                <Text style={styles.mutualLabel}>👥 Bạn bè</Text>
+                <Text style={styles.mutualLabel}>Bạn bè</Text>
               </View>
             )}
           </View>
@@ -216,30 +233,13 @@ export default function FollowListScreen({ route, navigation }) {
               disabled={actionUserId === userId}
               activeOpacity={0.75}
             >
-              {actionUserId === userId ? (
-                <ActivityIndicator 
-                  size="small" 
-                  color={item.isFollowing ? '#64748B' : '#FFFFFF'} 
-                />
-              ) : (
-                <>
-                  <Text style={[styles.followBtnText, item.isFollowing && styles.followBtnTextActive]}>
-                    {item.isFollowing 
-                      ? 'Đang theo dõi' 
-                      : item.isFollowedBy 
-                        ? 'Theo dõi lại' 
-                        : 'Theo dõi'}
-                  </Text>
-                  {!item.isFollowing && (
-                    <Ionicons 
-                      name={item.isFollowedBy ? "arrow-back-outline" : "add"} 
-                      size={16} 
-                      color="#FFFFFF" 
-                      style={{ marginLeft: 4 }} 
-                    />
-                  )}
-                </>
-              )}
+              <Text style={[styles.followBtnText, item.isFollowing && styles.followBtnTextActive]}>
+                {item.isFollowing
+                  ? 'Đang theo dõi'
+                  : item.isFollowedBy
+                    ? 'Theo dõi lại'
+                    : 'Theo dõi'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -248,11 +248,9 @@ export default function FollowListScreen({ route, navigation }) {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <Screen edges={['top', 'left', 'right']} style={styles.screen}>
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={22} color="#111827" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
         <View style={styles.headerTextWrap}>
           <Text style={styles.headerTitle}>{screenTitle}</Text>
           {!isSelf && ownerName ? (
@@ -327,8 +325,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 58,
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 7,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F7',
@@ -336,8 +335,6 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -350,11 +347,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
   },
-  headerSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#64748B',
-  },
   headerSpacer: {
     width: 36,
   },
@@ -362,6 +354,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
+    paddingTop: 10,
     paddingBottom: 12,
     gap: 8,
   },
@@ -414,10 +407,68 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
-  userMeta: {
-    marginTop: 3,
+  mutualLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0b74ff',
+  },
+  followBtn: {
+    minWidth: 96,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#0b74ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followBtnActive: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  followBtnBack: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
+  },
+  followBtnText: {
     fontSize: 12,
+    fontWeight: '600',
     color: '#64748B',
+  },
+  tabLabelActive: {
+    color: '#0b74ff',
+  },
+  listContent: {
+    paddingBottom: 24,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E5E7EB',
+  },
+  avatarFallback: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  userName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
   },
   mutualLabel: {
     marginTop: 4,

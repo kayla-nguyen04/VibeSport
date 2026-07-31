@@ -38,6 +38,7 @@ import { getSocket } from "../hooks/useSocket";
 import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { BackButton } from "../components/BackButton";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { TagIcon } from "../components/TagIcon";
 import { primary } from "../theme";
@@ -584,7 +585,10 @@ export default function MatchDetailScreen({ navigation, route }) {
       navigation.navigate("Home", { screen: "ProfileTab" });
       return;
     }
-    navigation.navigate("UserProfile", { userId: profileUserId });
+    navigation.navigate("UserProfile", {
+      userId: profileUserId,
+      initialProfile: typeof profileUser === "object" ? profileUser : undefined,
+    });
   };
 
   const handleOpenMap = () => {
@@ -956,13 +960,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   ) : (
     <Screen style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
         
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1492,8 +1490,8 @@ export default function MatchDetailScreen({ navigation, route }) {
 
         {/* MODAL MỜI BẠN BÈ */}
         <Modal visible={showInviteModal} animationType="slide">
-          <Screen style={styles.safeArea}>
-            <ScreenHeader style={styles.header}>
+          <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+            <ScreenHeader style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
               <TouchableOpacity style={styles.backButton} onPress={() => setShowInviteModal(false)}>
                 <Text style={styles.backArrow}>←</Text>
               </TouchableOpacity>
@@ -1557,11 +1555,9 @@ export default function MatchDetailScreen({ navigation, route }) {
 
         {/* MODAL DUYỆT YÊU CẦU THAM GIA */}
         <Modal visible={showRequestModal} animationType="slide">
-          <Screen style={styles.safeArea}>
-            <View style={styles.header}>
-              <TouchableOpacity style={styles.backButton} onPress={() => setShowRequestModal(false)}>
-                <Ionicons name="arrow-back" size={24} color="#333" />
-              </TouchableOpacity>
+          <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+            <View style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
+              <BackButton onPress={() => setShowRequestModal(false)} style={styles.backButton} />
               <Text style={styles.headerTitle}>Yêu cầu tham gia</Text>
               <View style={styles.headerSpacer} />
             </View>
@@ -1628,23 +1624,223 @@ export default function MatchDetailScreen({ navigation, route }) {
             </ScrollView>
           </Screen>
         </Modal>
+        <Modal
+          visible={showPositionModal}
+          transparent={false}
+          animationType="slide"
+          onRequestClose={() => setShowPositionModal(false)}
+        >
+          <View style={styles.positionModalContent}>
+            <View style={styles.positionModalHeader}>
+              <Text style={styles.positionModalTitle}>Chọn vị trí muốn tham gia</Text>
+              <TouchableOpacity onPress={() => setShowPositionModal(false)}>
+                <Text style={styles.positionModalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* Court Detail Modal */}
-        <CourtDetailModal
-          visible={showCourtDetailModal}
-          court={
-            COURT_DIRECTORY.find(
-              (c) => c.name === match.locationName || c.address === match.specificAddress
-            ) || {
-              name: match.locationName,
-              address: match.specificAddress || match.locationName,
-              intro: match.courtDescription,
-              coords: coords,
-              phone: match.contactPhone,
-            }
+            <ScrollView style={styles.positionModalList}>
+              {positionOptions.map((option) => {
+                const isSelected = selectedPositions.includes(option.id);
+                const hasSameRoleInSameTeamSelected = selectedPositions.some((selectedId) => {
+                  const selectedOption = positionOptions.find((item) => item.id === selectedId);
+                  return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
+                });
+                const isDisabled = option.disabled || (!isSelected && selectedPositions.length >= 1);
+
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.positionOption,
+                      isSelected && styles.positionOptionSelected,
+                      isDisabled && styles.positionOptionDisabled,
+                    ]}
+                    onPress={() => togglePositionSelection(option)}
+                    disabled={isDisabled}
+                  >
+                    <Text style={[
+                      styles.positionOptionText,
+                      isSelected && styles.positionOptionTextSelected,
+                      isDisabled && styles.positionOptionTextDisabled,
+                    ]}>
+                      {option.label} · {option.isBench ? `Dự bị · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
+                    </Text>
+                    {isSelected && (
+                      <Text style={styles.positionOptionCheck}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.positionModalConfirm,
+                selectedPositions.length !== 1 && styles.positionModalConfirmDisabled
+              ]}
+              onPress={handleConfirmJoinWithPositions}
+              disabled={selectedPositions.length !== 1 || actionLoading}
+            >
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.positionModalConfirmText}>
+                  Xác nhận tham gia (1 vị trí)
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </Modal>
+
+        
+
+      {/* ─── Invite Modal (from following list) ─── */}
+      {/* ─── Invite Modal ─── */}
+      <Modal visible={showInviteModal} animationType="slide">
+        <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+          <ScreenHeader style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
+            <BackButton onPress={() => setShowInviteModal(false)} style={styles.backButton} />
+            <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
+            <View style={styles.headerSpacer} />
+          </ScreenHeader>
+          
+          <View style={{ flex: 1, paddingHorizontal: 16 }}>
+            <View style={styles.copyLinkBox}>
+              <Text style={styles.copyLinkLabel}>Link: <Text style={styles.copyLinkValue}>{match._id}</Text></Text>
+              <TouchableOpacity style={styles.copyLinkBtn} onPress={() => Alert.alert("Đã sao chép link")}>
+                <Text style={styles.copyLinkBtnText}>Sao chép link</Text>
+              </TouchableOpacity>
+            </View>
+
+            {inviteLoading ? (
+              <View style={styles.centered}>
+                <ActivityIndicator size="large" color={ORANGE} />
+              </View>
+            ) : followingUsers.length === 0 ? (
+              <View style={styles.centered}>
+                <Text style={styles.emptyInviteText}>Không có người dùng nào để mời</Text>
+                <Text style={styles.emptyInviteSub}>Bạn chưa follow ai hoặc tất cả đã tham gia</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={followingUsers}
+                keyExtractor={(item) => String(item._id || item.id)}
+                contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
+                renderItem={({ item }) => {
+                  const uName = item.name || "Người dùng";
+                  const isInvited = Boolean(item.isInvited);
+                  return (
+                    <View style={styles.inviteUserCard}>
+                      <View style={[styles.userAvatar, { backgroundColor: '#ef4444' }]}>
+                        <Text style={styles.userInitials}>{getInitials(uName)}</Text>
+                      </View>
+                      <View style={styles.inviteUserInfo}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.inviteUserName}>{uName}</Text>
+                          <Ionicons name="people-outline" size={14} color={ORANGE} />
+                        </View>
+                        <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.inviteActionBtn, isInvited && styles.inviteActionBtnDisabled]}
+                        onPress={() => handleInviteUser(String(item._id || item.id))}
+                        disabled={actionLoading || isInvited}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.inviteActionBtnText}>{isInvited ? "Đã mời" : "Mời"}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </Screen>
+      </Modal>
+
+      {/* ─── Kick Confirm Modal ─── */}
+      <Modal visible={showKickModal} transparent animationType="fade">
+        <View style={styles.kickOverlay}>
+          <View style={styles.kickBox}>
+            <Text style={styles.kickTitle}>Kích thành viên</Text>
+            <Text style={styles.kickSubtitle}>
+              Bạn có chắc muốn kích <Text style={{ fontWeight: "700" }}>{kickTarget?.name || "người này"}</Text> ra khỏi trận?
+            </Text>
+            <TextInput
+              style={styles.kickReasonInput}
+              placeholder="Lý do kích (không bắt buộc)..."
+              value={kickReason}
+              onChangeText={setKickReason}
+              multiline
+            />
+            <View style={styles.kickActions}>
+              <TouchableOpacity
+                style={styles.kickCancelBtn}
+                onPress={() => { setShowKickModal(false); setKickTarget(null); setKickReason(""); }}
+              >
+                <Text style={styles.kickCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.kickConfirmBtn}
+                onPress={handleKickUser}
+                disabled={actionLoading}
+              >
+                <Text style={styles.kickConfirmText}>{actionLoading ? "Đang xử lý..." : "Kích ngay"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Options Modal (3 dots) ─── */}
+      <Modal visible={showOptionsModal} transparent animationType="slide">
+        <View style={styles.optionsOverlay}>
+          <View style={styles.bottomSheetContainer}>
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetTitle}>Tùy chọn trận đấu</Text>
+            
+            <TouchableOpacity 
+              style={styles.optionBtn} 
+              onPress={() => { setShowOptionsModal(false); handleEdit(); }}
+            >
+              <Ionicons name="pencil-outline" size={22} color="#1F2937" style={{ width: 28 }} />
+              <Text style={styles.optionBtnText}>Sửa trận đấu</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionBtn} 
+              onPress={() => { setShowOptionsModal(false); handleDelete(); }}
+            >
+              <Ionicons name="trash-outline" size={22} color="#EF4444" style={{ width: 28 }} />
+              <Text style={[styles.optionBtnText, { color: '#EF4444' }]}>Xóa trận đấu</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionsCancelBtn} 
+              onPress={() => setShowOptionsModal(false)}
+            >
+              <Text style={styles.optionsCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Court Detail Modal */}
+      <CourtDetailModal
+        visible={showCourtDetailModal}
+        court={
+          COURT_DIRECTORY.find(
+            (c) => c.name === match.locationName || c.address === match.specificAddress
+          ) || {
+            name: match.locationName,
+            address: match.specificAddress || match.locationName,
+            intro: match.courtDescription,
+            coords: coords,
+            phone: match.contactPhone,
           }
-          onClose={() => setShowCourtDetailModal(false)}
-        />
+        }
+        onClose={() => setShowCourtDetailModal(false)}
+      />
       </ScrollView>
     </Screen>
   );
@@ -1670,9 +1866,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 9,
     marginTop: 8,
     marginBottom: 4,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(99, 94, 94, 0.19)",
     elevation: 2,
@@ -1682,7 +1878,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   backButton: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
-  backArrow: { fontSize: 22, color: "#333" },
   headerTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {
@@ -1931,6 +2126,306 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
+  },
+  positionModalConfirmDisabled: {
+    backgroundColor: "#ccc",
+  },
+  positionModalConfirmText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  // ─── Section title row with invite button ───
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  inviteSmallBtn: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  inviteSmallBtnText: {
+    color: "#333",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  kickSmallBtn: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignSelf: "center",
+  },
+  kickSmallBtnText: {
+    color: "#b91c1c",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  // ─── Invite Modal ───
+  inviteUserCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  inviteUserInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  inviteUserName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  inviteUserSub: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  inviteActionBtn: {
+    backgroundColor: ORANGE,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  inviteActionBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  emptyInviteText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#64748b",
+    textAlign: "center",
+  },
+  emptyInviteSub: {
+    fontSize: 13,
+    color: "#94a3b8",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  copyLinkBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  copyLinkLabel: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "500",
+  },
+  copyLinkValue: {
+    fontWeight: "700",
+  },
+  copyLinkBtn: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  copyLinkBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#333",
+  },
+  // ─── Kick Modal ───
+  kickOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  kickBox: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  kickTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0f172a",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  kickSubtitle: {
+    fontSize: 14,
+    color: "#475569",
+    marginBottom: 16,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  kickReasonInput: {
+    backgroundColor: "#f8f9fa",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    padding: 12,
+    height: 80,
+    textAlignVertical: "top",
+    marginBottom: 20,
+  },
+  kickActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  kickCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  kickCancelText: {
+    color: "#64748b",
+    fontWeight: "700",
+  },
+  kickConfirmBtn: {
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  kickConfirmText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  // ─── Options Modal ───
+  optionsOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  bottomSheetContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 60,
+  },
+  bottomSheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#9CA3AF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  optionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  optionBtnText: {
+    fontSize: 16,
+    color: '#1F2937',
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  optionsCancelBtn: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  optionsCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  bottomBarOuter: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 6,
+  },
+  bottomBarWrap: {
+    backgroundColor: '#ffffff',
+    borderRadius: 40,
+    borderWidth: 1.2,
+    borderColor: '#d1d5db',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 70,
+    paddingHorizontal: 8,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonPressed: {
+    opacity: 0.7,
+  },
+  iconFrame: {
+    width: 52,
+    height: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 26,
+    overflow: 'hidden',
+  },
+  activeIconFrame: {
+    backgroundColor: '#FF5F3D',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  tabBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   positionModalConfirmDisabled: { backgroundColor: "#ccc" },
   positionModalConfirmText: { color: "#fff", fontSize: 16, fontWeight: "700" },

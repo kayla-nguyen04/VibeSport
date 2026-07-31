@@ -13,7 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { HeaderIconButton } from '../components/ProfileScreenComponents';
+import { BackButton } from '../components/BackButton';
 import { getMatches } from '../services/matchService';
 import { icon, primary, spacing } from '../theme';
 
@@ -160,9 +160,7 @@ export default function MatchHistoryScreen({ navigation }) {
     <Screen edges={['top', 'left', 'right']} style={uiStyles.screen}>
       <ScreenHeader style={uiStyles.headerBar}>
         <View style={uiStyles.headerSide}>
-          <HeaderIconButton onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={spacing.xl} color={icon.dark} />
-          </HeaderIconButton>
+          <BackButton onPress={() => navigation.goBack()} />
         </View>
         <Text style={uiStyles.headerTitle}>Lịch sử trận đấu</Text>
         <View style={[uiStyles.headerSide, uiStyles.headerRightSide]} />

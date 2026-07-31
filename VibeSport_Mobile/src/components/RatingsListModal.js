@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "./Screen";
 import { ScreenHeader } from "./ScreenHeader";
@@ -17,6 +18,7 @@ import { getUserRatingsRequest } from "../services/ratingApi";
 import { icon, primary } from "../theme";
 
 export function RatingsListModal({ visible, onClose, userId, token }) {
+  const insets = useSafeAreaInsets();
   const [ratingsList, setRatingsList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedRating, setSelectedRating] = useState(null); // Item đang được chọn để xem chi tiết
@@ -42,8 +44,8 @@ export function RatingsListModal({ visible, onClose, userId, token }) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <Screen style={styles.screen}>
-        <ScreenHeader style={styles.headerBar}>
+      <Screen style={styles.screen} edges={['left', 'right', 'bottom']}>
+        <ScreenHeader style={[styles.headerBar, { paddingTop: insets.top, height: 60 + insets.top }]}>
           <View style={styles.headerSide}>
             <HeaderIconButton onPress={onClose}>
               <Ionicons name="arrow-back" size={24} color={icon.dark} />

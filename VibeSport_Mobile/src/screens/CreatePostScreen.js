@@ -20,6 +20,7 @@ import { createPost, updatePost } from '../redux/postSlice';
 import { getTagsRequest } from '../services/tagApi';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import { API_BASE_URL } from '../components/constants/api';
 
 const MAX_MEDIA = 10;
@@ -299,13 +300,7 @@ export function CreatePostScreen({ navigation, route }) {
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
         <Text style={styles.headerTitle}>{isEditMode ? 'Sửa bài viết' : 'Tạo bài viết'}</Text>
         <TouchableOpacity
           onPress={handlePublish}
@@ -330,17 +325,17 @@ export function CreatePostScreen({ navigation, route }) {
           {/* ── User info ── */}
           <View style={styles.userRow}>
             {user?.picture ? (
-              <Image source={{ uri: user.picture }} style={styles.avatar} />
+              <Image source={{ uri: fixMediaUrl(user.picture) }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(user?.name) }]}>
                 <Text style={styles.avatarPlaceholderText}>
-                  {user?.name ? ((user.name === 'Long Nguyên' || user.name === 'Long Nguyễn' || user.name === 'Long') ? 'Longabc' : user.name).charAt(0).toUpperCase() : '?'}
+                  {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
                 </Text>
               </View>
             )}
             <View style={styles.userInfo}>
               <Text style={styles.userName}>
-                {(user?.name === 'Long Nguyên' || user?.name === 'Long Nguyễn' || user?.name === 'Long') ? 'Longabc' : (user?.name || 'Thành viên VibeSport')}
+                {user?.name || 'Thành viên VibeSport'}
               </Text>
               <TouchableOpacity
                 onPress={() => setShowTagDropdown(!showTagDropdown)}

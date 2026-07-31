@@ -206,7 +206,9 @@ export default function TeamsScreen({ navigation }) {
 
   const loadMatches = useCallback(async (keyword, area, time, subTab = activeSubTab) => {
     try {
-      setLoading(true);
+      if (matches.length === 0) {
+        setLoading(true);
+      }
       const filters = {};
       if (activeSport !== "all") filters.sport = activeSport;
       if (keyword && keyword.trim()) filters.q = keyword.trim();
@@ -224,11 +226,13 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [activeSport, activeSubTab, userId]);
+  }, [activeSport, activeSubTab, userId, matches.length]);
 
   const loadFindTeamPosts = useCallback(async () => {
     try {
-      setFindTeamLoading(true);
+      if (findTeamPosts.length === 0) {
+        setFindTeamLoading(true);
+      }
       const res = await getPostsRequest(1, 50, token, "Tìm đội");
       setFindTeamPosts(res.data || []);
     } catch (err) {
@@ -237,7 +241,7 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setFindTeamLoading(false);
     }
-  }, [token]);
+  }, [token, findTeamPosts.length]);
 
   useEffect(() => {
     if (activeSubTab === "findteam") {
@@ -723,7 +727,10 @@ export default function TeamsScreen({ navigation }) {
             onPress={() => {
               const authorId = normalizeId(author?._id || author?.id || item.userId);
               if (authorId && authorId !== userId) {
-                navigation?.navigate?.("UserProfile", { userId: authorId });
+                navigation?.navigate?.("UserProfile", {
+                  userId: authorId,
+                  initialProfile: author,
+                });
               }
             }}
           >
@@ -778,10 +785,14 @@ export default function TeamsScreen({ navigation }) {
     >
       <Screen style={styles.container}>
         {/* ─── Header ─── */}
-        <View style={styles.headerWrap}>
         <View style={styles.header}>
           <View style={styles.headerBrand}>
-            <Image source={require("../../assets/logo_vibesport_icon.png")} style={styles.headerLogo} resizeMode="contain" />
+            <Image
+              source={require("../../assets/logovibe_tachnen.png")}
+              style={styles.headerLogo}
+              resizeMode="contain"
+              fadeDuration={0}
+            />
             <Text style={styles.headerTitle}>
               <Text style={styles.headerTitleBlack}>Trận</Text>
               <Text style={styles.headerTitleOrange}> Đấu</Text>
@@ -791,7 +802,6 @@ export default function TeamsScreen({ navigation }) {
             <Text style={styles.createBtnText}>Tạo</Text>
           </TouchableOpacity>
         </View>
-      </View>
 
       {/* ─── Sub Tabs ─── */}
       <View style={styles.subTabsContainer}>
@@ -910,7 +920,7 @@ export default function TeamsScreen({ navigation }) {
       )}
 
       {/* ─── Match / Find Team List ─── */}
-      {listLoading ? (
+      {listLoading && listData.length === 0 ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#ff4d2d" />
           <Text style={styles.loadingText}>Đang tải trận đấu...</Text>
@@ -1090,17 +1100,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 16,
+    marginHorizontal: 9,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
+    marginBottom: 0,
+    height: 58,
     paddingHorizontal: 12,
-    height: 74,
     borderWidth: 1,
     borderColor: "rgba(99, 94, 94, 0.19)",
-    marginTop: 15,
+    zIndex: 10,
   },
   headerBrand: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
   },
   headerLogo: {
     width: 44,
@@ -1108,7 +1120,7 @@ const styles = StyleSheet.create({
     marginRight: -6,
   },
 
-  headerTitle: { fontSize: 22, fontWeight: "800" },
+  headerTitle: { fontSize: 20, fontWeight: "bold" },
   headerTitleBlack: { color: "#111" },
   headerTitleOrange: { color: ORANGE },
   createBtn: {
@@ -1122,6 +1134,7 @@ const styles = StyleSheet.create({
   // Sub Tabs
   subTabsContainer: {
     paddingHorizontal: 16,
+    marginTop: 12,
     marginBottom: 16,
   },
   subTabsInner: {
@@ -1694,7 +1707,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingTop: 10,
     paddingHorizontal: 16,
-    paddingBottom: 28,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 60,
   },
   bottomSheetHandle: {
     width: 60,

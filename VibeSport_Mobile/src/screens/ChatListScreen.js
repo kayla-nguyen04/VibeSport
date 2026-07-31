@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -272,6 +272,7 @@ export default function ChatListScreen({ navigation }) {
     );
   };
 
+  const flatListRef = useRef(null);
   const [searchText, setSearchText] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('inbox');
@@ -567,6 +568,10 @@ export default function ChatListScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData();
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      }, 50);
+      return () => clearTimeout(timer);
     }, [loadData])
   );
 
@@ -1021,7 +1026,7 @@ export default function ChatListScreen({ navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       <Screen style={styles.screen}>
-      <ScreenHeader style={styles.logoHeaderCard}>
+      <ScreenHeader style={styles.header}>
         {isSearching ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <TouchableOpacity
@@ -1083,17 +1088,6 @@ export default function ChatListScreen({ navigation }) {
                 <Ionicons name="ellipsis-vertical" size={26} color="#1F2937" />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.logoHeaderIconBtn}
-                onPress={() => navigation.navigate('Notification')}
-              >
-                <View style={{ position: 'relative' }}>
-                  <Ionicons name="notifications-outline" size={26} color="#1F2937" />
-                  {unreadNotificationCount > 0 && (
-                    <View style={styles.bellRedDot} />
-                  )}
-                </View>
-              </TouchableOpacity>
             </View>
           </>
         ) : (
@@ -1119,9 +1113,12 @@ export default function ChatListScreen({ navigation }) {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={activeData}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
           refreshControl={
             <RefreshControl
               refreshing={loadingConversations}
@@ -1204,7 +1201,10 @@ export default function ChatListScreen({ navigation }) {
                       setShowOptionsModal(false);
                       const peerId = selectedConversation.peer?._id || selectedConversation.peer?.id;
                       if (peerId) {
-                        navigation.navigate('UserProfile', { userId: peerId });
+                        navigation.navigate('UserProfile', {
+                          userId: peerId,
+                          initialProfile: selectedConversation.peer,
+                        });
                       }
                     }}
                   >
@@ -1469,11 +1469,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',
@@ -1518,11 +1518,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(99, 94, 94, 0.19)',

@@ -1,17 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { PermissionsAndroid, Platform } from 'react-native';
-import {
-  createAgoraRtcEngine,
-  ChannelProfileType,
-  ClientRoleType,
-  ChannelMediaOptions,
-  RenderModeType,
-  LocalAudioStreamState,
-  LocalAudioStreamReason,
-  RemoteVideoState,
-  AudioProfileType,
-  AudioScenarioType,
-} from 'react-native-agora';
+let AgoraModule = null;
+try {
+  AgoraModule = require('react-native-agora');
+} catch (e) {
+  console.warn('[Agora] react-native-agora native module not loaded (Expo Go environment).');
+}
+
+const createAgoraRtcEngine = AgoraModule?.createAgoraRtcEngine || (() => ({
+  initialize: () => {},
+  registerEventHandler: () => {},
+  enableAudio: () => {},
+  enableVideo: () => {},
+  joinChannel: () => {},
+  leaveChannel: () => {},
+  release: () => {},
+  muteLocalAudioStream: () => {},
+  muteLocalVideoStream: () => {},
+  startPreview: () => {},
+  stopPreview: () => {},
+}));
+
+const ChannelProfileType = AgoraModule?.ChannelProfileType || {};
+const ClientRoleType = AgoraModule?.ClientRoleType || {};
+const ChannelMediaOptions = AgoraModule?.ChannelMediaOptions || {};
+const RenderModeType = AgoraModule?.RenderModeType || {};
+const LocalAudioStreamState = AgoraModule?.LocalAudioStreamState || {};
+const LocalAudioStreamReason = AgoraModule?.LocalAudioStreamReason || {};
+const RemoteVideoState = AgoraModule?.RemoteVideoState || {};
+const AudioProfileType = AgoraModule?.AudioProfileType || {};
+const AudioScenarioType = AgoraModule?.AudioScenarioType || {};
 
 const APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID;
 const DEBUG = true;
@@ -86,12 +104,20 @@ export function useAgoraCall() {
           throw new Error('RECORD_AUDIO permission denied');
         }
 
+        if (!AgoraModule) {
+          throw new Error('Tính năng gọi điện (Agora RTC) yêu cầu bản build APK / Development Build (chưa tích hợp native module trên Expo Go).');
+        }
+
+        if (!APP_ID) {
+          throw new Error('Chưa cấu hình EXPO_PUBLIC_AGORA_APP_ID trong file .env');
+        }
+
         if (!engineRef.current) {
           const engine = createAgoraRtcEngine();
           const initResult = engine.initialize({ appId: APP_ID });
           DEBUG && console.log('[DEBUG] initialize result:', initResult);
-          if (initResult !== 0) {
-            throw new Error(`Agora initialize failed: ${initResult}`);
+          if (initResult !== 0 && initResult !== undefined) {
+            throw new Error(`Agora initialize failed code: ${initResult}`);
           }
 
           // 1. setChannelProfile TRƯỚC — audio/video modules phải biết profile trước khi enable
