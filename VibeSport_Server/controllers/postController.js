@@ -135,7 +135,7 @@ exports.createPost = async (req, res) => {
   }
 };
 
-// 2. Fetch list of posts (paginated, searchable)
+// 2. Fetch list of posts (paginated, searchable, tab filtering)
 exports.getPosts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -153,7 +153,27 @@ exports.getPosts = async (req, res) => {
     const filter = {};
     // Hide removed posts from public feed
     filter.status = { $ne: 'removed_by_admin' };
-    if (tag) {
+
+    // 🟢 THÊM CODE XỬ LÝ DÀNH CHO TAB "ĐANG FOLLOW" VÀ "ĐÃ FOLLOW"
+    if (tag === 'following' || tag === 'followed') {
+      const currentUserId = req.userId;
+      if (!currentUserId) {
+        return res.status(200).json({ success: true, data: [], page, limit });
+      }
+
+      let targetUserIds = [];
+      if (tag === 'following') {
+        // Lấy danh sách những người mà user hiện tại ĐANG FOLLOW
+        targetUserIds = await Follow.find({ followerId: currentUserId }).distinct('followingId');
+      } else if (tag === 'followed') {
+        // Lấy danh sách những người ĐÃ FOLLOW user hiện tại (Người theo dõi mình)
+        targetUserIds = await Follow.find({ followingId: currentUserId }).distinct('followerId');
+      }
+
+      filter.userId = { $in: targetUserIds };
+      filter.tags = { $ne: 'Tìm đội' };
+    } else if (tag) {
+      // Logic lọc theo Tag môn thể thao nguyên bản
       if (tag === 'Tìm đội') {
         filter.$or = [{ tags: tag }, { sportType: tag }];
       } else {
@@ -169,7 +189,7 @@ exports.getPosts = async (req, res) => {
       filter.userId = new mongoose.Types.ObjectId(userId);
     }
 
-    // Ưu tiên bài viết từ người đang follow
+    // Ưu tiên bài viết từ người đang follow (Bảo toàn nguyên bản)
     let followingIds = [];
     let sortStage = { createdAt: -1 };
     if (req.userId && !userId) {
@@ -179,7 +199,7 @@ exports.getPosts = async (req, res) => {
       }
     }
 
-    // Lấy danh sách FC mà user đang là thành viên để lọc bài viết của FC riêng tư
+    // Lấy danh sách FC mà user đang là thành viên để lọc bài viết của FC riêng tư (Bảo toàn nguyên bản)
     let memberFcIds = [];
     if (req.userId) {
       const memberFcs = await FC.find({ members: req.userId, isPrivate: true }).select('_id').lean();
@@ -225,7 +245,7 @@ exports.getPosts = async (req, res) => {
 
     const posts = await Post.aggregate(aggregatePipeline);
 
-    // Populate user info
+    // Populate user info (Bảo toàn nguyên bản)
     const populatedPosts = await Promise.all(
       posts.map(async (post) => {
         const user = await User.findById(post.userId).select('name picture favoriteSport').lean();
@@ -246,16 +266,14 @@ exports.getPosts = async (req, res) => {
   }
 };
 
-// ─── Hàm search với ưu tiên: tên người → tag → nội dung ──────────
+// ─── Hàm search với ưu tiên: tên người → tag → nội dung (Bảo toàn nguyên bản) ──────────
 async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, limit, skip }) {
   try {
     const keywordRegex = new RegExp(keyword, 'i');
 
-    // Tìm các userId có tên khớp keyword
     const matchingUsers = await User.find({ name: keywordRegex }).select('_id').lean();
     const matchingUserIds = matchingUsers.map(u => u._id);
 
-    // Điều kiện khớp: tên người HOẶC tag HOẶC sportType HOẶC nội dung
     const orConditions = [];
     if (matchingUserIds.length > 0) {
       orConditions.push({ userId: { $in: matchingUserIds } });
@@ -267,11 +285,8 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
     );
 
     const matchFilter = { $or: orConditions };
-
-    // Hide removed posts from public feed
     matchFilter.status = { $ne: 'removed_by_admin' };
 
-    // Thêm filter tag (bộ lọc môn) nếu có
     if (tag) {
       if (tag === 'Tìm đội') {
         matchFilter.$and = [
@@ -290,7 +305,6 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
       matchFilter.userId = new mongoose.Types.ObjectId(userId);
     }
 
-    // Score branches: tên người (30) > tag (20) > sportType (15) > nội dung (10)
     const scoreBranches = [];
     let followingIds = [];
     if (req.userId) {
@@ -311,7 +325,6 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
     }
     scoreBranches.push(
       {
-        // Tag array chứa ít nhất 1 phần tử khớp keyword
         case: {
           $gt: [
             {
@@ -340,7 +353,6 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
 
     const pipeline = [
       { $match: matchFilter },
-      // Gán điểm ưu tiên
       {
         $addFields: {
           _searchScore: {
@@ -348,11 +360,9 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
           },
         },
       },
-      // Sắp xếp: điểm cao nhất → mới nhất
       { $sort: { _searchScore: -1, createdAt: -1 } },
       { $skip: skip },
       { $limit: limit },
-      // Populate userId
       {
         $lookup: {
           from: 'users',
@@ -365,7 +375,6 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
       {
         $addFields: { userId: { $arrayElemAt: ['$_userArr', 0] } },
       },
-      // Populate fcId
       {
         $lookup: {
           from: 'fcs',
@@ -391,7 +400,7 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
   }
 }
 
-// ─── Helper: map interaction (liked, saved, topReactions) ────────
+// ─── Helper: map interaction (liked, saved, topReactions) (Bảo toàn nguyên bản) ────────
 async function mapPostInteractions(posts, currentUserId, followingIds = []) {
   return Promise.all(
     posts.map(async (post) => {
@@ -430,7 +439,7 @@ async function mapPostInteractions(posts, currentUserId, followingIds = []) {
   );
 }
 
-// 3. Fetch single post details with comments
+// 3. Fetch single post details with comments (Bảo toàn nguyên bản)
 exports.getPostById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -455,7 +464,6 @@ exports.getPostById = async (req, res) => {
       isFollowing = Boolean(await Follow.exists({ followerId: req.userId, followingId: post.userId }));
     }
 
-    // Get top 2 reactions
     const reactionsCount = await PostLike.aggregate([
       { $match: { postId: post._id } },
       { $group: { _id: '$reactionType', count: { $sum: 1 } } },
@@ -464,19 +472,16 @@ exports.getPostById = async (req, res) => {
     ]);
     const topReactions = reactionsCount.map(r => r._id);
 
-    // Fetch all comments for this post
     const allComments = await Comment.find({ postId: id })
       .populate('userId', 'name picture favoriteSport')
       .sort({ createdAt: 1 });
 
-    // Fetch the comments liked by the logged-in user
     let userLikedCommentIds = new Set();
     if (req.userId) {
       const likes = await CommentLike.find({ userId: req.userId });
       userLikedCommentIds = new Set(likes.map((l) => l.commentId.toString()));
     }
 
-    // Map comments to include isLiked flag
     const commentMap = {};
     const topLevelComments = [];
 
@@ -491,7 +496,6 @@ exports.getPostById = async (req, res) => {
       }
     });
 
-    // Populate replies
     allComments.forEach((comment) => {
       if (comment.parentId) {
         const parent = commentMap[comment.parentId.toString()];
@@ -503,7 +507,6 @@ exports.getPostById = async (req, res) => {
       }
     });
 
-    // Mark removed posts so the client can show a proper notice
     const isRemoved = post.status === 'removed_by_admin';
 
     res.status(200).json({
@@ -527,7 +530,7 @@ exports.getPostById = async (req, res) => {
   }
 };
 
-// 4. Toggle like on a post (Optimistic friendly)
+// 4. Toggle like on a post (Bảo toàn nguyên bản)
 exports.likePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -555,7 +558,6 @@ exports.likePost = async (req, res) => {
         liked = true;
       }
     } else {
-      // Chưa like thì tạo mới
       const newLike = new PostLike({ postId: id, userId, reactionType });
       await newLike.save();
       post.likesCount += 1;
@@ -564,7 +566,6 @@ exports.likePost = async (req, res) => {
 
     await post.save();
 
-    // Gửi thông báo đến chủ bài viết nếu có cảm xúc mới và không tự thả tim bài của mình
     if (liked && post.userId.toString() !== userId.toString()) {
       const sender = await User.findById(userId);
       const senderName = sender ? sender.name : 'Một thành viên';
@@ -582,7 +583,6 @@ exports.likePost = async (req, res) => {
       });
     }
 
-    // Get top 2 reactions
     const reactionsCount = await PostLike.aggregate([
       { $match: { postId: post._id } },
       { $group: { _id: '$reactionType', count: { $sum: 1 } } },
@@ -612,7 +612,7 @@ exports.likePost = async (req, res) => {
   }
 };
 
-// 4b. Unlike a post directly
+// 4b. Unlike a post directly (Bảo toàn nguyên bản)
 exports.unlikePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -630,7 +630,6 @@ exports.unlikePost = async (req, res) => {
       await post.save();
     }
 
-    // Get top 2 reactions
     const reactionsCount = await PostLike.aggregate([
       { $match: { postId: post._id } },
       { $group: { _id: '$reactionType', count: { $sum: 1 } } },
@@ -660,7 +659,7 @@ exports.unlikePost = async (req, res) => {
   }
 };
 
-// 4c. Get list of users who liked the post
+// 4c. Get list of users who liked the post (Bảo toàn nguyên bản)
 exports.getPostLikes = async (req, res) => {
   try {
     const { id } = req.params;
@@ -711,7 +710,7 @@ exports.getPostLikes = async (req, res) => {
   }
 };
 
-// 5. Add a comment to a post
+// 5. Add a comment to a post (Bảo toàn nguyên bản)
 exports.commentPost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -754,7 +753,6 @@ exports.commentPost = async (req, res) => {
       const parentComment = await Comment.findById(parentId).populate('userId', 'name');
       commentObj.replyToName = parentComment?.userId?.name || 'Thành viên';
 
-      // Gửi thông báo reply đến chủ comment cha (nếu không tự trả lời chính mình)
       if (parentComment && parentComment.userId && parentComment.userId._id.toString() !== req.userId.toString()) {
         await createAndSendNotification({
           userId: parentComment.userId._id,
@@ -767,7 +765,6 @@ exports.commentPost = async (req, res) => {
         });
       }
     } else {
-      // Gửi thông báo comment đến chủ bài viết (nếu không tự bình luận bài của mình)
       if (post.userId.toString() !== req.userId.toString()) {
         await createAndSendNotification({
           userId: post.userId,
@@ -800,7 +797,7 @@ exports.commentPost = async (req, res) => {
   }
 };
 
-// 6. Delete a post
+// 6. Delete a post (Bảo toàn nguyên bản)
 exports.deletePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -809,12 +806,10 @@ exports.deletePost = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
     }
 
-    // Only post owner can delete
     if (post.userId.toString() !== req.userId.toString()) {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền xóa bài viết này' });
     }
 
-    // Delete post and all associated comments and likes
     await Post.deleteOne({ _id: id });
     await Comment.deleteMany({ postId: id });
     await PostLike.deleteMany({ postId: id });
@@ -830,7 +825,7 @@ exports.deletePost = async (req, res) => {
   }
 };
 
-// 7. Update a post (owner only)
+// 7. Update a post (owner only) (Bảo toàn nguyên bản)
 exports.updatePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -839,7 +834,6 @@ exports.updatePost = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
     }
 
-    // Only post owner can update
     if (post.userId.toString() !== req.userId.toString()) {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền sửa bài viết này' });
     }
@@ -876,10 +870,8 @@ exports.updatePost = async (req, res) => {
       post.sportType = sportType || '';
     }
 
-    // keepMediaUrls: danh sách URL cũ mà client muốn giữ lại (các URL không có trong này sẽ bị xóa)
-    // Nếu không gửi keepMediaUrls → giữ nguyên toàn bộ ảnh cũ
     const { keepMediaUrls } = req.body;
-    let keptUrls = post.mediaUrls; // mặc định giữ nguyên
+    let keptUrls = post.mediaUrls;
     if (keepMediaUrls !== undefined) {
       const keepList = Array.isArray(keepMediaUrls)
         ? keepMediaUrls
@@ -906,7 +898,7 @@ exports.updatePost = async (req, res) => {
   }
 };
 
-// 8. Like / Unlike a comment
+// 8. Like / Unlike a comment (Bảo toàn nguyên bản)
 exports.likeComment = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -944,7 +936,7 @@ exports.likeComment = async (req, res) => {
   }
 };
 
-// 9. Report a post (user)
+// 9. Report a post (Bảo toàn nguyên bản)
 exports.reportPost = async (req, res) => {
   try {
     const { id: postId } = req.params;
@@ -960,12 +952,10 @@ exports.reportPost = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bài viết' });
     }
 
-    // Không cho report bài của chính mình
     if (post.userId.toString() === reporterId.toString()) {
       return res.status(400).json({ success: false, message: 'Bạn không thể báo cáo bài viết của chính mình' });
     }
 
-    // Unique index ngăn chặn report trùng — bắt lỗi MongoDB duplicate key
     try {
       await Report.create({ postId, reporterId, reason: reason.trim() });
     } catch (err) {
@@ -975,7 +965,6 @@ exports.reportPost = async (req, res) => {
       throw err;
     }
 
-    // Tăng reportCount trên Post (dùng shared helper)
     const updatedPost = await incrementReportCount(postId);
 
     res.status(201).json({

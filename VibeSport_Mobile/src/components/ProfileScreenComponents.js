@@ -29,6 +29,17 @@ import {
 } from '../theme';
 import { VibeReactionIcon, VIBE_REACTION } from './PostReactions';
 
+export const SPORTS = [
+  { key: 'Bóng đá', label: 'Bóng đá' },
+  { key: 'Cầu lông', label: 'Cầu lông' },
+  { key: 'Pickleball', label: 'Pickleball' },
+];
+
+export const POSITION_OPTIONS = {
+  'Bóng đá': ['Tiền đạo', 'Tiền vệ', 'Hậu vệ', 'Thủ môn'],
+  'Cầu lông': ['Đơn', 'Đôi', 'Đôi nam', 'Đôi nữ'],
+  Pickleball: ['Forehand', 'Backhand', 'Đôi'],
+};
 const HEADER_HEIGHT = Platform.OS === 'ios'
   ? spacing['4xl'] - spacing.xs
   : spacing['4xl'] + spacing.sm;
@@ -47,7 +58,6 @@ function withOpacity(hexColor, opacity) {
   const b = intValue & 255;
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
-
 
 export function fixMediaUrl(url) {
   if (!url) return url;
@@ -80,7 +90,6 @@ function formatTeamPeriod(team) {
   const left = `${String(leftDate.getMonth() + 1).padStart(2, '0')}/${leftDate.getFullYear()}`;
   return `Tham gia từ ${joined} - ${left}`;
 }
-
 
 export function HeaderIconButton({ children, onPress }) {
   return (
@@ -214,7 +223,7 @@ function formatTimeShort48h(dateString) {
   return null;
 }
 
-export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, isSelf = false, onOpenFollowList }) {
+export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, isSelf = false, onOpenFollowList, onPickAvatar, onOpenRatings }) {
   const displayName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
   const rawBio = profile?.bio;
   const bio = rawBio && rawBio.length > 60 ? `${rawBio.slice(0, 60)}...` : rawBio;
@@ -256,10 +265,14 @@ export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, isSe
             ) : null}
           </View>
 
-          <View style={styles.avatarRatingBadge}>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={onOpenRatings}
+            style={styles.avatarRatingBadge}
+          >
             <Text style={styles.avatarRatingText}>{ratingDisplay}</Text>
             <Ionicons name="star" size={11} color="#F59E0B" />
-          </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.profileRightContent}>
@@ -670,4 +683,3 @@ export function ProfileTabBar({ activeTab, onSelectTab, includeSaved = true }) {
     </View>
   );
 }
-

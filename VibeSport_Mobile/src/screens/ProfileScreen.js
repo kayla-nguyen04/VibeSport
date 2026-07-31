@@ -22,6 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ReportModal } from '../components/ReportModal';
+import { RatingsListModal } from '../components/RatingsListModal';
 import { fetchUnreadCount } from '../redux/notificationSlice';
 import { getUserProfileRequest } from '../services/userApi';
 import { deletePost, fetchPosts, fetchSavedPosts, likePost, savePost, unlikePost, unsavePost } from '../redux/postSlice';
@@ -107,7 +108,7 @@ function canNavigateToRoute(navigation, routeName) {
   return false;
 }
 
-export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCreateMatch, user }) {
+export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
   const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
   const unreadCount = useSelector((state) => state.notifications.unreadCount);
@@ -138,6 +139,9 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
       }
     }
   };
+
+  // State điều khiển Modal xem danh sách Đánh giá
+  const [showRatingsModal, setShowRatingsModal] = useState(false);
 
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
@@ -636,7 +640,13 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
               if (h > 0) setHeaderHeight(h);
             }}
           >
-            <ProfileHeaderCard profile={displayProfile} isSelf={true} onOpenFollowList={openFollowList} onPickAvatar={handlePickAvatar} />
+            <ProfileHeaderCard
+              profile={displayProfile}
+              isSelf={true}
+              onOpenFollowList={openFollowList}
+              onPickAvatar={handlePickAvatar}
+              onOpenRatings={() => setShowRatingsModal(true)}
+            />
           </View>
 
           {/* Child 1: Thanh Tab Bar Sticky cố định khi cuộn */}
@@ -741,6 +751,14 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, onOpenCre
           </View>
         </ScrollView>
       )}
+
+      {/* Modal hiển thị danh sách đánh giá */}
+      <RatingsListModal
+        visible={showRatingsModal}
+        onClose={() => setShowRatingsModal(false)}
+        userId={userId}
+        token={token}
+      />
 
       <ProfileOptionsSheet
         visible={isOptionsSheetVisible}

@@ -99,13 +99,10 @@ export default function PostDetailScreen({ route, navigation }) {
   const currentUser = useSelector((state) => state.auth.user);
   const token = useSelector((state) => state.auth.token);
 
-  // ── Navigate to a user's profile ─────────────────────────────────────────
-  // Nếu là chính mình → tab Profile của app; nếu người khác → UserProfileScreen
   const navigateToProfile = (userId) => {
     if (!userId) return;
     const myId = currentUser?._id || currentUser?.id;
     if (userId === myId) {
-      // Chuyển về tab Profile của bản thân
       navigation.navigate('Home', { screen: 'ProfileTab' });
     } else {
       navigation.navigate('UserProfile', { userId, initialProfile: post?.userId });
@@ -129,13 +126,58 @@ export default function PostDetailScreen({ route, navigation }) {
   const [likesLoading, setLikesLoading] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
-  const toggleShowReplies = (commentId) => {
-    if (!post) return;
-    if (post.isLiked) {
-      handleUnlikePost();
-      return;
+  const fetchPostDetail = useCallback(async () => {
+    if (!postId) return;
+    try {
+      setLoading(true);
+      const res = await getPostByIdRequest(postId, token);
+      const fetchedPost = res?.post || res?.data || res;
+      if (fetchedPost) {
+        setPost(fetchedPost);
+        if (fetchedPost.comments) {
+          setComments(fetchedPost.comments);
+        }
+      }
+    } catch (err) {
+      console.warn('[PostDetailScreen] Fetch error:', err);
+    } finally {
+      setLoading(false);
     }
-    handleReactToPost('vibe');
+  }, [postId, token]);
+
+  useEffect(() => {
+    if (!initialPost || !initialPost.comments) {
+      fetchPostDetail();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchPostDetail, initialPost]);
+
+  const toggleShowReplies = (commentId) => {
+    setShowReplies((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
+  };
+
+  const handleLikePost = async () => {
+    if (!post) return;
+    try {
+      if (post.isLiked) {
+        dispatch(unlikePostInFeed(post._id));
+        setPost((prev) => ({
+          ...prev,
+          isLiked: false,
+          likesCount: Math.max(0, (prev.likesCount || 0) - 1),
+        }));
+      } else {
+        dispatch(likePostInFeed(post._id));
+        setPost((prev) => ({
+          ...prev,
+          isLiked: true,
+          likesCount: (prev.likesCount || 0) + 1,
+        }));
+      }
+    } catch (err) {
+      console.warn('Like error:', err);
+    }
   };
 
   const handleOpenLikes = async () => {
@@ -161,7 +203,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
     const previousPost = post;
     const shouldSave = !post.isSaved;
-    setPost((prev) => prev ? ({ ...prev, isSaved: shouldSave }) : prev);
+    setPost((prev) => (prev ? { ...prev, isSaved: shouldSave } : prev));
 
     try {
       if (shouldSave) {

@@ -12,11 +12,11 @@ import {
   Platform,
   Modal,
   TextInput,
-  Pressable,
   KeyboardAvoidingView,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { submitMatchRatings } from "../services/ratingApi";
 import {
   getMatchById,
   deleteMatch,
@@ -47,7 +47,7 @@ const ORANGE = primary.DEFAULT; // '#FF6B3D'
 const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
 const AVATAR_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FB8C00", "#8E24AA", "#00ACC1"];
 
-// ─── Football position definitions (mirrored from CreateMatchScreen) ────────
+// ─── Football position definitions ────────
 const TEAM1_POSITIONS = [
   { id: "t1_gk",  label: "Thủ môn", role: "goalkeeper" },
   { id: "t1_lb",  label: "Hậu vệ",  role: "defender" },
@@ -123,31 +123,12 @@ const getFormatLabel = (sport, maxPlayers) => {
   return RACKET_FORMATS[maxPlayers]?.label || "";
 };
 
-const getFootballFormatLabel = (maxPlayers) => {
-  if (!maxPlayers) return "";
-  const fmt = FOOTBALL_FORMATS[maxPlayers];
-  return fmt ? fmt.label : "";
-};
-
-const getFootballPlayerCountPerTeam = (maxPlayers) => {
-  if (!maxPlayers) return null;
-  const fmt = FOOTBALL_FORMATS[maxPlayers];
-  return fmt ? fmt.playerCountPerTeam : null;
-};
-
 const ROLE_LABELS = {
   goalkeeper: "Thủ môn",
   defender: "Hậu vệ",
   midfielder: "Tiền vệ",
   striker: "Tiền đạo",
   bench: "Dự bị",
-};
-
-const ROLE_TAG_COLORS = {
-  goalkeeper: { bg: "#dcfce7", text: "#166534" },
-  defender:   { bg: "#dbeafe", text: "#1e40af" },
-  midfielder: { bg: "#fef9c3", text: "#854d0e" },
-  striker:    { bg: "#fee2e2", text: "#991b1b" },
 };
 
 const getInitials = (name) => {
@@ -212,7 +193,6 @@ const getDayLabel = (dateStr) => {
 };
 
 const normalizeId = (id) => (id == null ? "" : String(id));
-
 const getUserId = (user) => normalizeId(typeof user === "object" ? user?._id || user?.id : user);
 
 function UserRow({ user, label, badge, onPress, rightAction, isMe, showTeammatesIcon }) {
@@ -308,6 +288,12 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [selectedPositions, setSelectedPositions] = useState([]);
   const [joinSelectedPositions, setJoinSelectedPositions] = useState([]);
 
+  // State đánh giá cá nhân từng người
+  const [singleRatingTarget, setSingleRatingTarget] = useState(null); // { id, name }
+  const [singleStars, setSingleStars] = useState(5);
+  const [singleComment, setSingleComment] = useState("");
+  const [submittingRating, setSubmittingRating] = useState(false);
+
   // Invite & Kick modals
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [followingUsers, setFollowingUsers] = useState([]);
@@ -331,12 +317,10 @@ export default function MatchDetailScreen({ navigation, route }) {
     });
   };
 
-  // Extract position data safely (before early return so useMemo is always called)
   const selectedPositionIds = match?.selectedPositionIds || [];
   const benchTeam1 = match?.benchMembersTeam1 || 0;
   const benchTeam2 = match?.benchMembersTeam2 || 0;
 
-  // Calculate team-based position breakdown (must be before early return)
   const teamBreakdown = useMemo(() => {
     const team1Ids = selectedPositionIds.filter((id) => id.startsWith("t1_"));
     const team2Ids = selectedPositionIds.filter((id) => id.startsWith("t2_"));
@@ -441,7 +425,6 @@ export default function MatchDetailScreen({ navigation, route }) {
 
     const handleMatchUpdated = (data) => {
       if (data && String(data.matchId) === String(matchId)) {
-        console.log('[SOCKET] Match updated real-time:', matchId);
         if (data.isDeleted) {
           Alert.alert("Thông báo", "Trận đấu này đã bị hủy hoặc xóa.");
           navigation.goBack();
@@ -452,7 +435,6 @@ export default function MatchDetailScreen({ navigation, route }) {
     };
 
     socket.on('match_updated', handleMatchUpdated);
-
     return () => {
       socket.off('match_updated', handleMatchUpdated);
     };
@@ -474,7 +456,6 @@ export default function MatchDetailScreen({ navigation, route }) {
   }).length;
   const pendingRequests = match?.pendingJoinRequests || [];
 
-  // Merge creator into participant list (always show first)
   const allParticipants = useMemo(() => {
     if (!creator) return participants;
     const creatorInList = participants.some(p => getUserId(p) === creatorId);
@@ -484,12 +465,10 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   const getParticipantPositionLabel = (pid) => {
     const pStr = String(pid);
-
     if (pStr === String(creatorId) || pStr === String(ownerId)) {
       return "Người tạo trận";
     }
 
-    // 1. Check memberPositions for assigned/saved playing position
     const memberPosEntry = (match?.memberPositions || []).find(
       (m) => getUserId(m.userId) === pStr
     );
@@ -498,7 +477,6 @@ export default function MatchDetailScreen({ navigation, route }) {
       if (label) return label;
     }
 
-    // 2. Check pendingJoinRequestPositions for positions selected when applying
     const pendingPosEntry = (match?.pendingJoinRequestPositions || []).find(
       (entry) => getUserId(entry.userId) === pStr
     );
@@ -511,7 +489,6 @@ export default function MatchDetailScreen({ navigation, route }) {
       }
     }
 
-    // 3. Smart resolution for football matches: Assign from match's selectedPositionIds or default formation by index
     if (match?.sport === "football" || !match?.sport) {
       const nonOwnerParticipants = (match?.participants || []).filter((p) => {
         const id = getUserId(p);
@@ -586,14 +563,15 @@ export default function MatchDetailScreen({ navigation, route }) {
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
   const displayTotalNeeded = totalNeeded > 0 ? totalNeeded : maxCount;
+  const isFull = match?.status === "full" || currentCount >= displayTotalNeeded;
+  const isEnded = match?.status === "completed" || match?.status === "cancelled" || match?.teamStatus === "ended";
+
   const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isInvited && !isEnded && !isFull;
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
     return Array.isArray(entry?.positionIds) ? entry.positionIds : [];
   };
-  const isFull = match?.status === "full" || currentCount >= displayTotalNeeded;
-  const isEnded = match?.status === "completed" || match?.status === "cancelled";
 
   useEffect(() => {
     if (isOwner && pendingRequests.length > 0) {
@@ -771,7 +749,6 @@ export default function MatchDetailScreen({ navigation, route }) {
       { text: "Hủy", style: "cancel" },
       {
         text: "Đồng ý",
-
         onPress: async () => {
           try {
             setActionLoading(true);
@@ -856,14 +833,12 @@ export default function MatchDetailScreen({ navigation, route }) {
     );
   };
 
-  // ─── Owner: Invite from following list ───────────────────────
   const handleOpenInvite = async () => {
     try {
       setInviteLoading(true);
       setShowInviteModal(true);
       const res = await getFollowingListRequest(token);
       const list = res?.data || [];
-      // Filter out users already participating, requested, or invited
       const participantIds = participants.map((p) => getUserId(p));
       const pendingIds = pendingRequests.map((p) => getUserId(p));
       const invitedIds = (match.invitedMembers || []).map((p) => getUserId(p));
@@ -912,33 +887,6 @@ export default function MatchDetailScreen({ navigation, route }) {
     ]);
   };
 
-  const handleAcceptInvite = async () => {
-    try {
-      setActionLoading(true);
-      const data = await acceptTeamInvite(match._id, userId);
-      setMatch(data);
-      Alert.alert("Thành công", "Bạn đã tham gia đội này.");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể chấp nhận lời mời");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRejectInvite = async () => {
-    try {
-      setActionLoading(true);
-      const data = await rejectTeamInvite(match._id, userId);
-      setMatch(data);
-      Alert.alert("Đã từ chối", "Bạn đã từ chối lời mời tham gia đội.");
-    } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể từ chối lời mời");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // ─── Owner: Kick participant ─────────────────────────────────
   const handleOpenKick = (participant) => {
     setKickTarget(participant);
     setKickReason("");
@@ -971,6 +919,38 @@ export default function MatchDetailScreen({ navigation, route }) {
     ]);
   };
 
+  // Mở Popup Đánh giá cho 1 cá nhân
+  const handleOpenSingleRating = (targetUser) => {
+    const targetId = getUserId(targetUser);
+    const targetName = targetUser?.name || "Người chơi";
+    setSingleRatingTarget({ id: targetId, name: targetName });
+    setSingleStars(5);
+    setSingleComment("");
+  };
+
+  // Gửi Đánh giá cho 1 cá nhân
+  const handleSubmitSingleRating = async () => {
+    if (!singleRatingTarget) return;
+    try {
+      setSubmittingRating(true);
+      const ratingsArray = [
+        {
+          toUserId: singleRatingTarget.id,
+          stars: singleStars,
+          comment: singleComment.trim(),
+        },
+      ];
+
+      await submitMatchRatings(match._id, ratingsArray, token);
+      Alert.alert("Thành công", `Đã gửi đánh giá cho ${singleRatingTarget.name}!`);
+      setSingleRatingTarget(null);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể gửi đánh giá.");
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
+
   const content = loading || !match ? (
     <Screen style={styles.safeArea}>
       <View style={styles.centered}>
@@ -985,24 +965,21 @@ export default function MatchDetailScreen({ navigation, route }) {
         
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           {isOwner && match.status !== "completed" && (
-            <>
-              <TouchableOpacity
-                style={[styles.joinHeaderBtn, { width: 110 }]}
-                onPress={() => setShowRequestModal(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.joinHeaderBtnText}>Yêu cầu</Text>
-                {pendingRequests.length > 0 && <View style={styles.redDot} />}
-              </TouchableOpacity>
-            
-            </>
+            <TouchableOpacity
+              style={[styles.joinHeaderBtn, { width: 110 }]}
+              onPress={() => setShowRequestModal(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.joinHeaderBtnText}>Yêu cầu</Text>
+              {pendingRequests.length > 0 && <View style={styles.redDot} />}
+            </TouchableOpacity>
           )}
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
-          {/* Match Status Bar */}
+          {/* Status bar */}
           {(() => {
             const statusInfo = getMatchStatusInfo(match);
             return (
@@ -1026,11 +1003,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               activeOpacity={0.7}
               onPress={() => setShowDetailsCollapsed((prev) => !prev)}
             >
-              <Ionicons
-                name={showDetailsCollapsed ? "chevron-down" : "chevron-up"}
-                size={20}
-                color="#666"
-              />
+              <Ionicons name={showDetailsCollapsed ? "chevron-down" : "chevron-up"} size={20} color="#666" />
             </TouchableOpacity>
           </View>
 
@@ -1067,12 +1040,9 @@ export default function MatchDetailScreen({ navigation, route }) {
                     <Text style={styles.infoText} numberOfLines={3}>Địa chỉ chi tiết: {match.specificAddress}</Text>
                   </View>
                 ) : null}
-
-            
-               
               </View>
 
-              {/* Flexible Centered Badges (Identical to TeamsScreen) */}
+              {/* Flexible Centered Badges */}
               {(() => {
                 const totalHoursVal = match.totalHours || 1;
                 const totalCostVal = match.totalCourtCost || (match.costPerPerson * totalHoursVal);
@@ -1080,21 +1050,17 @@ export default function MatchDetailScreen({ navigation, route }) {
 
                 return (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6, marginVertical: 12 }}>
-            
-                    {/* Giá 1 người */}
-                    <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center",marginRight:"5" }}>
+                    <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center", marginRight: 5 }}>
                       <Ionicons name="cash-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
                       <Text style={{ fontSize: 14, color: "#059669", fontWeight: "700" }}>{formatCost(costPerPlayerVal)}</Text>
                     </View>
 
-                    {/* Số người đã tìm/tuyển */}
                     <View style={{ backgroundColor: "#FFF7ED", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FFD8A8", flexDirection: "row", alignItems: "center" }}>
                       <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginRight: 4 }} />
                       <Text style={{ fontSize: 14, color: "#C2410C", fontWeight: "700" }}>Đã tìm: {currentCount}/{displayTotalNeeded}</Text>
                     </View>
 
-                    {/* Tiền dịch vụ ước tính */}
-                    <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:"15" }}>
+                    <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight: 15 }}>
                       <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
                       <Text style={{ fontSize: 14, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ≈ {formatCost(match.serviceCost || 31250)}</Text>
                     </View>
@@ -1120,11 +1086,9 @@ export default function MatchDetailScreen({ navigation, route }) {
                   <Ionicons name="location-outline" size={16} color="#333" style={{ marginRight: 8 }} />
                   <Text style={styles.locationInfoText} numberOfLines={2}>{match.locationName}</Text>
                 </View>
-                {(Boolean(match.specificAddress) || Boolean(match.locationName) || (coords?.lat != null && coords?.lng != null)) && (
-                  <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
-                    <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity style={styles.viewLocationBtn} onPress={handleOpenMap} activeOpacity={0.7}>
+                  <Text style={styles.viewLocationBtnText}>Xem vị trí</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Court Details Button */}
@@ -1145,9 +1109,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                 activeOpacity={0.8}
               >
                 <Ionicons name="information-circle" size={18} color="#2563EB" />
-                <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>
-                  Chi tiết sân 
-                </Text>
+                <Text style={{ color: "#2563EB", fontWeight: "700", fontSize: 13 }}>Chi tiết sân</Text>
               </TouchableOpacity>
 
               {/* Contact organizer block */}
@@ -1268,9 +1230,8 @@ export default function MatchDetailScreen({ navigation, route }) {
           )}
         </View>
 
-        {/* Creator is shown in participant list below with badge */}
-
-        
+        {/* Danh sách tham gia & Nút Đánh giá ⭐ nằm ngang hàng ở bên phải cho từng người chơi */}
+        <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
           </View>
@@ -1281,6 +1242,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               const pid = getUserId(p);
               const isCreatorParticipant = pid === creatorId;
               const isMe = String(pid) === String(userId);
+
               return (
                 <UserRow
                   key={pid || idx}
@@ -1289,12 +1251,45 @@ export default function MatchDetailScreen({ navigation, route }) {
                   isMe={isMe}
                   showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
+                  rightAction={
+                    // CHUẨN THIẾT KẾ: Nút Đánh giá ⭐ nằm ngang hàng ở góc phải khi trận đấu đã kết thúc
+                    isEnded && !isMe ? (
+                      <TouchableOpacity
+                        style={{
+                          backgroundColor: "#FFF7ED",
+                          borderWidth: 1,
+                          borderColor: "#FFD8A8",
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 20,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                        onPress={() => handleOpenSingleRating(p)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="star" size={14} color="#F59E0B" />
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#C2410C" }}>
+                          Đánh giá
+                        </Text>
+                      </TouchableOpacity>
+                    ) : isOwner && !isCreatorParticipant && !isEnded ? (
+                      <TouchableOpacity
+                        style={styles.kickSmallBtn}
+                        onPress={() => handleOpenKick(p)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.kickSmallBtnText}>Kích</Text>
+                      </TouchableOpacity>
+                    ) : null
+                  }
                 />
               );
             })
           )}
 
-          {/* Nút Mời thêm bạn bè tham gia (Hiển thị phía dưới Danh sách tham gia) */}
+          {/* Nút Mời thêm bạn bè */}
           {isOwner && (
             <TouchableOpacity
               style={{
@@ -1321,50 +1316,7 @@ export default function MatchDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
 
-          {/* Nhóm chat gắn với trận đấu */}
-          {match.chatGroupId ? (
-            <View style={{
-              marginTop: 12,
-              marginBottom: 8,
-              padding: 14,
-              backgroundColor: "#EFF6FF",
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: "#BFDBFE",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="chatbubbles" size={22} color="#fff" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14.5, fontWeight: "700", color: "#1E3A8A" }} numberOfLines={1}>
-                    {match.chatGroupId.name || "Nhóm chat trận đấu"}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: "#3B82F6", marginTop: 2 }}>
-                    {isUserParticipant(match) ? "Tự động thêm khi tham gia trận" : "Chỉ thành viên trận mới có thể vào nhóm"}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={{ backgroundColor: "#2563EB", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
-                onPress={() => {
-                  const convId = match.chatGroupId._id || match.chatGroupId;
-                  navigation.navigate("ChatDetail", {
-                    conversationId: convId,
-                    isGroup: true,
-                    peer: { name: match.chatGroupId.name || "Nhóm chat trận đấu" },
-                  });
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12.5 }}>Vào nhóm</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-
+          {/* NÚT THAM GIA HOẶC HỦY YÊU CẦU CHO NGƯỜI CHƠI KHÁC */}
           {canJoinMatch && (
             <TouchableOpacity
               style={styles.joinBottomBtn}
@@ -1372,7 +1324,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               disabled={actionLoading}
               activeOpacity={0.8}
             >
-              <Text style={styles.joinBottomBtnText}>Tham gia</Text>
+              <Text style={styles.joinBottomBtnText}>Tham gia trận đấu</Text>
             </TouchableOpacity>
           )}
 
@@ -1396,45 +1348,215 @@ export default function MatchDetailScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
           )}
+        </View>
 
-          {/* Owner Match Status Control Buttons */}
-          {isOwner && (
-            <View style={styles.ownerMatchStatusContainer}>
-              {match.teamStatus === "ongoing" ? (
+        {/* Nhóm chat gắn với trận đấu */}
+        {match.chatGroupId ? (
+          <View style={{
+            marginTop: 12,
+            marginBottom: 8,
+            padding: 14,
+            backgroundColor: "#EFF6FF",
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "#BFDBFE",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="chatbubbles" size={22} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14.5, fontWeight: "700", color: "#1E3A8A" }} numberOfLines={1}>
+                  {match.chatGroupId.name || "Nhóm chat trận đấu"}
+                </Text>
+                <Text style={{ fontSize: 12, color: "#3B82F6", marginTop: 2 }}>
+                  {isUserParticipant(match) ? "Tự động thêm khi tham gia trận" : "Chỉ thành viên trận mới có thể vào nhóm"}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={{ backgroundColor: "#2563EB", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}
+              onPress={() => {
+                const convId = match.chatGroupId._id || match.chatGroupId;
+                navigation.navigate("ChatDetail", {
+                  conversationId: convId,
+                  isGroup: true,
+                  peer: { name: match.chatGroupId.name || "Nhóm chat trận đấu" },
+                });
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12.5 }}>Vào nhóm</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* BẮT ĐẦU / KẾT THÚC TRẬN CỦA CHỦ TRẬN */}
+        {isOwner && (
+          <View style={styles.ownerMatchStatusContainer}>
+            {match.teamStatus === "ongoing" ? (
+              <TouchableOpacity
+                style={[styles.statusControlBtn, styles.statusControlEndBtn]}
+                onPress={handleEndMatch}
+                disabled={actionLoading}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="stop-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.statusControlBtnText}>Kết thúc trận đấu</Text>
+              </TouchableOpacity>
+            ) : match.teamStatus === "ended" || match.status === "completed" ? (
+              <View style={[styles.statusControlBtn, styles.statusControlEndedBadge]}>
+                <Ionicons name="flag-outline" size={20} color="#6B7280" style={{ marginRight: 8 }} />
+                <Text style={[styles.statusControlBtnText, { color: "#4B5563" }]}>Trận đấu đã kết thúc</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.statusControlBtn, styles.statusControlStartBtn]}
+                onPress={handleStartMatch}
+                disabled={actionLoading}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="play-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.statusControlBtnText}>Bắt đầu trận đấu</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* POPUP MODAL ĐÁNH GIÁ CÁ NHÂN TỪNG NGƯỜI CHƠI */}
+        <Modal visible={!!singleRatingTarget} transparent animationType="fade">
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+            <View style={{ width: "100%", backgroundColor: "#FFF", borderRadius: 16, padding: 20 }}>
+              <Text style={{ fontSize: 17, fontWeight: "800", color: "#111", textAlign: "center", marginBottom: 4 }}>
+                Đánh giá người chơi
+              </Text>
+              <Text style={{ fontSize: 14, color: "#666", textAlign: "center", marginBottom: 16 }}>
+                Chấm điểm cho <Text style={{ fontWeight: "700", color: "#111" }}>{singleRatingTarget?.name}</Text>
+              </Text>
+
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 10, marginBottom: 16 }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity key={star} onPress={() => setSingleStars(star)}>
+                    <Ionicons
+                      name={star <= singleStars ? "star" : "star-outline"}
+                      size={32}
+                      color="#F59E0B"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput
+                style={{
+                  backgroundColor: "#F9FAFB",
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 10,
+                  padding: 12,
+                  fontSize: 13,
+                  marginBottom: 20,
+                  height: 70,
+                  textAlignVertical: "top",
+                }}
+                placeholder="Nhập lời nhận xét (Vd: Đá nhiệt tình, giao lưu vui vẻ...)"
+                value={singleComment}
+                onChangeText={setSingleComment}
+                multiline
+              />
+
+              <View style={{ flexDirection: "row", gap: 12 }}>
                 <TouchableOpacity
-                  style={[styles.statusControlBtn, styles.statusControlEndBtn]}
-                  onPress={handleEndMatch}
-                  disabled={actionLoading}
-                  activeOpacity={0.8}
+                  style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center" }}
+                  onPress={() => setSingleRatingTarget(null)}
                 >
-                  <Ionicons name="stop-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.statusControlBtnText}>Kết thúc trận đấu</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#666" }}>Hủy</Text>
                 </TouchableOpacity>
-              ) : match.teamStatus === "ended" || match.status === "completed" ? (
-                <View style={[styles.statusControlBtn, styles.statusControlEndedBadge]}>
-                  <Ionicons name="flag-outline" size={20} color="#6B7280" style={{ marginRight: 8 }} />
-                  <Text style={[styles.statusControlBtnText, { color: "#4B5563" }]}>Trận đấu đã kết thúc</Text>
+                <TouchableOpacity
+                  style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: ORANGE, alignItems: "center" }}
+                  onPress={handleSubmitSingleRating}
+                  disabled={submittingRating}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#FFF" }}>
+                    {submittingRating ? "Đang gửi..." : "Gửi đánh giá"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* MODAL MỜI BẠN BÈ */}
+        <Modal visible={showInviteModal} animationType="slide">
+          <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+            <ScreenHeader style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
+              <TouchableOpacity style={styles.backButton} onPress={() => setShowInviteModal(false)}>
+                <Text style={styles.backArrow}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
+              <View style={styles.headerSpacer} />
+            </ScreenHeader>
+
+            <View style={{ flex: 1, paddingHorizontal: 16 }}>
+              <View style={styles.copyLinkBox}>
+                <Text style={styles.copyLinkLabel}>Link: <Text style={styles.copyLinkValue}>{match._id}</Text></Text>
+                <TouchableOpacity style={styles.copyLinkBtn} onPress={() => Alert.alert("Đã sao chép link")}>
+                  <Text style={styles.copyLinkBtnText}>Sao chép link</Text>
+                </TouchableOpacity>
+              </View>
+
+              {inviteLoading ? (
+                <View style={styles.centered}>
+                  <ActivityIndicator size="large" color={ORANGE} />
+                </View>
+              ) : followingUsers.length === 0 ? (
+                <View style={styles.centered}>
+                  <Text style={styles.emptyInviteText}>Không có người dùng nào để mời</Text>
+                  <Text style={styles.emptyInviteSub}>Bạn chưa follow ai hoặc tất cả đã tham gia</Text>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={[styles.statusControlBtn, styles.statusControlStartBtn]}
-                  onPress={handleStartMatch}
-                  disabled={actionLoading}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="play-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.statusControlBtnText}>Bắt đầu trận đấu</Text>
-                </TouchableOpacity>
+                <FlatList
+                  data={followingUsers}
+                  keyExtractor={(item) => String(item._id || item.id)}
+                  contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
+                  renderItem={({ item }) => {
+                    const uName = item.name || "Người dùng";
+                    const isInvited = Boolean(item.isInvited);
+                    return (
+                      <View style={styles.inviteUserCard}>
+                        <View style={[styles.userAvatar, { backgroundColor: "#ef4444" }]}>
+                          <Text style={styles.userInitials}>{getInitials(uName)}</Text>
+                        </View>
+                        <View style={styles.inviteUserInfo}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={styles.inviteUserName}>{uName}</Text>
+                            <Ionicons name="people-outline" size={14} color={ORANGE} />
+                          </View>
+                          <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.inviteActionBtn, isInvited && styles.inviteActionBtnDisabled]}
+                          onPress={() => handleInviteUser(String(item._id || item.id))}
+                          disabled={actionLoading || isInvited}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.inviteActionBtnText}>{isInvited ? "Đã mời" : "Mời"}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  }}
+                />
               )}
             </View>
-          )}
-      
+          </Screen>
+        </Modal>
 
-        
-
+        {/* MODAL DUYỆT YÊU CẦU THAM GIA */}
         <Modal visible={showRequestModal} animationType="slide">
-          <Screen style={styles.safeArea}>
-            <View style={styles.header}>
+          <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+            <View style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
               <BackButton onPress={() => setShowRequestModal(false)} style={styles.backButton} />
               <Text style={styles.headerTitle}>Yêu cầu tham gia</Text>
               <View style={styles.headerSpacer} />
@@ -1502,10 +1624,6 @@ export default function MatchDetailScreen({ navigation, route }) {
             </ScrollView>
           </Screen>
         </Modal>
-
-        
-
-        {/* Position Selection Modal */}
         <Modal
           visible={showPositionModal}
           transparent={false}
@@ -1576,13 +1694,11 @@ export default function MatchDetailScreen({ navigation, route }) {
 
         
 
-      </ScrollView>
-
       {/* ─── Invite Modal (from following list) ─── */}
       {/* ─── Invite Modal ─── */}
       <Modal visible={showInviteModal} animationType="slide">
-        <Screen style={styles.safeArea}>
-          <ScreenHeader style={styles.header}>
+        <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+          <ScreenHeader style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
             <BackButton onPress={() => setShowInviteModal(false)} style={styles.backButton} />
             <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
             <View style={styles.headerSpacer} />
@@ -1725,6 +1841,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         }
         onClose={() => setShowCourtDetailModal(false)}
       />
+      </ScrollView>
     </Screen>
   );
 
@@ -1787,7 +1904,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fa0414",
     borderWidth: 1,
     borderColor: "#fa0414",
-
   },
   joinBottomBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   redDot: {
@@ -1822,7 +1938,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // sportIcon removed – now renders TagIcon directly
   titleBlock: { flex: 1, marginLeft: 12 },
   title: { fontSize: 18, fontWeight: "800", color: "#111" },
   timeAgoText: { fontSize: 12, color: "#888", marginTop: 4 },
@@ -1841,15 +1956,8 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 14,
   },
-  gridColumn: {
-    flex: 1,
-  },
-  gridLabel: {
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "600",
-    marginBottom: 6,
-  },
+  gridColumn: { flex: 1 },
+  gridLabel: { fontSize: 12, color: "#666", fontWeight: "600", marginBottom: 6 },
   gridBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -1862,11 +1970,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 6,
   },
-  gridValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#333",
-  },
+  gridValue: { fontSize: 13, fontWeight: "700", color: "#333" },
   locationRowContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1876,24 +1980,8 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#f0f0f0",
   },
-  locationInfoCol: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  locationInfoText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#333",
-    fontWeight: "600",
-  },
-  costLabel: { fontSize: 13, color: "#856404", fontWeight: "600" },
-  costValue: { fontSize: 15, color: "#856404", fontWeight: "800" },
-  infoSection: { marginTop: 16, gap: 12 },
-  infoRow: { flexDirection: "row", alignItems: "center" },
-  infoIcon: { width: 28, alignItems: 'center', justifyContent: 'center' },
-  infoText: { flex: 1, fontSize: 14, color: "#333", fontWeight: "500", lineHeight: 20 },
-  infoTextMuted: { flex: 1, fontSize: 13, color: "#888", lineHeight: 20 },
+  locationInfoCol: { flex: 1, flexDirection: "row", alignItems: "center" },
+  locationInfoText: { flex: 1, fontSize: 13, color: "#333", fontWeight: "600" },
   viewLocationBtn: {
     backgroundColor: ORANGE,
     paddingHorizontal: 16,
@@ -1903,107 +1991,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   viewLocationBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  pendingContainer: {
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  cancelBtn: {
-    marginTop: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#ffdddd',
-    borderRadius: 6,
-  },
-  cancelBtnText: {
-    color: '#b91c1c',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  invitedContainer: {
-    alignItems: 'center',
-    marginBottom: 8,
-    padding: 12,
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  invitedBadgeText: {
-    color: '#1e40af',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  invitedActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  acceptInviteBtn: {
-    backgroundColor: ORANGE,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-  },
-  acceptInviteBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  rejectInviteBtn: {
-    backgroundColor: '#e2e8f0',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-  },
-  rejectInviteBtnText: {
-    color: '#475569',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  disabledBtn: {
-    opacity: 0.5,
-  },
-  teamBlock: {
-    marginBottom: 14,
-    paddingLeft: 4,
-  },
-  teamLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  teamDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  teamLabel: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#222",
-    flex: 1,
-  },
-  teamCount: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#666",
-  },
-  roleTags: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    paddingLeft: 18,
-  },
-  roleTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  roleTagText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
+  infoSection: { marginTop: 16, gap: 12 },
+  infoRow: { flexDirection: "row", alignItems: "center" },
+  infoIcon: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  infoText: { flex: 1, fontSize: 14, color: "#333", fontWeight: "500", lineHeight: 20 },
   outlineRoleTag: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -2012,27 +2003,16 @@ const styles = StyleSheet.create({
     borderColor: "#e5e7eb",
     backgroundColor: "#fff",
   },
-  outlineRoleTagText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#333",
-  },
-  noteBox: {
-    marginTop: 14,
-    padding: 12,
-    backgroundColor: "#fafafa",
-    borderRadius: 8,
-  },
-  noteLabel: { fontSize: 12, fontWeight: "700", color: "#888", marginBottom: 4 },
-  noteText: { fontSize: 14, color: "#555", lineHeight: 20 },
-  sectionCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
+  outlineRoleTagText: { fontSize: 12, fontWeight: "700", color: "#333" },
+  sectionCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: "#333", marginBottom: 12 },
-  helperInfoText: { fontSize: 12, color: "#888", fontStyle: "italic", marginLeft: 4, flex: 1 },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    marginTop: 8,
+  },
   emptyText: { fontSize: 13, color: "#999" },
   userRowCard: {
     backgroundColor: "#fff",
@@ -2047,16 +2027,9 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
-  userRowContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flex: 1 },
   userRow: { flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 },
   userRowRightAction: { marginLeft: 8, justifyContent: "center", flexShrink: 0 },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  userAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   userInitials: { color: "#fff", fontSize: 13, fontWeight: "800" },
   userInfo: { marginLeft: 12, flex: 1 },
   userName: { fontSize: 15, fontWeight: "700", color: "#111" },
@@ -2069,51 +2042,15 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     backgroundColor: "#fff",
   },
-  figmaBadgeText: {
-    fontSize: 11,
-    color: "#333",
-    fontWeight: "700",
-  },
-  badge: {
-    backgroundColor: "#fff3ef",
+  figmaBadgeText: { fontSize: 11, color: "#333", fontWeight: "700" },
+  kickSmallBtn: {
+    backgroundColor: "#fee2e2",
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignSelf: "center",
   },
-  badgeText: { fontSize: 10, color: ORANGE, fontWeight: "700" },
-  chevron: { fontSize: 22, color: "#ccc", marginLeft: 8 },
-  requestSummaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  requestSummaryText: {
-    fontSize: 13,
-    color: "#475569",
-    lineHeight: 20,
-  },
-  openRequestBtn: {
-    backgroundColor: "#fff3ef",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  openRequestBtnText: {
-    color: ORANGE,
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  requestModalItem: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
+  kickSmallBtnText: { color: "#b91c1c", fontSize: 12, fontWeight: "700" },
   requestFigmaCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -2136,11 +2073,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
   },
-  requestRejectText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#333",
-  },
+  requestRejectText: { fontSize: 15, fontWeight: "700", color: "#333" },
   requestAcceptBtn: {
     flex: 1,
     paddingVertical: 12,
@@ -2148,135 +2081,14 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
     alignItems: "center",
   },
-  requestAcceptText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  requestActions: { flexDirection: "row", gap: 8, marginLeft: 8, alignItems: "center" },
-  requestPanel: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  requestPanelHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#f8fafc",
-  },
-  requestPanelTitle: { fontSize: 14, fontWeight: "800", color: "#334155" },
-  requestPanelChevron: { fontSize: 16, color: "#64748b" },
-  requestPanelBody: { padding: 12, paddingTop: 8 },
-  requestItem: { marginBottom: 10 },
-  requestActions: { flexDirection: "row", gap: 8, marginLeft: 8, alignItems: "center" },
-  acceptBtn: {
-    backgroundColor: ORANGE,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  acceptBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  rejectBtn: {
-    borderWidth: 1,
-    borderColor: "#ef4444",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  rejectBtnText: { color: "#ef4444", fontSize: 12, fontWeight: "700" },
-  requestPositionBox: {
-    marginTop: 6,
-    marginLeft: 52,
-    padding: 8,
-    backgroundColor: "#f8fafc",
-    borderRadius: 10,
-  },
-  requestPositionLabel: { fontSize: 11, fontWeight: "700", color: "#475569", marginBottom: 6 },
-  requestPositionTags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  requestPositionTag: {
-    backgroundColor: "#e0f2fe",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  requestPositionTagText: { fontSize: 11, fontWeight: "700", color: "#0369a1" },
-  joinSection: { marginBottom: 12 },
-  joinBtn: {
-    backgroundColor: "#16a34a",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  joinBtnDisabled: { opacity: 0.6 },
-  joinBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  pendingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fff8e1",
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#ffe082",
-  },
-  pendingBadgeText: { color: "#856404", fontSize: 14, fontWeight: "700" },
-  cancelBtn: { backgroundColor: "#ef4444", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  cancelBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  fullBadge: {
-    backgroundColor: "#f3f3f3",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  fullBadgeText: { color: "#888", fontSize: 14, fontWeight: "700" },
-  leaveActionBtn: {
-    backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#ef4444",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  leaveActionText: { fontSize: 15, fontWeight: "700", color: "#ef4444" },
-  ownerActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  editActionBtn: {
-    flex: 1,
-    backgroundColor: "#fff8e1",
-    borderWidth: 1,
-    borderColor: "#ffe082",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  editActionText: { fontSize: 15, fontWeight: "700", color: "#333" },
-  deleteActionBtn: {
+  requestAcceptText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  actionStack: { gap: 8, marginTop: 12 },
+  positionModalContent: {
     flex: 1,
     backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#ef4444",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+    paddingTop: Platform.OS === "ios" ? 50 : 20,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
   },
-  deleteActionText: { fontSize: 15, fontWeight: "700", color: "#ef4444" },
-  // Position Selection Modal
-  modalOverlay: {
-  flex: 1,
-  backgroundColor: "#fff",
-},
- positionModalContent: {
-  flex: 1,
-  backgroundColor: "#fff",
-  paddingTop: Platform.OS === "ios" ? 50 : 20,
-  paddingBottom: Platform.OS === "ios" ? 34 : 20,
-},
   positionModalHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -2286,20 +2098,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  positionModalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111",
-  },
-  positionModalClose: {
-    fontSize: 24,
-    color: "#666",
-    padding: 4,
-  },
-  positionModalList: {
-    flex: 1,
-    padding: 16,
-  },
+  positionModalTitle: { fontSize: 18, fontWeight: "700", color: "#111" },
+  positionModalClose: { fontSize: 24, color: "#666", padding: 4 },
+  positionModalList: { flex: 1, padding: 16 },
   positionOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -2312,31 +2113,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "transparent",
   },
-  positionOptionSelected: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#3b82f6",
-  },
-  positionOptionDisabled: {
-    opacity: 0.55,
-    backgroundColor: "#f3f4f6",
-    borderColor: "#d1d5db",
-  },
-  positionOptionText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  positionOptionTextSelected: {
-    color: "#1d4ed8",
-  },
-  positionOptionTextDisabled: {
-    color: "#6b7280",
-  },
-  positionOptionCheck: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#3b82f6",
-  },
+  positionOptionSelected: { backgroundColor: "#eff6ff", borderColor: "#3b82f6" },
+  positionOptionDisabled: { opacity: 0.55, backgroundColor: "#f3f4f6", borderColor: "#d1d5db" },
+  positionOptionText: { fontSize: 15, fontWeight: "600", color: "#374151" },
+  positionOptionTextSelected: { color: "#1d4ed8" },
+  positionOptionTextDisabled: { color: "#6b7280" },
+  positionOptionCheck: { fontSize: 18, fontWeight: "700", color: "#3b82f6" },
   positionModalConfirm: {
     marginHorizontal: 16,
     marginBottom: 16,
@@ -2645,6 +2427,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  positionModalConfirmDisabled: { backgroundColor: "#ccc" },
+  positionModalConfirmText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   statusBarContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -2655,15 +2439,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 12,
   },
-  statusBarText: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  ownerMatchStatusContainer: {
-    marginTop: 14,
-    marginBottom: 8,
-  },
+  statusBarText: { fontSize: 12.5, fontWeight: "700", letterSpacing: 0.3 },
+  ownerMatchStatusContainer: { marginTop: 14, marginBottom: 8 },
   statusControlBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -2672,20 +2449,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
   },
-  statusControlStartBtn: {
-    backgroundColor: "#16A34A",
-  },
-  statusControlEndBtn: {
-    backgroundColor: "#DC2626",
-  },
-  statusControlEndedBadge: {
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  statusControlBtnText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  statusControlStartBtn: { backgroundColor: "#16A34A" },
+  statusControlEndBtn: { backgroundColor: "#DC2626" },
+  statusControlEndedBadge: { backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: "#E5E7EB" },
+  statusControlBtnText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
 });
