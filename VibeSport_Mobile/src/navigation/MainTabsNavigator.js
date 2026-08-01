@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { logoutUser, updateProfile } from '../redux/authSlice';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import TeamsScreen from '../screens/TeamsScreen';
-import FCScreen from '../screens/FCScreen';
+import CourtDirectoryScreen from '../screens/CourtDirectoryScreen';
 import { CommunityFeedScreen } from '../screens/CommunityFeedScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 
@@ -58,7 +58,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
             } else if (route.name === 'MatchesTab') {
               icon = <MaterialCommunityIcons name="soccer" size={iconSize} color={iconColor} />;
             } else if (route.name === 'TeamsTab') {
-              icon = <MaterialCommunityIcons name={isFocused ? "account-group" : "account-group-outline"} size={iconSize} color={iconColor} />;
+              icon = <MaterialCommunityIcons name={isFocused ? "soccer-field" : "soccer-field"} size={iconSize} color={iconColor} />;
             } else if (route.name === 'SocialTab') {
               icon = <Ionicons name={isFocused ? "chatbubble" : "chatbubble-outline"} size={iconSize} color={iconColor} />;
             } else if (route.name === 'ProfileTab') {
@@ -108,7 +108,7 @@ function MatchesTabScreen({ navigation }) {
 }
 
 function TeamsTabScreen({ navigation }) {
-  return <FCScreen navigation={navigation} />;
+  return <CourtDirectoryScreen navigation={navigation} />;
 }
 
 function SocialTabScreen({ navigation }) {
@@ -152,7 +152,7 @@ export function MainTabsNavigator() {
       <Tab.Screen
         name="TeamsTab"
         component={TeamsTabScreen}
-        options={{ tabBarLabel: 'Đội' }}
+        options={{ tabBarLabel: 'Mẫu Sân' }}
       />
       <Tab.Screen
         name="SocialTab"

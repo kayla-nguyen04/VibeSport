@@ -291,6 +291,12 @@ const matchSchema = new Schema(
         },
       },
     ],
+
+    deletionVote: {
+      active: { type: Boolean, default: false },
+      requestedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+      acceptedUsers: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
+    },
   },
   {
     timestamps: true,

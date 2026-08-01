@@ -30,6 +30,32 @@ export const DEFAULT_COURT_OWNER = {
   bio: "Hào đồng vui tí tính",
 };
 
+// Service menu items — single source of truth for all price displays
+export const SERVICE_MENU = [
+  {
+    label: "Tiền nước uống (Nước khoáng, Pocari...)",
+    unit: "chai",
+    priceMin: 10000,
+    priceMax: 25000,
+  },
+  {
+    label: "Tiền thuê dụng cụ (Bóng, Vợt, Giày, Áo Bib...)",
+    unit: "lượt",
+    priceMin: 30000,
+    priceMax: 60000,
+  },
+];
+
+// Returns { min, max } across all service menu items
+export const getServiceCostRange = () => {
+  const allMins = SERVICE_MENU.map((s) => s.priceMin);
+  const allMaxs = SERVICE_MENU.map((s) => s.priceMax);
+  return {
+    min: Math.min(...allMins),
+    max: Math.max(...allMaxs),
+  };
+};
+
 const isPitchSupportedByCourt = (court, pitchTypeLabel) => {
   if (!court) return true;
 
@@ -108,7 +134,8 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Bãi giữ xe", "Phòng thay đồ", "Đèn chiếu sáng"],
     amenitiesText: "Bãi giữ xe • Phòng thay đồ • Đèn chiếu sáng",
-    intro: "Sân cỏ nhân tạo chất lượng, phù hợp giao hữu và giải phong trào.",
+    intro: "Sân cỏ nhân tạo chất lượng tiêu chuẩn tại khu vực Hà Trì, Hà Đông. Cụm sân sạch sẽ, mặt cỏ êm ái đàn hồi tốt. Dàn đèn LED chiếu sáng rực rỡ ban đêm, có căng tin nước uống giải khát, bãi gửi xe rộng thoáng và phòng thay đồ khép kín.",
+    description: "Sân cỏ nhân tạo chất lượng tiêu chuẩn tại khu vực Hà Trì, Hà Đông. Cụm sân sạch sẽ, mặt cỏ êm ái đàn hồi tốt. Dàn đèn LED chiếu sáng rực rỡ ban đêm, có căng tin nước uống giải khát, bãi gửi xe rộng thoáng và phòng thay đồ khép kín.",
     hourlyRate: 300000,
     serviceCost: 50000,
     ownerUser: DEFAULT_COURT_OWNER,
@@ -144,7 +171,8 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Bãi giữ xe", "Căng tin"],
     amenitiesText: "Wifi • Bãi giữ xe • Căng tin",
-    intro: "Sân rộng, ánh sáng tốt, thường tổ chức các giải phong trào.",
+    intro: "Sân rộng thoáng mát nằm tại khu vực Phúc Xá, Ba Đình. Hệ thống sân 5, 7 và 11 người mặt cỏ nhập khẩu đạt chuẩn thi đấu phong trào. Ánh sáng tốt, bảo vệ 24/7, bãi đỗ xe ô tô và xe máy rộng rãi.",
+    description: "Sân rộng thoáng mát nằm tại khu vực Phúc Xá, Ba Đình. Hệ thống sân 5, 7 và 11 người mặt cỏ nhập khẩu đạt chuẩn thi đấu phong trào. Ánh sáng tốt, bảo vệ 24/7, bãi đỗ xe ô tô và xe máy rộng rãi.",
     hourlyRate: 350000,
     serviceCost: 50000,
     ownerUser: DEFAULT_COURT_OWNER,
@@ -180,7 +208,8 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Bãi giữ xe", "Phòng thay đồ", "Căng tin"],
     amenitiesText: "Bãi giữ xe • Phòng thay đồ • Căng tin",
-    intro: "Cụm sân lớn, mặt cỏ đẹp, phù hợp mọi đối tượng.",
+    intro: "Cụm sân bóng đá cỏ nhân tạo quy mô lớn gần Sân vận động Quốc gia Mỹ Đình. Hệ thống mặt cỏ FIFA phong trào chất lượng cao, thoát nước cực tốt. Trang bị mái che khán đài, phòng tắm nóng lạnh, wifi và quầy giải khát chuyên nghiệp.",
+    description: "Cụm sân bóng đá cỏ nhân tạo quy mô lớn gần Sân vận động Quốc gia Mỹ Đình. Hệ thống mặt cỏ FIFA phong trào chất lượng cao, thoát nước cực tốt. Trang bị mái che khán đài, phòng tắm nóng lạnh, wifi và quầy giải khát chuyên nghiệp.",
     hourlyRate: 400000,
     serviceCost: 60000,
     ownerUser: DEFAULT_COURT_OWNER,
@@ -216,7 +245,8 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Nhà vệ sinh", "Bãi giữ xe"],
     amenitiesText: "Nhà vệ sinh • Bãi giữ xe",
-    intro: "Vị trí trung tâm, thuận tiện cho sinh viên và dân văn phòng.",
+    intro: "Nằm trong khuôn viên ĐH Sư Phạm Hà Nội, đường Xuân Thủy, Cầu Giấy. Không gian rợp bóng cây xanh, mặt cỏ mềm chân hạt cao su đều. Địa điểm quen thuộc của học sinh, sinh viên và dân văn phòng khu vực Cầu Giấy.",
+    description: "Nằm trong khuôn viên ĐH Sư Phạm Hà Nội, đường Xuân Thủy, Cầu Giấy. Không gian rợp bóng cây xanh, mặt cỏ mềm chân hạt cao su đều. Địa điểm quen thuộc của học sinh, sinh viên và dân văn phòng khu vực Cầu Giấy.",
     hourlyRate: 350000,
     serviceCost: 40000,
     ownerUser: DEFAULT_COURT_OWNER,
@@ -252,7 +282,8 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Đèn LED", "Bãi giữ xe"],
     amenitiesText: "Wifi • Đèn LED • Bãi giữ xe",
-    intro: "Sân mới, mặt cỏ đạt chuẩn, giá hợp lý.",
+    intro: "Tổ hợp sân bóng đá cỏ nhân tạo hiện đại tại đường Tân Mai, Hoàng Mai. Sân bóng mới đầu tư hệ thống đèn LED chống chói mắt ban đêm, thảm cỏ êm chống chấn thương. Căng tin rộng rãi phục vụ đồ uống tươi ngon.",
+    description: "Tổ hợp sân bóng đá cỏ nhân tạo hiện đại tại đường Tân Mai, Hoàng Mai. Sân bóng mới đầu tư hệ thống đèn LED chống chói mắt ban đêm, thảm cỏ êm chống chấn thương. Căng tin rộng rãi phục vụ đồ uống tươi ngon.",
     hourlyRate: 300000,
     serviceCost: 40000,
     ownerUser: DEFAULT_COURT_OWNER,
@@ -288,13 +319,14 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Điều hòa", "Wifi", "Bãi giữ xe"],
     amenitiesText: "Điều hòa • Wifi • Bãi giữ xe",
-    intro: "Sân đạt chuẩn thi đấu, ánh sáng tốt.",
+    intro: "Sân cầu lông thảm PVC xanh lá vân cát tiêu chuẩn BWF quốc tế tại Thanh Trì. Trần cao 9m không vướng ván, đèn chiếu sáng 4 góc sân không chói mắt khi đập cầu. Trang bị quạt thông gió công suất lớn và ghế ngồi cổ vũ thoải mái.",
+    description: "Sân cầu lông thảm PVC xanh lá vân cát tiêu chuẩn BWF quốc tế tại Thanh Trì. Trần cao 9m không vướng ván, đèn chiếu sáng 4 góc sân không chói mắt khi đập cầu. Trang bị quạt thông gió công suất lớn và ghế ngồi cổ vũ thoải mái.",
     hourlyRate: 90000,
     serviceCost: 30000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
       "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=800",
-      "https://images.unsplash.com/photo-1521537634581-0ddea2eed2b0?w=800",
+      "https://images.unsplash.com/photo-1521537634581-0ddea2efe338?w=800",
     ],
     coords: { lat: 20.9525, lng: 105.8452 },
   },
@@ -322,12 +354,13 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Phòng tắm", "Wifi", "Bãi giữ xe"],
     amenitiesText: "Phòng tắm • Wifi • Bãi giữ xe",
-    intro: "Một trong những cụm sân cầu lông nổi tiếng tại Hà Nội.",
+    intro: "Cụm 8 sân cầu lông thảm nhập khẩu chất lượng cao tại Thanh Xuân. Mặt sân độ bám tốt, êm ái giảm tải áp lực khớp gối. Có cửa hàng dụng cụ cầu lông, dịch vụ căng vợt lấy ngay và nước uống giải khát.",
+    description: "Cụm 8 sân cầu lông thảm nhập khẩu chất lượng cao tại Thanh Xuân. Mặt sân độ bám tốt, êm ái giảm tải áp lực khớp gối. Có cửa hàng dụng cụ cầu lông, dịch vụ căng vợt lấy ngay và nước uống giải khát.",
     hourlyRate: 100000,
     serviceCost: 30000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
-      "https://images.unsplash.com/photo-1521537634581-0ddea2eed2b0?w=800",
+      "https://images.unsplash.com/photo-1613918108466-292b78a8ef95?w=800",
       "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=800",
     ],
     coords: { lat: 20.9678, lng: 105.8142 },
@@ -356,11 +389,13 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Bãi giữ xe"],
     amenitiesText: "Wifi • Bãi giữ xe",
-    intro: "Không gian thoáng, phù hợp luyện tập hằng ngày.",
+    intro: "Sân cầu lông đạt chuẩn thi đấu tại Hoàng Mai. Không gian thoáng, trần nhà cao, đèn chiếu sáng đều nét. Có khu vực thay đồ, chỗ để xe máy ô tô rộng rãi và bảo vệ coi xe 24/7.",
+    description: "Sân cầu lông đạt chuẩn thi đấu tại Hoàng Mai. Không gian thoáng, trần nhà cao, đèn chiếu sáng đều nét. Có khu vực thay đồ, chỗ để xe máy ô tô rộng rãi và bảo vệ coi xe 24/7.",
     hourlyRate: 80000,
     serviceCost: 25000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
+      "https://images.unsplash.com/photo-1521537634581-0ddea2efe338?w=800",
       "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=800",
     ],
     coords: { lat: 20.9852, lng: 105.8745 },
@@ -389,12 +424,14 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Điều hòa", "Wifi"],
     amenitiesText: "Điều hòa • Wifi",
-    intro: "Sân sạch đẹp, phù hợp người mới và bán chuyên.",
+    intro: "Sân cầu lông Swin Hà Đông trang bị thảm cao su đúc nguyên khối chống trượt. Hệ thống chiếu sáng dịu mắt, quạt làm mát dịu nhẹ cho cơ thủ. Đầy đủ tiện nghi căng tin, wifi miễn phí và phòng tắm nước nóng.",
+    description: "Sân cầu lông Swin Hà Đông trang bị thảm cao su đúc nguyên khối chống trượt. Hệ thống chiếu sáng dịu mắt, quạt làm mát dịu nhẹ cho cơ thủ. Đầy đủ tiện nghi căng tin, wifi miễn phí và phòng tắm nước nóng.",
     hourlyRate: 100000,
     serviceCost: 30000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
-      "https://images.unsplash.com/photo-1521537634581-0ddea2eed2b0?w=800",
+      "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=800",
+      "https://images.unsplash.com/photo-1521537634581-0ddea2efe338?w=800",
     ],
     coords: { lat: 21.0345, lng: 105.7912 },
   },
@@ -422,11 +459,13 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Nhà vệ sinh"],
     amenitiesText: "Wifi • Nhà vệ sinh",
-    intro: "Sân mới, ánh sáng đạt chuẩn.",
+    intro: "Sân cầu lông tập luyện và thi đấu hiện đại tại Bắc Từ Liêm. Mặt sân thảm chuyên dụng bám giày, khoảng cách giữa các sân rộng thoáng an toàn. Hỗ trợ cho thuê vợt, cầu tập và dịch vụ căng dây vợt nhanh chóng.",
+    description: "Sân cầu lông tập luyện và thi đấu hiện đại tại Bắc Từ Liêm. Mặt sân thảm chuyên dụng bám giày, khoảng cách giữa các sân rộng thoáng an toàn. Hỗ trợ cho thuê vợt, cầu tập và dịch vụ căng dây vợt nhanh chóng.",
     hourlyRate: 90000,
     serviceCost: 25000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
+      "https://images.unsplash.com/photo-1613918108466-292b78a8ef95?w=800",
       "https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=800",
     ],
     coords: { lat: 20.9695, lng: 105.8115 },
@@ -457,13 +496,14 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Bãi giữ xe", "Thuê vợt"],
     amenitiesText: "Wifi • Bãi giữ xe • Thuê vợt",
-    intro: "Sân pickleball hiện đại, phù hợp luyện tập và thi đấu.",
+    intro: "Cụm sân Pickleball ngoài trời hiện đại bậc nhất khu vực Mỹ Đình. Mặt sân phủ sơn Acrylic 5 lớp chuẩn USA với hai tông màu xanh dương & cam cực kỳ nổi bật. Khu vực Lounge giải khát đẳng cấp sang trọng.",
+    description: "Cụm sân Pickleball ngoài trời hiện đại bậc nhất khu vực Mỹ Đình. Mặt sân phủ sơn Acrylic 5 lớp chuẩn USA với hai tông màu xanh dương & cam cực kỳ nổi bật. Khu vực Lounge giải khát đẳng cấp sang trọng.",
     hourlyRate: 180000,
     serviceCost: 40000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
-      "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800",
-      "https://images.unsplash.com/photo-1530549387789-4c1017266635?w=800",
+      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=800",
+      "https://images.unsplash.com/photo-1534158914592-062992fbe900?w=800",
     ],
     coords: { lat: 21.0255, lng: 105.7685 },
   },
@@ -491,12 +531,14 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Quầy nước"],
     amenitiesText: "Wifi • Quầy nước",
-    intro: "Sân mới, không gian rộng và thoáng.",
+    intro: "Cụm sân Pickleball trong nhà có mái che thoáng mát tại Tây Hồ. Mặt sân phẳng mịn đạt chuẩn thi đấu quốc tế, lưới di động điều chỉnh độ cao chuẩn xác. Cung cấp dịch vụ thuê vợt bóng xịn xò cho người chơi.",
+    description: "Cụm sân Pickleball trong nhà có mái che thoáng mát tại Tây Hồ. Mặt sân phẳng mịn đạt chuẩn thi đấu quốc tế, lưới di động điều chỉnh độ cao chuẩn xác. Cung cấp dịch vụ thuê vợt bóng xịn xò cho người chơi.",
     hourlyRate: 180000,
     serviceCost: 35000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
-      "https://images.unsplash.com/photo-1530549387789-4c1017266635?w=800",
+      "https://images.unsplash.com/photo-1534158914592-062992fbe900?w=800",
+      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=800",
     ],
     coords: { lat: 21.0612, lng: 105.8345 },
   },
@@ -524,12 +566,14 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Bãi giữ xe"],
     amenitiesText: "Wifi • Bãi giữ xe",
-    intro: "Cụm sân pickleball mới, phù hợp chơi theo nhóm.",
+    intro: "Sân Pickleball chuẩn kích thước 6.1m x 13.4m với vạch kẻ Kitchen sắc nét tại Cầu Giấy. Đèn chiếu sáng cao cấp không gây bóng râm. Có HLV hướng dẫn luật chơi Pickleball cho người mới bắt đầu.",
+    description: "Sân Pickleball chuẩn kích thước 6.1m x 13.4m với vạch kẻ Kitchen sắc nét tại Cầu Giấy. Đèn chiếu sáng cao cấp không gây bóng râm. Có HLV hướng dẫn luật chơi Pickleball cho người mới bắt đầu.",
     hourlyRate: 200000,
     serviceCost: 40000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
-      "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800",
+      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=800",
+      "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=800",
     ],
     coords: { lat: 21.0725, lng: 105.7895 },
   },
@@ -557,12 +601,14 @@ export const COURT_DIRECTORY = [
     ],
     facilities: ["Wifi", "Quầy nước"],
     amenitiesText: "Wifi • Quầy nước",
-    intro: "Sân trong nhà, mặt sân chất lượng.",
+    intro: "Sân Pickleball thiết kế phong cách resort xanh mát tại Long Biên. Không gian mở thoáng đãng, mặt sân bám giày cực tốt. Khu vực ghế ngồi xem trận chill chill và vô vàn góc chụp ảnh check-in sống ảo cực đẹp.",
+    description: "Sân Pickleball thiết kế phong cách resort xanh mát tại Long Biên. Không gian mở thoáng đãng, mặt sân bám giày cực tốt. Khu vực ghế ngồi xem trận chill chill và vô vàn góc chụp ảnh check-in sống ảo cực đẹp.",
     hourlyRate: 180000,
     serviceCost: 35000,
     ownerUser: DEFAULT_COURT_OWNER,
     images: [
-      "https://images.unsplash.com/photo-1530549387789-4c1017266635?w=800",
+      "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=800",
+      "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=800",
     ],
     coords: { lat: 21.0095, lng: 105.7985 },
   },
@@ -609,20 +655,32 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
     : ["https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800"];
 
   const handleOpenMap = () => {
-    const fullAddress = court.address || court.name;
-    if (fullAddress) {
-      const query = encodeURIComponent(fullAddress);
-      const url = Platform.select({
-        ios: `maps:0,0?q=${query}`,
-        android: `geo:0,0?q=${query}`,
-        default: `https://www.google.com/maps/search/?api=1&query=${query}`,
-      });
-      Linking.openURL(url).catch(() => {
-        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
-      });
-    } else if (court.coords?.lat && court.coords?.lng) {
+    if (court?.mapUrl || court?.googleMapUrl) {
+      Linking.openURL(court.mapUrl || court.googleMapUrl).catch(() => {});
+      return;
+    }
+
+    const name = court?.name || "";
+    const address = court?.address || court?.locationName || "";
+
+    let combinedQuery = "";
+    if (name && address) {
+      if (address.toLowerCase().includes(name.toLowerCase())) {
+        combinedQuery = address;
+      } else {
+        combinedQuery = `${name}, ${address}`;
+      }
+    } else {
+      combinedQuery = name || address;
+    }
+
+    if (combinedQuery) {
+      const encodedQuery = encodeURIComponent(combinedQuery);
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
+      Linking.openURL(url).catch((err) => console.log("Open map error:", err));
+    } else if (court?.coords?.lat != null && court?.coords?.lng != null) {
       const url = `https://www.google.com/maps/search/?api=1&query=${court.coords.lat},${court.coords.lng}`;
-      Linking.openURL(url);
+      Linking.openURL(url).catch((err) => console.log("Open map error:", err));
     }
   };
 
@@ -936,67 +994,37 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
               </Text>
 
               <View style={{ gap: 8 }}>
-                {/* 1. Tiền nước uống */}
-                <View style={{
-                  padding: 10,
-                  backgroundColor: "#F9FAFB",
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: "#E5E7EB",
-                  gap: 4,
-                }}>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>
-                    1. Tiền nước uống (Nước khoáng, Pocari...)
-                  </Text>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#059669", marginTop: 2 }}>
-                    Giá thuê: 10.000đ - 25.000đ / chai
-                  </Text>
-                </View>
-
-                {/* 2. Tiền thuê dụng cụ */}
-                <View style={{
-                  padding: 10,
-                  backgroundColor: "#F9FAFB",
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: "#E5E7EB",
-                  gap: 4,
-                }}>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>
-                    2. Tiền thuê dụng cụ (Bóng, Vợt, Giày, Áo Bib...)
-                  </Text>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#059669", marginTop: 2 }}>
-                    Giá thuê: 30.000đ - 60.000đ / lượt
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={{ fontSize: 12.5, fontWeight: "700", color: "#374151", marginTop: 12, marginBottom: 8 }}>
-                Ảnh Bảng giá & Dịch vụ niêm yết tại sân:
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                {(court.serviceMenuImages || [
-                  "https://images.unsplash.com/photo-1556742049-0a670fc8078a?w=800",
-                  "https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800",
-                ]).map((imgUrl, idx) => (
-                  <View key={idx} style={{ borderRadius: 10, overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB" }}>
-                    <Image
-                      source={{ uri: imgUrl }}
-                      style={{ width: 220, height: 130 }}
-                      resizeMode="cover"
-                    />
+                {SERVICE_MENU.map((item, idx) => (
+                  <View key={idx} style={{
+                    padding: 10,
+                    backgroundColor: "#F9FAFB",
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#E5E7EB",
+                    gap: 4,
+                  }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>
+                      {idx + 1}. {item.label}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#059669", marginTop: 2 }}>
+                      Giá thuê: {(item.priceMin / 1000).toFixed(0)}.000đ - {(item.priceMax / 1000).toFixed(0)}.000đ / {item.unit}
+                    </Text>
                   </View>
                 ))}
-              </ScrollView>
+              </View>
+
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#374151", marginTop: 14, marginBottom: 8 }}>
+                Ảnh Bảng giá & Dịch vụ niêm yết tại sân:
+              </Text>
+              <View style={{ borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#111827" }}>
+                <Image
+                  source={require("../../assets/bang_gia_dich_vu.png")}
+                  style={{ width: "100%", height: 230 }}
+                  resizeMode="contain"
+                />
+              </View>
             </View>
 
-            {/* 6. Tiện ích */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionHeader}>Tiện ích</Text>
-              <Text style={{ fontSize: 13.5, color: "#374151", lineHeight: 22, fontWeight: "500" }}>
-                {court.amenitiesText || (Array.isArray(court.facilities) ? court.facilities.join(" • ") : "Bãi giữ xe • Phòng thay đồ • Đèn chiếu sáng")}
-              </Text>
-            </View>
 
             {/* 7. Vị trí */}
             <View style={styles.sectionCard}>

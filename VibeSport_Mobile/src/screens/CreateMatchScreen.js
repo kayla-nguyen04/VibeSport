@@ -29,7 +29,7 @@ import * as ImagePicker from "expo-image-picker";
 import { openConversation, updateGroupInfo, fetchConversations } from "../redux/chatSlice";
 import { getPostsRequest } from "../services/postApi";
 import { getFollowingListRequest, getUserProfileRequest, getMutualFriendsRequest } from "../services/userApi";
-import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
+import { CourtDetailModal, COURT_DIRECTORY, getServiceCostRange } from "../components/CourtDetailModal";
 import { getCourtsRequest } from "../services/courtService";
 import { Screen } from "../components/Screen";
 import { TagIcon } from "../components/TagIcon";
@@ -971,10 +971,11 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (sport === "football") {
       const b1 = Number(benchMembersTeam1 || 0);
       const b2 = Number(benchMembersTeam2 || 0);
-      return (footballMaxPlayers || 10) + b1 + b2;
+      const fMax = Number(footballMaxPlayers || 10);
+      return fMax + b1 + b2;
     }
     if (sport === "badminton" || sport === "pickleball") {
-      return racketMaxPlayers || 4;
+      return Number(racketMaxPlayers || 4);
     }
     return Number(maxPlayersOther || 2);
   }, [sport, footballMaxPlayers, benchMembersTeam1, benchMembersTeam2, racketMaxPlayers, maxPlayersOther]);
@@ -1093,7 +1094,7 @@ export default function CreateMatchScreen({ navigation, route }) {
   }, [activePitchType]);
   const [skillLevel, setSkillLevel] = useState(editMatch?.skillLevel || "Người mới");
   const [serviceCost, setServiceCost] = useState(
-    editMatch?.serviceCost ? String(editMatch.serviceCost) : (editMatch?.selectedCourtObj?.serviceCost || "31250")
+    editMatch?.serviceCost ? String(editMatch.serviceCost) : ""
   );
   const [selectedContactUser, setSelectedContactUser] = useState(
     editMatch?.contactAppUser || null
@@ -1204,7 +1205,7 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (editMatch?.sport === "football" && editMatch?.maxPlayers) {
       return editMatch.maxPlayers;
     }
-    return 22; // default is 11 vs 11 (22 players)
+    return 10; // default is 5 vs 5 (10 players)
   });
 
   const [racketMaxPlayers, setRacketMaxPlayers] = useState(() => {
@@ -1232,7 +1233,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       setCourtDescription(editMatch.courtDescription || "");
       setSpecificAddress(editMatch.specificAddress || "");
       setSkillLevel(editMatch.skillLevel || "Người mới");
-      setServiceCost(editMatch.serviceCost ? String(editMatch.serviceCost) : "31250");
+      setServiceCost(editMatch.serviceCost ? String(editMatch.serviceCost) : "");
       setSelectedContactUser(editMatch.contactAppUser || null);
       setSelectedPositionIds(editMatch.selectedPositionIds || []);
       setBenchMembersTeam1(editMatch.benchMembersTeam1 ? String(editMatch.benchMembersTeam1) : "");
@@ -1261,13 +1262,13 @@ export default function CreateMatchScreen({ navigation, route }) {
       setCourtDescription("");
       setSpecificAddress("");
       setSkillLevel("Người mới");
-      setServiceCost("31250");
+      setServiceCost("");
       setSelectedContactUser(null);
       setSelectedPositionIds([]);
       setBenchMembersTeam1("");
       setBenchMembersTeam2("");
       setMaxPlayersOther("2");
-      setFootballMaxPlayers(22);
+      setFootballMaxPlayers(10);
       setRacketMaxPlayers(4);
       setSelectedCourtObj(null);
       setSelectedChatGroupId(null);
@@ -1610,6 +1611,10 @@ export default function CreateMatchScreen({ navigation, route }) {
   ];
 
   const handleSelectSport = (selectedSport) => {
+    if (isEditMode) {
+      Alert.alert("Thông báo", "Không thể thay đổi môn thể thao khi sửa trận đấu.");
+      return;
+    }
     setSport(selectedSport);
     if (selectedSport !== "football") {
       setMaxPlayersOther("2");
@@ -1618,15 +1623,16 @@ export default function CreateMatchScreen({ navigation, route }) {
         setRacketMaxPlayers(4);
       }
     } else {
-      setFootballMaxPlayers(22);
+      setFootballMaxPlayers(10);
       setSelectedPositionIds([]);
     }
   };
 
   const handleSelectFootballMaxPlayers = (maxP) => {
-    setFootballMaxPlayers(maxP);
+    const numP = Number(maxP);
+    setFootballMaxPlayers(numP);
     setIsCourtPresetsExpanded(true);
-    const limit = (FOOTBALL_FORMATS[maxP] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
+    const limit = (FOOTBALL_FORMATS[numP] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
     setSelectedPositionIds((prev) => {
       const t1 = prev.filter((id) => id.startsWith("t1_"));
       const t2 = prev.filter((id) => id.startsWith("t2_"));
@@ -1704,22 +1710,14 @@ export default function CreateMatchScreen({ navigation, route }) {
 
   const handleBenchTeam1Change = (text) => {
     const digits = text.replace(/[^0-9]/g, "");
-    if (!digits) {
-      setBenchMembersTeam1("");
-      return;
-    }
-    const num = parseInt(digits, 10);
-    setBenchMembersTeam1(String(Math.min(num, 3)));
+    const val = digits ? String(Math.min(parseInt(digits, 10), 3)) : "";
+    setBenchMembersTeam1(val);
   };
 
   const handleBenchTeam2Change = (text) => {
     const digits = text.replace(/[^0-9]/g, "");
-    if (!digits) {
-      setBenchMembersTeam2("");
-      return;
-    }
-    const num = parseInt(digits, 10);
-    setBenchMembersTeam2(String(Math.min(num, 3)));
+    const val = digits ? String(Math.min(parseInt(digits, 10), 3)) : "";
+    setBenchMembersTeam2(val);
   };
 
   const togglePosition = (id) => {
@@ -1759,10 +1757,8 @@ export default function CreateMatchScreen({ navigation, route }) {
 
   const buildPayload = () => {
     const maxPlayers = sport === "football"
-      ? footballMaxPlayers
-      : (sport === "badminton" || sport === "pickleball")
-        ? racketMaxPlayers
-        : Number(maxPlayersOther);
+      ? (totalNeeded > 0 ? Math.min(totalNeeded, activeTotalPeople) : activeTotalPeople)
+      : activeTotalPeople;
     // Build positionsNeeded from selected positions for backward-compat
     const positionsNeeded = Object.entries(selectedRoleSummary).map(([role, qty]) => ({
       key: role,
@@ -1890,9 +1886,13 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const handleDelete = () => {
+    if (editMatch?.teamStatus === "ongoing") {
+      Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể xóa!");
+      return;
+    }
     Alert.alert(
       "Xóa trận đấu",
-      "Bạn có chắc muốn xóa trận này? Hành động này không thể hoàn tác.",
+      "Bạn có chắc muốn xóa trận này?",
       [
         { text: "Hủy", style: "cancel" },
         {
@@ -1900,9 +1900,16 @@ export default function CreateMatchScreen({ navigation, route }) {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteMatch(editMatch._id, token);
-              Alert.alert("Thành công", "Đã xóa trận đấu");
-              navigation.navigate("Home", { screen: "MatchesTab" });
+              const res = await deleteMatch(editMatch._id, token);
+              if (res?.isDeleted) {
+                Alert.alert("Thành công", res.message || "Đã xóa trận đấu");
+                navigation.navigate("Home", { screen: "MatchesTab" });
+              } else if (res?.pendingVote) {
+                Alert.alert("Biểu quyết xóa", res.message);
+                navigation.navigate("Home", { screen: "MatchesTab" });
+              } else {
+                Alert.alert("Thông báo", res.message || "Đã xử lý yêu cầu.");
+              }
             } catch (error) {
               Alert.alert("Lỗi", error.message);
             }
@@ -1929,7 +1936,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           >
             <Text style={pitchModal.closeBtnText}>✕</Text>
           </TouchableOpacity>
-          <Text style={pitchModal.title}>Chọn vị trí cần tìm ({(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).label})</Text>
+          <Text style={pitchModal.title}>Chọn vị trí cần tìm</Text>
           <TouchableOpacity
             style={pitchModal.doneBtn}
             onPress={() => setShowPitchModal(false)}
@@ -2346,61 +2353,57 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Modal>
         )}
 
-        {/* Sơ đồ & Số người cần tìm */}
-        <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
-        
-        <View style={styles.pitchTriggerContainer}>
-          <View style={styles.pitchTriggerShadow} />
-          <TouchableOpacity
-            style={styles.pitchTriggerContent}
-            onPress={() => setShowPitchModal(true)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.pitchTriggerLeft}>
-              {sport === "football" ? (
-                <SoccerFieldIcon color="#1A1A1A" />
-              ) : (
-                <Ionicons name={sport === "pickleball" ? "trophy-outline" : "tennisball-outline"} size={24} color="#1A1A1A" />
-              )}
-              <View style={styles.pitchTriggerTextContainer}>
-                <Text style={styles.pitchTriggerTitle}>
-                  {sport === "football"
-                    ? `Sơ đồ vị trí ( ${footballMaxPlayers === 10 ? "5vs 5" : footballMaxPlayers === 14 ? "7vs 7" : "11vs 11"} )`
-                    : `Sơ đồ vị trí ( ${racketMaxPlayers === 2 ? "Sân đơn" : "Sân đôi"} )`}
-                </Text>
-                <Text style={styles.pitchTriggerSub}>Nhấn để mở sơ đồ</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </View>
+        {/* Sơ đồ & Số người cần tìm – chỉ hiện với bóng đá */}
+        {sport === "football" && (
+          <>
+            <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
 
-        {/* Role / position chips summary */}
-        {selectedPositionIds.length > 0 && (
-          <View style={styles.roleChipsRow}>
-            {sport === "football" ? (
-              Object.entries(selectedRoleSummary).map(([role, qty]) => (
-                <View key={role} style={styles.roleChip}>
-                  <Text style={styles.roleChipText}>
-                    {roleLabels[role]} x{qty}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              selectedPositionIds.map((posId) => {
-                const posLabel = {
-                  racket_a1: "Bên A (TV 1)",
-                  racket_a2: "Bên A (TV 2)",
-                  racket_b1: "Bên B (TV 1)",
-                  racket_b2: "Bên B (TV 2)",
-                }[posId] || posId;
-                return (
-                  <View key={posId} style={styles.roleChip}>
-                    <Text style={styles.roleChipText}>{posLabel}</Text>
+            <View style={styles.pitchTriggerContainer}>
+              <View style={styles.pitchTriggerShadow} />
+              <TouchableOpacity
+                style={styles.pitchTriggerContent}
+                onPress={() => setShowPitchModal(true)}
+                activeOpacity={0.9}
+              >
+                <View style={styles.pitchTriggerLeft}>
+                  <SoccerFieldIcon color="#1A1A1A" />
+                  <View style={styles.pitchTriggerTextContainer}>
+                    <Text style={styles.pitchTriggerTitle}>
+                      {`Sơ đồ vị trí ( ${footballMaxPlayers === 10 ? "5vs 5" : footballMaxPlayers === 14 ? "7vs 7" : "11vs 11"} )`}
+                    </Text>
+                    <Text style={styles.pitchTriggerSub}>Nhấn để mở sơ đồ</Text>
                   </View>
-                );
-              })
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Role chips summary */}
+            {(selectedPositionIds.length > 0 || Number(benchMembersTeam1 || 0) > 0 || Number(benchMembersTeam2 || 0) > 0) && (
+              <View style={styles.roleChipsRow}>
+                {Object.entries(selectedRoleSummary).map(([role, qty]) => (
+                  <View key={role} style={styles.roleChip}>
+                    <Text style={styles.roleChipText}>
+                      {roleLabels[role]} x{qty}
+                    </Text>
+                  </View>
+                ))}
+                {Number(benchMembersTeam1 || 0) > 0 && (
+                  <View style={styles.roleChip}>
+                    <Text style={styles.roleChipText}>
+                      Dự bị Đội 1 x{benchMembersTeam1}
+                    </Text>
+                  </View>
+                )}
+                {Number(benchMembersTeam2 || 0) > 0 && (
+                  <View style={styles.roleChip}>
+                    <Text style={styles.roleChipText}>
+                      Dự bị Đội 2 x{benchMembersTeam2}
+                    </Text>
+                  </View>
+                )}
+              </View>
             )}
-          </View>
+          </>
         )}
 
         <Text style={styles.sectionLabel}>Số người cần tìm</Text>
@@ -2412,9 +2415,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                 ? (totalNeeded > 0 ? `${totalNeeded} người` : "")
                 : (selectedPositionIds.length > 0 ? `${selectedPositionIds.length} người` : "Chưa chọn (Tự do)")
             }
-            placeholder={sport === "football" ? "3 người" : "1 người"}
-            placeholderTextColor="#bbb"
-            editable={false}
+           
           />
         </View>
 
@@ -2445,7 +2446,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              backgroundColor: "#FFFFFF",
+              backgroundColor: isEditMode ? "#F3F4F6" : "#FFFFFF",
               borderRadius: 24,
               height: 56,
               paddingHorizontal: 16,
@@ -2458,10 +2459,16 @@ export default function CreateMatchScreen({ navigation, route }) {
               shadowRadius: 3,
               marginBottom: 12,
             }}
-            onPress={() => setIsCourtPresetsExpanded(true)}
+            onPress={() => {
+              if (isEditMode) {
+                Alert.alert("Thông báo", "Không thể thay đổi sân thi đấu khi sửa trận đấu.");
+                return;
+              }
+              setIsCourtPresetsExpanded(true);
+            }}
             activeOpacity={0.8}
           >
-            <Ionicons name="location-outline" size={24} color="#1F2937" style={{ marginRight: 12 }} />
+            <Ionicons name={isEditMode ? "lock-closed" : "location-outline"} size={22} color={isEditMode ? "#9CA3AF" : "#1F2937"} style={{ marginRight: 12 }} />
             
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 15, fontWeight: "600", color: selectedCourtObj || specificAddress ? "#111827" : "#6B7280" }} numberOfLines={1}>
@@ -2476,7 +2483,11 @@ export default function CreateMatchScreen({ navigation, route }) {
               ) : null}
             </View>
 
-            <Ionicons name="chevron-down" size={22} color="#6B7280" style={{ marginLeft: 8 }} />
+            {isEditMode ? (
+              <Text style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic", marginLeft: 6 }}>Sân cố định</Text>
+            ) : (
+              <Ionicons name="chevron-down" size={22} color="#6B7280" style={{ marginLeft: 8 }} />
+            )}
           </TouchableOpacity>
         ) : (
           <View style={{
@@ -2607,7 +2618,14 @@ export default function CreateMatchScreen({ navigation, route }) {
                         setSpecificAddress(court.address);
                         setCourtDescription(court.intro || court.description);
                         setCostPerPerson(String(priceForActiveType));
-                        setServiceCost(String(court.serviceCost || court.serviceDetails?.avgServiceCost || 31250));
+                        // Tính giá DV range từ serviceDetails
+                        const dMin = court.serviceDetails?.drinkService?.minPrice || 10000;
+                        const dMax = court.serviceDetails?.drinkService?.maxPrice || 25000;
+                        const eMin = court.serviceDetails?.equipmentService?.minPrice || 30000;
+                        const eMax = court.serviceDetails?.equipmentService?.maxPrice || 60000;
+                        const overallMin = Math.min(dMin, eMin);
+                        const overallMax = Math.max(dMax, eMax);
+                        setServiceCost(`${overallMin}-${overallMax}`);
                         setLocationCoords(court.locationCoords || court.coords);
                         const targetOwner = (typeof court.owner === "object" && court.owner !== null)
                           ? court.owner
@@ -2702,7 +2720,11 @@ export default function CreateMatchScreen({ navigation, route }) {
                             marginLeft: "auto",
                           }}>
                             <Text style={{ fontSize: 10.5, color: "#374151", fontWeight: "600" }}>
-                              Giá DV ≈ {formatNumberWithDots(String(court.serviceCost || 31250))}đ
+                              {(() => {
+                                const { min, max } = getServiceCostRange();
+                                const fmt = (n) => formatNumberWithDots(String(n));
+                                return `Giá DV: ${fmt(min)}–${fmt(max)}đ`;
+                              })()}
                             </Text>
                           </View>
                         </View>
@@ -2853,16 +2875,35 @@ export default function CreateMatchScreen({ navigation, route }) {
 
         {/* Chi phí dịch vụ (Short title) */}
         <Text style={styles.sectionLabel}>Chi phí dịch vụ ước tính</Text>
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={[styles.input, styles.costInput]}
-            value={formatNumberWithDots(serviceCost)}
-            onChangeText={(text) => setServiceCost(text.replace(/[^0-9]/g, ""))}
-            keyboardType="numeric"
-            placeholder=""
-            placeholderTextColor="#bbb"
-          />
-          <Text style={styles.currencySuffix}>VND</Text>
+        <View style={[styles.inputWrapper, selectedCourtObj ? { backgroundColor: "#F3F4F6" } : null]}>
+          {selectedCourtObj ? (
+            <>
+              <Ionicons name="lock-closed" size={16} color="#9CA3AF" style={{ marginLeft: 12, marginRight: 4 }} />
+              <Text style={{ flex: 1, color: "#374151", fontSize: 14, fontWeight: "700", paddingVertical: 12 }}>
+                {(() => {
+                  const parts = serviceCost.split("-");
+                  if (parts.length === 2) {
+                    const fmt = (n) => formatNumberWithDots(String(parseInt(n, 10)));
+                    return `${fmt(parts[0])} – ${fmt(parts[1])} VND`;
+                  }
+                  return serviceCost ? `${formatNumberWithDots(serviceCost)} VND` : "Liên hệ sân";
+                })()}
+              </Text>
+              <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
+            </>
+          ) : (
+            <>
+              <TextInput
+                style={[styles.input, styles.costInput]}
+                value={formatNumberWithDots(serviceCost)}
+                onChangeText={(text) => setServiceCost(text.replace(/[^0-9]/g, ""))}
+                keyboardType="numeric"
+                placeholder="Chi phí ước tính khi thi đấu"
+                placeholderTextColor="#bbb"
+              />
+              <Text style={styles.currencySuffix}>VND</Text>
+            </>
+          )}
         </View>
 
         {/* Trình độ (Short title) */}
@@ -2993,16 +3034,20 @@ export default function CreateMatchScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
 
-          <View style={styles.inputWrapper}>
-            <Ionicons name="call-outline" size={16} color="#666" style={{ marginLeft: 12, marginRight: -4 }} />
+          <View style={[styles.inputWrapper, selectedCourtObj ? { backgroundColor: "#F3F4F6" } : null]}>
+            <Ionicons name={selectedCourtObj ? "lock-closed" : "call-outline"} size={16} color={selectedCourtObj ? "#9CA3AF" : "#666"} style={{ marginLeft: 12, marginRight: -4 }} />
             <TextInput
-              style={styles.input}
+              style={[styles.input, selectedCourtObj ? { color: "#6B7280" } : null]}
               value={contactPhone}
               onChangeText={setContactPhone}
               placeholder="Số điện thoại liên hệ"
               placeholderTextColor="#bbb"
               keyboardType="phone-pad"
+              editable={!selectedCourtObj}
             />
+            {selectedCourtObj && (
+              <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
+            )}
           </View>
         </View>
 

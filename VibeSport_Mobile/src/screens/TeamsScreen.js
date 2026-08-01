@@ -266,10 +266,18 @@ export default function TeamsScreen({ navigation }) {
   };
 
   const handleEditMatch = (item) => {
+    if (item?.teamStatus === "ongoing") {
+      Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Sửa.");
+      return;
+    }
     navigation?.navigate?.("CreateMatch", { editMatch: item });
   };
 
   const handleDeleteMatch = (item) => {
+    if (item?.teamStatus === "ongoing") {
+      Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Xóa.");
+      return;
+    }
     Alert.alert("Xóa trận đấu", "Bạn có chắc muốn xóa trận này?", [
       { text: "Hủy", style: "cancel" },
       {
@@ -277,9 +285,15 @@ export default function TeamsScreen({ navigation }) {
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteMatch(item._id, token);
+            const res = await deleteMatch(item._id, token);
             await loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
-            Alert.alert("Thành công", "Đã xóa trận đấu");
+            if (res?.isDeleted) {
+              Alert.alert("Thành công", res.message || "Đã xóa trận đấu");
+            } else if (res?.pendingVote) {
+              Alert.alert("Thông báo biểu quyết", res.message);
+            } else {
+              Alert.alert("Thông báo", res.message || "Đã xử lý yêu cầu.");
+            }
           } catch (err) {
             Alert.alert("Lỗi", err.message);
           }

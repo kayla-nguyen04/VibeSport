@@ -14,13 +14,16 @@ import {
   TextInput,
   Pressable,
   KeyboardAvoidingView,
+  Clipboard,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getMatchById,
   deleteMatch,
+  acceptDeleteMatch,
   requestJoinMatch,
+  joinMatch,
   cancelJoinRequest,
   acceptJoinMatch,
   rejectJoinMatch,
@@ -488,52 +491,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return "Người tạo trận";
     }
 
-    // 1. Check memberPositions for assigned/saved playing position
-    const memberPosEntry = (match?.memberPositions || []).find(
-      (m) => getUserId(m.userId) === pStr
-    );
-    if (memberPosEntry && memberPosEntry.positionId && memberPosEntry.positionId.trim() !== "") {
-      const label = getPositionDisplayLabel(memberPosEntry.positionId);
-      if (label) return label;
-    }
-
-    // 2. Check pendingJoinRequestPositions for positions selected when applying
-    const pendingPosEntry = (match?.pendingJoinRequestPositions || []).find(
-      (entry) => getUserId(entry.userId) === pStr
-    );
-    if (pendingPosEntry && Array.isArray(pendingPosEntry.positionIds) && pendingPosEntry.positionIds.length > 0) {
-      const labels = pendingPosEntry.positionIds
-        .map((posId) => getPositionDisplayLabel(posId))
-        .filter(Boolean);
-      if (labels.length > 0) {
-        return Array.from(new Set(labels)).join(", ");
-      }
-    }
-
-    // 3. Smart resolution for football matches: Assign from match's selectedPositionIds or default formation by index
-    if (match?.sport === "football" || !match?.sport) {
-      const nonOwnerParticipants = (match?.participants || []).filter((p) => {
-        const id = getUserId(p);
-        return id && id !== creatorId && id !== ownerId;
-      });
-
-      const participantIndex = nonOwnerParticipants.findIndex((p) => getUserId(p) === pStr);
-      const posIds = match?.selectedPositionIds && match.selectedPositionIds.length > 0
-        ? match.selectedPositionIds
-        : ["t1_st", "t1_lb", "t1_dm1", "t2_st", "t2_lb", "t2_dm1"];
-
-      const validIndex = participantIndex >= 0 ? participantIndex : 0;
-      if (validIndex < posIds.length) {
-        return getPositionDisplayLabel(posIds[validIndex]);
-      }
-
-      const teamNo = (validIndex % 2 === 0) ? 1 : 2;
-      return `Tiền đạo Đội ${teamNo}`;
-    }
-
-    if (match?.sport === "badminton") return "VĐV Cầu lông";
-    if (match?.sport === "pickleball") return "VĐV Pickleball";
-    return "Thành viên";
+    return null;
   };
 
   const pendingRequestPositions = match?.pendingJoinRequestPositions || [];
@@ -585,14 +543,18 @@ export default function MatchDetailScreen({ navigation, route }) {
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
   const displayTotalNeeded = totalNeeded > 0 ? totalNeeded : maxCount;
-  const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isInvited && !isEnded && !isFull;
+
+  const isFull = match?.status === "full" || currentCount >= displayTotalNeeded;
+  const isEnded = match?.status === "completed" || match?.status === "cancelled" || match?.teamStatus === "ended";
+  const isMatchStarted = match?.teamStatus === "ongoing" || isEnded;
+  const isViaInviteLink = Boolean(route?.params?.invite || route?.params?.viaInvite || route?.params?.fromLink);
+
+  const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isEnded && !isFull && !isMatchStarted;
 
   const getRequestPositions = (requestUserId) => {
     const entry = pendingRequestPositions.find((item) => String(item.userId) === String(requestUserId));
     return Array.isArray(entry?.positionIds) ? entry.positionIds : [];
   };
-  const isFull = match?.status === "full" || currentCount >= displayTotalNeeded;
-  const isEnded = match?.status === "completed" || match?.status === "cancelled";
 
   useEffect(() => {
     if (isOwner && pendingRequests.length > 0) {
@@ -610,38 +572,62 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleOpenMap = () => {
-    const fullAddress = match.specificAddress || match.location?.address || match.locationName;
-    if (fullAddress) {
-      const query = encodeURIComponent(fullAddress);
-      const url = Platform.select({
-        ios: `maps:0,0?q=${query}`,
-        android: `geo:0,0?q=${query}`,
-        default: `https://www.google.com/maps/search/?api=1&query=${query}`,
-      });
-      Linking.openURL(url).catch(() => {
-        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
-      });
+    if (match?.mapUrl || match?.googleMapUrl) {
+      Linking.openURL(match.mapUrl || match.googleMapUrl).catch(() => {});
+      return;
+    }
+
+    const name = match.locationName || match.title || "";
+    const address = match.specificAddress || match.location?.address || "";
+
+    let combinedQuery = "";
+    if (name && address) {
+      if (address.toLowerCase().includes(name.toLowerCase())) {
+        combinedQuery = address;
+      } else {
+        combinedQuery = `${name}, ${address}`;
+      }
+    } else {
+      combinedQuery = name || address;
+    }
+
+    if (combinedQuery) {
+      const encodedQuery = encodeURIComponent(combinedQuery);
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`;
+      Linking.openURL(url).catch((err) => console.log("Open map error:", err));
     } else if (coords?.lat != null && coords?.lng != null) {
       const url = `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`;
-      Linking.openURL(url);
+      Linking.openURL(url).catch((err) => console.log("Open map error:", err));
     } else {
       Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí chi tiết.");
     }
   };
 
   const handleRequestJoin = () => {
+    if (isMatchStarted) {
+      Alert.alert("Thông báo", "Trận đấu đã bắt đầu hoặc đã kết thúc, không thể tham gia nữa.");
+      return;
+    }
     if (match?.sport === "football" && positionOptions.length > 0) {
       setSelectedPositions([]);
       setShowPositionModal(true);
       return;
     }
-    Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn gửi yêu cầu tham gia trận này?", [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "Đồng ý",
-        onPress: () => handleConfirmJoin(),
-      },
-    ]);
+    if (isViaInviteLink || isInvited) {
+      handleConfirmJoin();
+    } else {
+      Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn tham gia trận này?", [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Gửi yêu cầu (Chờ duyệt)",
+          onPress: () => handleConfirmJoin(false),
+        },
+        {
+          text: "Tham gia qua Link Mời (Vào ngay)",
+          onPress: () => handleConfirmJoin(true),
+        },
+      ]);
+    }
   };
 
   const handleCancelRequest = async () => {
@@ -665,56 +651,74 @@ export default function MatchDetailScreen({ navigation, route }) {
     ]);
   };
 
-  const handleConfirmJoin = async () => {
+  const handleConfirmJoin = async (forceDirectJoin = false) => {
+    const shouldJoinDirectly = forceDirectJoin || isViaInviteLink || isInvited;
     Alert.alert(
       "Nhắc nhở dụng cụ",
-      "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn tham gia? (Người mới biết để thuê đồ)",
+      shouldJoinDirectly
+        ? "Bạn sẽ tham gia trực tiếp vào trận qua Link Mời mà không cần chủ trận duyệt. Tiếp tục?"
+        : "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn gửi yêu cầu tham gia?",
       [
         { text: "Hủy", style: "cancel" },
         {
-          text: "Đồng ý",
+          text: "Xác nhận tham gia",
           onPress: async () => {
             try {
               setActionLoading(true);
-              const data = await requestJoinMatch(match._id, userId);
-              setMatch(data);
-              Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+              let data;
+              if (shouldJoinDirectly) {
+                data = await joinMatch(match._id, userId);
+                Alert.alert("Thành công 🎉", "Bạn đã tham gia trận đấu thành công qua Link Mời (Không cần chủ trận duyệt)!");
+              } else {
+                data = await requestJoinMatch(match._id, userId);
+                Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+              }
+              setMatch(data?.data || data);
             } catch (err) {
-              Alert.alert("Lỗi", err.message);
+              Alert.alert("Lỗi", err.message || "Không thể tham gia");
             } finally {
               setActionLoading(false);
               setShowPositionModal(false);
               setJoinSelectedPositions([]);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  const handleConfirmJoinWithPositions = async () => {
+  const handleConfirmJoinWithPositions = async (forceDirectJoin = false) => {
     if (selectedPositions.length !== 1) {
       Alert.alert("Thông báo", "Vui lòng chọn đúng 1 vị trí để tham gia");
       return;
     }
 
+    const shouldJoinDirectly = forceDirectJoin || isViaInviteLink || isInvited;
     Alert.alert(
       "Nhắc nhở dụng cụ",
-      "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn tham gia? ",
+      shouldJoinDirectly
+        ? "Bạn sẽ tham gia vị trí đã chọn trực tiếp qua Link Mời (Không cần chủ trận duyệt). Tiếp tục?"
+        : "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn gửi yêu cầu tham gia?",
       [
         { text: "Hủy", style: "cancel" },
         {
-          text: "Đồng ý",
+          text: "Xác nhận",
           onPress: async () => {
             try {
               setActionLoading(true);
               setShowPositionModal(false);
-              const data = await requestJoinMatch(match._id, userId, selectedPositions);
-              setMatch(data);
+              let data;
+              if (shouldJoinDirectly) {
+                data = await joinMatch(match._id, userId, selectedPositions);
+                Alert.alert("Thành công 🎉", "Bạn đã tham gia vị trí thành công qua Link Mời (Không cần chủ trận duyệt)!");
+              } else {
+                data = await requestJoinMatch(match._id, userId, selectedPositions);
+                Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
+              }
+              setMatch(data?.data || data);
               setSelectedPositions([]);
-              Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
             } catch (err) {
-              Alert.alert("Lỗi", err.message);
+              Alert.alert("Lỗi", err.message || "Không thể tham gia");
             } finally {
               setActionLoading(false);
             }
@@ -826,13 +830,21 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleEdit = () => {
+    if (match?.teamStatus === "ongoing") {
+      Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Sửa.");
+      return;
+    }
     navigation.navigate("CreateMatch", { editMatch: match });
   };
 
   const handleDelete = () => {
+    if (match?.teamStatus === "ongoing") {
+      Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Xóa.");
+      return;
+    }
     Alert.alert(
       "Xóa trận đấu",
-      "Bạn có chắc muốn xóa trận này? Hành động này không thể hoàn tác.",
+      "Bạn có chắc muốn xóa trận này?",
       [
         { text: "Hủy", style: "cancel" },
         {
@@ -840,11 +852,22 @@ export default function MatchDetailScreen({ navigation, route }) {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteMatch(match._id, token);
-              Alert.alert("Thành công", "Đã xóa trận đấu");
-              navigation.navigate("Home", { screen: "MatchesTab" });
+              setActionLoading(true);
+              const res = await deleteMatch(match._id, token);
+              if (res?.isDeleted) {
+                Alert.alert("Thành công", res.message || "Đã xóa trận đấu");
+                navigation.navigate("Home", { screen: "MatchesTab" });
+              } else if (res?.pendingVote) {
+                Alert.alert("Thông báo biểu quyết", res.message);
+                fetchDetail();
+              } else {
+                Alert.alert("Thông báo", res.message || "Đã xử lý yêu cầu.");
+                fetchDetail();
+              }
             } catch (err) {
               Alert.alert("Lỗi", err.message);
+            } finally {
+              setActionLoading(false);
             }
           },
         },
@@ -852,8 +875,41 @@ export default function MatchDetailScreen({ navigation, route }) {
     );
   };
 
+  const handleAcceptDeleteVote = async () => {
+    try {
+      setActionLoading(true);
+      const res = await acceptDeleteMatch(match._id, token);
+      if (res?.isDeleted) {
+        Alert.alert("Thành công", res.message || "Trận đấu đã được xóa.");
+        navigation.navigate("Home", { screen: "MatchesTab" });
+      } else {
+        Alert.alert("Đã xác nhận", res.message || "Đã ghi nhận biểu quyết của bạn.");
+        fetchDetail();
+      }
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể xác nhận biểu quyết");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCopyInviteLink = () => {
+    const inviteLink = `https://vibesport.app/match/${match._id}?invite=true`;
+    Clipboard.setString(inviteLink);
+    Alert.alert(
+      "Đã sao chép link mời 🎉",
+      "Link mời tham gia bài viết đã được chép vào khay nhớ tạm:\n\n" +
+        inviteLink +
+        "\n\nBất kỳ ai có link này khi tham gia sẽ được VÀO THẲNG TRẬN ĐẤU mà KHÔNG CẦN CHỦ TRẬN DUYỆT."
+    );
+  };
+
   // ─── Owner: Invite from following list ───────────────────────
   const handleOpenInvite = async () => {
+    if (isMatchStarted) {
+      Alert.alert("Thông báo", "Trận đấu đã bắt đầu hoặc đã kết thúc, không thể gửi lời mời tham gia nữa!");
+      return;
+    }
     try {
       setInviteLoading(true);
       setShowInviteModal(true);
@@ -985,19 +1041,42 @@ export default function MatchDetailScreen({ navigation, route }) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
         
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          {isOwner && match.status !== "completed" && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {isOwner && (
             <>
+              {match.teamStatus !== "ongoing" && (
+                <TouchableOpacity
+                  style={{ padding: 6 }}
+                  onPress={handleEdit}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={22} color={ORANGE} />
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
-                style={[styles.joinHeaderBtn, { width: 110 }]}
-                onPress={() => setShowRequestModal(true)}
-                activeOpacity={0.8}
+                style={{ padding: 6 }}
+                onPress={handleDelete}
+                activeOpacity={0.7}
               >
-                <Text style={styles.joinHeaderBtnText}>Yêu cầu</Text>
-                {pendingRequests.length > 0 && <View style={styles.redDot} />}
+                <Ionicons
+                  name="trash-outline"
+                  size={22}
+                  color={match.teamStatus === "ongoing" ? "#9CA3AF" : "#EF4444"}
+                />
               </TouchableOpacity>
-            
             </>
+          )}
+
+          {isOwner && match.status !== "completed" && (
+            <TouchableOpacity
+              style={[styles.joinHeaderBtn, { width: 90 }]}
+              onPress={() => setShowRequestModal(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.joinHeaderBtnText}>Yêu cầu</Text>
+              {pendingRequests.length > 0 && <View style={styles.redDot} />}
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -1014,6 +1093,67 @@ export default function MatchDetailScreen({ navigation, route }) {
               </View>
             );
           })()}
+
+          {/* Deletion Vote Banner */}
+          {match.deletionVote && match.deletionVote.active && (
+            <View style={{
+              backgroundColor: "#FEF2F2",
+              borderColor: "#FCA5A5",
+              borderWidth: 1,
+              padding: 12,
+              borderRadius: 12,
+              marginTop: 10,
+              marginBottom: 4,
+            }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="warning" size={18} color="#DC2626" />
+                <Text style={{ fontWeight: "700", color: "#991B1B", fontSize: 13.5, flex: 1 }}>
+                  Yêu cầu biểu quyết XÓA trận đấu
+                </Text>
+              </View>
+              {(() => {
+                const totalP = Math.max(1, (match.participants || []).length);
+                const acceptedUsersArr = (match.deletionVote.acceptedUsers || []).map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
+                const acceptedCount = acceptedUsersArr.length;
+                const percentage = Math.round((acceptedCount / totalP) * 100);
+                const hasAccepted = acceptedUsersArr.includes(String(userId));
+
+                return (
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={{ color: "#7F1D1D", fontSize: 12.5, lineHeight: 18 }}>
+                      Số thành viên đồng ý: <Text style={{ fontWeight: "700" }}>{acceptedCount}/{totalP} ({percentage}%)</Text> — Cần ≥ 80% để tiến hành xóa.
+                    </Text>
+
+                    {isParticipant && !hasAccepted && (
+                      <TouchableOpacity
+                        style={{
+                          backgroundColor: "#DC2626",
+                          paddingVertical: 9,
+                          paddingHorizontal: 14,
+                          borderRadius: 8,
+                          marginTop: 10,
+                          alignItems: "center",
+                        }}
+                        onPress={handleAcceptDeleteVote}
+                        disabled={actionLoading}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
+                          Đồng ý xóa trận đấu
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {hasAccepted && (
+                      <Text style={{ color: "#059669", fontSize: 12, fontWeight: "700", marginTop: 6 }}>
+                        ✓ Bạn đã biểu quyết ĐỒNG Ý xóa trận đấu này.
+                      </Text>
+                    )}
+                  </View>
+                );
+              })()}
+            </View>
+          )}
 
           <View style={styles.cardHeader}>
             <View style={styles.sportSquare}>
@@ -1298,29 +1438,53 @@ export default function MatchDetailScreen({ navigation, route }) {
 
           {/* Nút Mời thêm bạn bè tham gia (Hiển thị phía dưới Danh sách tham gia) */}
           {isOwner && (
-            <TouchableOpacity
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "#FFF7ED",
-                borderWidth: 1.5,
-                borderColor: "#FFD8A8",
-                paddingVertical: 10,
-                paddingHorizontal: 16,
-                borderRadius: 12,
-                marginTop: 10,
-                marginBottom: 8,
-                gap: 6,
-              }}
-              onPress={handleOpenInvite}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="person-add" size={18} color={ORANGE} />
-              <Text style={{ color: ORANGE, fontWeight: "700", fontSize: 13.5 }}>
-                + Mời thêm bạn bè tham gia
-              </Text>
-            </TouchableOpacity>
+            isMatchStarted ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "#F3F4F6",
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  marginTop: 10,
+                  marginBottom: 8,
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
+                <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
+                  Trận đấu đã bắt đầu (Không thể mời)
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "#FFF7ED",
+                  borderWidth: 1.5,
+                  borderColor: "#FFD8A8",
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  marginTop: 10,
+                  marginBottom: 8,
+                  gap: 6,
+                }}
+                onPress={handleOpenInvite}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="person-add" size={18} color={ORANGE} />
+                <Text style={{ color: ORANGE, fontWeight: "700", fontSize: 13.5 }}>
+                  + Mời thêm bạn bè tham gia
+                </Text>
+              </TouchableOpacity>
+            )
           )}
 
           {/* Nhóm chat gắn với trận đấu */}
@@ -1596,8 +1760,14 @@ export default function MatchDetailScreen({ navigation, route }) {
           
           <View style={{ flex: 1, paddingHorizontal: 16 }}>
             <View style={styles.copyLinkBox}>
-              <Text style={styles.copyLinkLabel}>Link: <Text style={styles.copyLinkValue}>{match._id}</Text></Text>
-              <TouchableOpacity style={styles.copyLinkBtn} onPress={() => Alert.alert("Đã sao chép link")}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.copyLinkLabel}>Link mời trực tiếp (Không cần duyệt):</Text>
+                <Text style={styles.copyLinkValue} numberOfLines={1}>
+                  https://vibesport.app/match/{match._id}?invite=true
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.copyLinkBtn} onPress={handleCopyInviteLink} activeOpacity={0.8}>
+                <Ionicons name="copy-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
                 <Text style={styles.copyLinkBtnText}>Sao chép link</Text>
               </TouchableOpacity>
             </View>
@@ -2462,17 +2632,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   copyLinkBtn: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ccc",
+    backgroundColor: ORANGE,
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
   },
   copyLinkBtnText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#333",
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   // ─── Kick Modal ───
   kickOverlay: {
