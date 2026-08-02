@@ -258,7 +258,104 @@
 .page-btn:hover:not(:disabled) {
   background: #f5f5f5;
 }
+.detail-section {
+  margin-top: 24px;
+}
 
+.detail-section label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.activity-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.activity-column h4 {
+  margin: 0 0 10px 0;
+  font-size: 15px;
+  color: #111827;
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-item {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 14px 16px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.activity-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+}
+
+.activity-item-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.activity-item-meta {
+  font-size: 12.5px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.activity-item-subtext {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.activity-item-match {
+  background: #ffffff;
+}
+
+.modal-loading {
+  color: #6b7280;
+  padding: 18px 0;
+}
+
+.btn-resolve {
+  background: #ff6b00;
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.status-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+  color: #fff;
+  font-weight: 700;
+}
+
+.status-notification.success {
+  background: #16a34a;
+}
+
+.status-notification.error {
+  background: #dc2626;
+}
 .page-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

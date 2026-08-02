@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import api from '../utils/api';
+import axios from 'axios';
 import './ReputationPage.css';
 
 export default function ReputationPage() {
   const [users, setUsers] = useState([]);
+  const [courts, setCourts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'warning' | 'locked' | 'good'
@@ -13,8 +14,10 @@ export default function ReputationPage() {
   const fetchReputationData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/ratings/admin/list', {
+      const token = localStorage.getItem('adminToken');
+      const res = await axios.get('http://localhost:4000/api/ratings/admin/list', {
         params: { search: searchQuery.trim() || undefined },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.data?.success) {
         setUsers(res.data.data || []);
@@ -28,7 +31,19 @@ export default function ReputationPage() {
 
   useEffect(() => {
     fetchReputationData();
+    fetchCourts();
   }, [fetchReputationData]);
+
+  const fetchCourts = useCallback(async () => {
+    try {
+      const res = await axios.get('http://localhost:4000/api/courts', { params: { status: 'active' } });
+      if (res.data?.success) {
+        setCourts(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Fetch courts error:', err.message);
+    }
+  }, []);
 
   const handleOpenHistory = (user) => {
     setSelectedUser(user);
@@ -52,7 +67,7 @@ export default function ReputationPage() {
 
   const renderStars = (stars) => {
     const s = Math.round(stars || 5);
-    return '⭐'.repeat(s);
+    return ''.repeat(s);
   };
 
   return (
@@ -60,7 +75,7 @@ export default function ReputationPage() {
       {/* HEADER */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">⭐ Quản lý Đánh giá & Uy tín Người dùng</h1>
+          <h1 className="page-title"> Quản lý Đánh giá & Uy tín Người dùng</h1>
           <p className="page-subtitle">
             Theo dõi danh sách người dùng, điểm sao trung bình và lịch sử các lượt đánh giá nhận được trong hệ thống
           </p>
@@ -70,7 +85,7 @@ export default function ReputationPage() {
       {/* STATS CARDS */}
       <div className="stats-row">
         <div className="stat-card">
-          <span className="stat-icon">👥</span>
+          <span className="stat-icon"></span>
           <div>
             <span className="stat-num">{totalCount}</span>
             <span className="stat-label">Tổng người dùng</span>
@@ -78,7 +93,7 @@ export default function ReputationPage() {
         </div>
 
         <div className="stat-card good">
-          <span className="stat-icon">🌟</span>
+          <span className="stat-icon"></span>
           <div>
             <span className="stat-num">{goodCount}</span>
             <span className="stat-label">Uy tín cao (≥ 4.5⭐)</span>
@@ -86,7 +101,7 @@ export default function ReputationPage() {
         </div>
 
         <div className="stat-card warning">
-          <span className="stat-icon">⚠️</span>
+          <span className="stat-icon"></span>
           <div>
             <span className="stat-num">{warningCount}</span>
             <span className="stat-label">Cảnh báo sao (&lt; 3.0⭐)</span>
@@ -94,7 +109,7 @@ export default function ReputationPage() {
         </div>
 
         <div className="stat-card danger">
-          <span className="stat-icon">⛔</span>
+          <span className="stat-icon"></span>
           <div>
             <span className="stat-num">{lockedCount}</span>
             <span className="stat-label">Đã bị khóa (&lt; 2.0⭐)</span>
@@ -115,19 +130,19 @@ export default function ReputationPage() {
             className={`tab-btn ${activeFilter === 'good' ? 'active' : ''}`}
             onClick={() => setActiveFilter('good')}
           >
-            🌟 Uy tín cao ({goodCount})
+             Uy tín cao ({goodCount})
           </button>
           <button
             className={`tab-btn ${activeFilter === 'warning' ? 'active' : ''}`}
             onClick={() => setActiveFilter('warning')}
           >
-            ⚠️ Cảnh báo (&lt; 3.0⭐) ({warningCount})
+             Cảnh báo (&lt; 3.0⭐) ({warningCount})
           </button>
           <button
             className={`tab-btn ${activeFilter === 'locked' ? 'active' : ''}`}
             onClick={() => setActiveFilter('locked')}
           >
-            ⛔ Đã bị khóa (&lt; 2.0⭐) ({lockedCount})
+             Đã bị khóa (&lt; 2.0⭐) ({lockedCount})
           </button>
         </div>
 
@@ -180,8 +195,8 @@ export default function ReputationPage() {
 
                   <div className="user-info-body">
                     <h3 className="user-name">{userItem.name || 'Người dùng'}</h3>
-                    <p className="user-contact-text">📧 {userItem.email || 'Chưa có email'}</p>
-                    <p className="user-contact-text">📞 {userItem.phone || 'Chưa có SĐT'}</p>
+                    <p className="user-contact-text"> {userItem.email || 'Chưa có email'}</p>
+                    <p className="user-contact-text"> {userItem.phone || 'Chưa có SĐT'}</p>
                   </div>
                 </div>
 
@@ -199,9 +214,9 @@ export default function ReputationPage() {
                   {/* Badges Trạng thái */}
                   <div className="status-badge-container">
                     {isLocked ? (
-                      <span className="status-badge locked">⛔ Tài khoản đã bị khóa (&lt; 2.0⭐)</span>
+                      <span className="status-badge locked"> Tài khoản đã bị khóa (&lt; 2.0⭐)</span>
                     ) : isWarning ? (
-                      <span className="status-badge warning">⚠️ Cảnh báo sao thấp (&lt; 3.0⭐)</span>
+                      <span className="status-badge warning"> Cảnh báo sao thấp (&lt; 3.0⭐)</span>
                     ) : (
                       <span className="status-badge active">🟢 Hoạt động tốt</span>
                     )}
@@ -211,7 +226,7 @@ export default function ReputationPage() {
                 {/* THAO TÁC XEM LỊCH SỬ BỊ ĐÁNH GIÁ */}
                 <div className="user-card-footer">
                   <button className="btn-view-history" onClick={() => handleOpenHistory(userItem)}>
-                    📜 Xem lịch sử bị đánh giá ({historyList.length})
+                     Xem lịch sử bị đánh giá ({historyList.length})
                   </button>
                 </div>
               </div>
@@ -228,7 +243,7 @@ export default function ReputationPage() {
               <div className="flex-align-center gap-12">
                 <h2>📜 Lịch sử bị đánh giá của {selectedUser.name}</h2>
                 <span className="modal-star-pill">
-                  ⭐ {(selectedUser.rating || 5.0).toFixed(1)} / 5.0
+                   {(selectedUser.rating || 5.0).toFixed(1)} / 5.0
                 </span>
               </div>
               <button className="close-btn" onClick={() => setShowHistoryModal(false)}>✕</button>
@@ -237,7 +252,7 @@ export default function ReputationPage() {
             <div className="modal-body">
               {!selectedUser.receivedRatings || selectedUser.receivedRatings.length === 0 ? (
                 <div className="empty-history">
-                  <span className="empty-icon">📝</span>
+                  <span className="empty-icon"></span>
                   <p>Người dùng này chưa nhận được lượt đánh giá nào từ các bạn chơi khác.</p>
                 </div>
               ) : (
@@ -271,7 +286,7 @@ export default function ReputationPage() {
 
                         {item.comment ? (
                           <div className="review-comment-box">
-                            💬 "{item.comment}"
+                             "{item.comment}"
                           </div>
                         ) : (
                           <p className="no-comment-text">(Không có lời nhận xét)</p>
@@ -279,14 +294,14 @@ export default function ReputationPage() {
 
                         {match && match.title && (
                           <div className="match-meta-box">
-                            <span>⚽ <strong>Trận đấu:</strong> {match.title}</span>
-                            {match.date && <span>📅 Ngày: {match.date}</span>}
-                            {match.locationName && <span>📍 Sân: {match.locationName}</span>}
+                            <span> <strong>Trận đấu:</strong> {match.title}</span>
+                            {match.date && <span>Ngày: {match.date}</span>}
+                            {match.locationName && <span> Sân: {match.locationName}</span>}
                           </div>
                         )}
 
                         <div className="review-time">
-                          🕒 Đã đánh giá lúc: {new Date(item.createdAt || Date.now()).toLocaleString('vi-VN')}
+                           Đã đánh giá lúc: {new Date(item.createdAt || Date.now()).toLocaleString('vi-VN')}
                         </div>
                       </div>
                     );

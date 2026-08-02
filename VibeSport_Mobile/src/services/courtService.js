@@ -37,3 +37,5 @@ export async function getCourtsRequest(sportType) {
     return c.sportType === sportType || (Array.isArray(c.sports) && c.sports.includes(sportType));
   });
 }
+
+

@@ -34,6 +34,7 @@ exports.rateParticipants = async (req, res) => {
     const createdRatings = [];
     const sender = await User.findById(fromUserId).select('name');
 
+    const skipped = [];
     for (const item of ratings) {
       const { toUserId, stars, comment } = item;
       if (!toUserId || !stars || stars < 1 || stars > 5) continue;
@@ -44,12 +45,21 @@ exports.rateParticipants = async (req, res) => {
       );
       if (!isTargetInMatch) continue;
 
-      // 1. Lưu hoặc cập nhật đánh giá
-      const ratingDoc = await Rating.findOneAndUpdate(
-        { fromUser: fromUserId, toUser: toUserId, matchId },
-        { stars, comment: comment || '' },
-        { upsert: true, returnDocument: 'after', runValidators: true }
-      );
+      // 1. Kiểm tra xem người gửi đã từng đánh giá target trong trận này chưa
+      const existing = await Rating.findOne({ fromUser: fromUserId, toUser: toUserId, matchId });
+      if (existing) {
+        skipped.push({ toUserId, reason: 'already_rated' });
+        continue;
+      }
+
+      // Tạo mới đánh giá (không cho phép cập nhật lại để đảm bảo 1 người 1 lần)
+      const ratingDoc = await Rating.create({
+        fromUser: fromUserId,
+        toUser: toUserId,
+        matchId,
+        stars,
+        comment: comment || '',
+      });
       createdRatings.push(ratingDoc);
 
       // 2. Tính lại điểm Rating trung bình 100 điểm đánh giá gần nhất (Grab Style)
@@ -125,7 +135,7 @@ exports.rateParticipants = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Cập nhật đánh giá thành công!',
-      data: createdRatings,
+      data: { created: createdRatings, skipped },
     });
   } catch (error) {
     console.error('[ratingController] rateParticipants error:', error);
@@ -220,5 +230,21 @@ exports.getAdminReputationList = async (req, res) => {
   } catch (err) {
     console.error('[ratingController] getAdminReputationList error:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// Trả về danh sách userId mà current user đã đánh giá trong 1 trận
+exports.getMyRatingsForMatch = async (req, res) => {
+  try {
+    const fromUserId = req.user.id || req.user._id;
+    const { matchId } = req.params;
+    if (!matchId) return res.status(400).json({ message: 'matchId is required' });
+
+    const rows = await Rating.find({ matchId, fromUser: fromUserId }).select('toUser -_id').lean();
+    const toUserIds = rows.map((r) => String(r.toUser));
+    return res.status(200).json({ success: true, data: toUserIds });
+  } catch (err) {
+    console.error('[ratingController] getMyRatingsForMatch error:', err);
+    return res.status(500).json({ message: 'Lỗi máy chủ khi lấy dữ liệu đánh giá của bạn.' });
   }
 };

@@ -20,8 +20,17 @@ const courtSchema = new Schema(
     closeTime: { type: String, default: '23:00' },
     status: {
       type: String,
-      enum: ['active', 'hidden'],
+      enum: ['active', 'hidden', 'removed_by_admin'],
       default: 'active',
+    },
+    removedAt: {
+      type: Date,
+      default: null,
+    },
+    removedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Admin',
+      default: null,
     },
     fieldTypes: [{ type: String }],
     pitchOptions: [

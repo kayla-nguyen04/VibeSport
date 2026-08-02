@@ -20,5 +20,6 @@ if (!ratingController.getUserRatings) {
 router.get('/admin/list', ratingController.getAdminReputationList);
 router.post('/', authMiddleware, ratingController.rateParticipants);
 router.get('/user/:userId', authMiddleware, ratingController.getUserRatings);
+router.get('/match/:matchId/my', authMiddleware, ratingController.getMyRatingsForMatch);
 
 module.exports = router;

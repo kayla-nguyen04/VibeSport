@@ -55,3 +55,30 @@ export async function getUserRatingsRequest(userId, token) {
     throw new Error(error.message || 'Lỗi mạng khi tải đánh giá.');
   }
 }
+
+export async function getMyMatchRatings(matchId, token) {
+  try {
+    const response = await fetch(`${RATINGS_URL}/match/${matchId}/my`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const text = await response.text();
+    // Try parse JSON, but tolerate non-JSON (fallback to empty list on parse failure when response ok)
+    let result = null;
+    try {
+      result = JSON.parse(text);
+    } catch (parseErr) {
+      if (response.ok) {
+        console.warn('[ratingApi] getMyMatchRatings: non-JSON response, returning empty list');
+        return [];
+      }
+      // Non-JSON and not ok -> throw with status text
+      throw new Error(`Lỗi máy chủ (${response.status})`);
+    }
+
+    if (!response.ok) throw new Error(result.message || 'Không thể kiểm tra đánh giá.');
+    return result.data || [];
+  } catch (error) {
+    throw new Error(error.message || 'Lỗi mạng khi kiểm tra đánh giá.');
+  }
+}

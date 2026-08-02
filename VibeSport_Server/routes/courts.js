@@ -117,7 +117,7 @@ router.get('/', async (req, res) => {
 
     if (status && status !== 'all') {
       if (status === 'active') {
-        conditions.push({ status: { $ne: 'hidden' } });
+        conditions.push({ status: { $nin: ['hidden', 'removed_by_admin'] } });
       } else {
         conditions.push({ status: status });
       }
@@ -220,16 +220,22 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/courts/:id (Xóa mẫu sân)
 router.delete('/:id', async (req, res) => {
   try {
-    const deleted = await Court.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ success: false, message: 'Không tìm thấy mẫu sân để xóa' });
+    const court = await Court.findById(req.params.id);
+    if (!court) return res.status(404).json({ success: false, message: 'Không tìm thấy mẫu sân để xóa' });
+
+    court.status = 'removed_by_admin';
+    court.removedAt = new Date();
+    await court.save();
 
     // Gửi thông báo đến người dùng trong các trận đấu sử dụng sân vừa bị xóa
-    notifyMatchParticipantsForCourt(deleted, 'Xóa khỏi hệ thống');
+    notifyMatchParticipantsForCourt(court, 'Xóa khỏi hệ thống');
 
-    res.json({ success: true, message: 'Đã xóa mẫu sân thành công' });
+    res.json({ success: true, message: 'Đã chuyển sân vào phần Nội dung đã xóa' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 module.exports = router;
+
+

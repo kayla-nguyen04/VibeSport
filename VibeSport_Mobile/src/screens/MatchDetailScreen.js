@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { submitMatchRatings } from "../services/ratingApi";
+import { submitMatchRatings, getMyMatchRatings } from "../services/ratingApi";
 import {
   getMatchById,
   deleteMatch,
@@ -313,6 +313,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [singleStars, setSingleStars] = useState(5);
   const [singleComment, setSingleComment] = useState("");
   const [submittingRating, setSubmittingRating] = useState(false);
+  const [myRatedUserIds, setMyRatedUserIds] = useState([]);
 
   // Invite & Kick modals
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -383,6 +384,15 @@ export default function MatchDetailScreen({ navigation, route }) {
     if (!matchId) return;
     const data = await getMatchById(matchId);
     setMatch(data);
+    // load which users current user already rated for this match
+    if (token) {
+      try {
+        const ids = await getMyMatchRatings(matchId, token);
+        setMyRatedUserIds(ids.map((i) => String(i)));
+      } catch (e) {
+        console.warn('Không thể tải danh sách đánh giá của bạn cho trận:', e.message);
+      }
+    }
   };
 
   const handleToggleTeamStatus = async (newStatus) => {
@@ -518,6 +528,11 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
 
+    if (myRatedUserIds.includes(String(targetId))) {
+      Alert.alert('Thông báo', 'Bạn đã đánh giá người này cho trận này rồi.');
+      return;
+    }
+
     const targetName = targetUser?.name || "Người chơi";
     setSingleRatingTarget({ id: targetId, name: targetName });
     setSingleStars(5);
@@ -624,14 +639,14 @@ export default function MatchDetailScreen({ navigation, route }) {
     if ((match?.benchMembersTeam1 || 0) > 0) {
       for (let index = 0; index < match.benchMembersTeam1; index += 1) {
         const benchId = `t1_bench_${index + 1}`;
-        addOption(benchId, "Dự bị", "bench", 1, true, takenPositionIds.has(benchId));
+        addOption(benchId, "Dự bị (Free)", "bench", 1, true, takenPositionIds.has(benchId));
       }
     }
 
     if ((match?.benchMembersTeam2 || 0) > 0) {
       for (let index = 0; index < match.benchMembersTeam2; index += 1) {
         const benchId = `t2_bench_${index + 1}`;
-        addOption(benchId, "Dự bị", "bench", 2, true, takenPositionIds.has(benchId));
+        addOption(benchId, "Dự bị (Free)", "bench", 2, true, takenPositionIds.has(benchId));
       }
     }
 
@@ -714,21 +729,19 @@ export default function MatchDetailScreen({ navigation, route }) {
       setShowPositionModal(true);
       return;
     }
-    if (isViaInviteLink || isInvited) {
-      handleConfirmJoin();
-    } else {
-      Alert.alert("Xác nhận tham gia", "Bạn có chắc muốn tham gia trận này?", [
+
+    // Normal flow: ask about equipment and send join request to owner
+    Alert.alert(
+      "Xác nhận gửi yêu cầu",
+      "Môn thể thao này cần có dụng cụ thi đấu. Bạn có muốn gửi yêu cầu tham gia đến chủ trận duyệt không?",
+      [
         { text: "Hủy", style: "cancel" },
         {
-          text: "Gửi yêu cầu (Chờ duyệt)",
+          text: "Gửi yêu cầu",
           onPress: () => handleConfirmJoin(false),
         },
-        {
-          text: "Tham gia qua Link Mời (Vào ngay)",
-          onPress: () => handleConfirmJoin(true),
-        },
-      ]);
-    }
+      ]
+    );
   };
 
   const handleCancelRequest = async () => {
@@ -739,7 +752,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         onPress: async () => {
           try {
             setActionLoading(true);
-            const data = await cancelJoinRequest(match._id, userId);
+            const data = await cancelJoinRequest(match._id, userId, token);
             setMatch(data);
             Alert.alert("Thành công", "Đã hủy yêu cầu tham gia");
           } catch (err) {
@@ -753,39 +766,30 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleConfirmJoin = async (forceDirectJoin = false) => {
-    const shouldJoinDirectly = forceDirectJoin || isViaInviteLink || isInvited;
-    Alert.alert(
-      "Nhắc nhở dụng cụ",
-      shouldJoinDirectly
-        ? "Bạn sẽ tham gia trực tiếp vào trận qua Link Mời mà không cần chủ trận duyệt. Tiếp tục?"
-        : "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn gửi yêu cầu tham gia?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xác nhận tham gia",
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              let data;
-              if (shouldJoinDirectly) {
-                data = await joinMatch(match._id, userId);
-                Alert.alert("Thành công 🎉", "Bạn đã tham gia trận đấu thành công qua Link Mời (Không cần chủ trận duyệt)!");
-              } else {
-                data = await requestJoinMatch(match._id, userId);
-                Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-              }
-              setMatch(data?.data || data);
-            } catch (err) {
-              Alert.alert("Lỗi", err.message || "Không thể tham gia");
-            } finally {
-              setActionLoading(false);
-              setShowPositionModal(false);
-              setJoinSelectedPositions([]);
-            }
-          },
-        },
-      ]
-    );
+    const shouldJoinDirectly = forceDirectJoin === true;
+    try {
+      setActionLoading(true);
+      if (isFull) {
+        Alert.alert("Lỗi", "Trận đấu đã đầy người");
+        return;
+      }
+
+      let data;
+      if (shouldJoinDirectly) {
+        data = await joinMatch(match._id, userId, [], token);
+        Alert.alert("Thành công 🎉", "Bạn đã tham gia trận đấu thành công qua Link Mời!");
+      } else {
+        data = await requestJoinMatch(match._id, userId, [], token);
+        Alert.alert("Thành công 🎉", "Đã gửi yêu cầu tham gia đến chủ trận. Vui lòng chờ chủ trận duyệt!");
+      }
+      setMatch(data?.data || data);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể tham gia");
+    } finally {
+      setActionLoading(false);
+      setShowPositionModal(false);
+      setSelectedPositions([]);
+    }
   };
 
   const handleConfirmJoinWithPositions = async (forceDirectJoin = false) => {
@@ -794,40 +798,27 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
 
-    const shouldJoinDirectly = forceDirectJoin || isViaInviteLink || isInvited;
-    Alert.alert(
-      "Nhắc nhở dụng cụ",
-      shouldJoinDirectly
-        ? "Bạn sẽ tham gia vị trí đã chọn trực tiếp qua Link Mời (Không cần chủ trận duyệt). Tiếp tục?"
-        : "Môn thể thao này cần có dụng cụ thi đấu, bạn có muốn gửi yêu cầu tham gia?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xác nhận",
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              setShowPositionModal(false);
-              let data;
-              if (shouldJoinDirectly) {
-                data = await joinMatch(match._id, userId, selectedPositions);
-                Alert.alert("Thành công 🎉", "Bạn đã tham gia vị trí thành công qua Link Mời (Không cần chủ trận duyệt)!");
-              } else {
-                data = await requestJoinMatch(match._id, userId, selectedPositions);
-                Alert.alert("Thành công", "Đã gửi yêu cầu tham gia đến chủ trận");
-              }
-              setMatch(data?.data || data);
-              setSelectedPositions([]);
-            } catch (err) {
-              Alert.alert("Lỗi", err.message || "Không thể tham gia");
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
+    const shouldJoinDirectly = forceDirectJoin === true;
+    try {
+      setActionLoading(true);
+      setShowPositionModal(false);
+      let data;
+      if (shouldJoinDirectly) {
+        data = await joinMatch(match._id, userId, selectedPositions, token);
+        Alert.alert("Thành công 🎉", "Bạn đã tham gia vị trí thành công qua Link Mời!");
+      } else {
+        data = await requestJoinMatch(match._id, userId, selectedPositions, token);
+        Alert.alert("Thành công 🎉", "Đã gửi yêu cầu tham gia vị trí đã chọn đến chủ trận. Vui lòng chờ chủ trận duyệt!");
+      }
+      setMatch(data?.data || data);
+      setSelectedPositions([]);
+    } catch (err) {
+      Alert.alert("Lỗi", err.message || "Không thể tham gia");
+    } finally {
+      setActionLoading(false);
+    }
   };
+
 
   const togglePositionSelection = (option) => {
     if (option.disabled) return;
@@ -850,19 +841,19 @@ export default function MatchDetailScreen({ navigation, route }) {
       { text: "Hủy", style: "cancel" },
       {
         text: "Đồng ý",
-        onPress: async () => {
-          try {
-            setActionLoading(true);
-            const data = await cancelJoinRequest(match._id, userId);
-            setMatch(data);
-            setSelectedPositions([]);
-            setShowPositionModal(true);
-          } catch (err) {
-            Alert.alert("Thông báo", err.message || "Không thể đổi vị trí");
-          } finally {
-            setActionLoading(false);
-          }
-        },
+            onPress: async () => {
+            try {
+              setActionLoading(true);
+              const data = await cancelJoinRequest(match._id, userId, token);
+              setMatch(data);
+              setSelectedPositions([]);
+              setShowPositionModal(true);
+            } catch (err) {
+              Alert.alert("Thông báo", err.message || "Không thể đổi vị trí");
+            } finally {
+              setActionLoading(false);
+            }
+          },
       },
     ]);
   };
@@ -875,7 +866,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         onPress: async () => {
           try {
             setActionLoading(true);
-            const data = await acceptJoinMatch(match._id, userId, requestUserId);
+            const data = await acceptJoinMatch(match._id, userId, requestUserId, token);
             setMatch(data);
           } catch (err) {
             Alert.alert("Lỗi", err.message);
@@ -895,7 +886,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         onPress: async () => {
           try {
             setActionLoading(true);
-            const data = await rejectJoinMatch(match._id, userId, requestUserId);
+            const data = await rejectJoinMatch(match._id, userId, requestUserId, token);
             setMatch(data);
           } catch (err) {
             Alert.alert("Lỗi", err.message);
@@ -1030,8 +1021,8 @@ export default function MatchDetailScreen({ navigation, route }) {
             const data = await inviteTeamMember(match._id, userId, targetUserId);
             setMatch(data);
             const message = String(ownerId) === String(userId)
-              ? "Người được mời có thể chấp nhận ngay."
-              : "Chủ đội sẽ duyệt lời mời trước khi người này vào đội.";
+              ? "Đã mời"
+              : "Đã mười, nhưng cần Chủ trận xác nhận trước khi người này có thể tham gia.";
             Alert.alert("Đã gửi lời mời", message);
             setFollowingUsers((prev) =>
               prev.map((user) => {
@@ -1119,10 +1110,8 @@ export default function MatchDetailScreen({ navigation, route }) {
       <View style={styles.header}>
         <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
-        
+
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-
-
           {isOwner && match.status !== "completed" && (
             <TouchableOpacity
               style={[styles.joinHeaderBtn, { width: 90 }]}
@@ -1487,11 +1476,12 @@ export default function MatchDetailScreen({ navigation, route }) {
                           gap: 4,
                         }}
                         onPress={() => handleOpenSingleRating(p)}
+                        disabled={myRatedUserIds.includes(String(pid))}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name="star" size={14} color="#F59E0B" />
-                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#C2410C" }}>
-                          Đánh giá
+                        <Ionicons name="star" size={14} color={myRatedUserIds.includes(String(pid)) ? "#D1D5DB" : "#F59E0B"} />
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: myRatedUserIds.includes(String(pid)) ? "#9CA3AF" : "#C2410C" }}>
+                          {myRatedUserIds.includes(String(pid)) ? 'Đã đánh giá' : 'Đánh giá'}
                         </Text>
                       </TouchableOpacity>
                     ) : isOwner && !isCreatorParticipant && !isEnded ? (
@@ -1595,7 +1585,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         </View>
 
         {/* Nhóm chat gắn với trận đấu */}
-        {match.chatGroupId ? (
+        {match.chatGroupId && isUserParticipant(match) ? (
           <View style={{
             marginTop: 12,
             marginBottom: 8,
@@ -1900,7 +1890,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                       isSelected && styles.positionOptionTextSelected,
                       isDisabled && styles.positionOptionTextDisabled,
                     ]}>
-                      {option.label} · {option.isBench ? `Dự bị · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
+                      {option.label} · {option.isBench ? `Dự bị (Free) · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
                     </Text>
                     {isSelected && (
                       <Text style={styles.positionOptionCheck}>✓</Text>

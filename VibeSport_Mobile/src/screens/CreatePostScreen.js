@@ -162,22 +162,14 @@ export function CreatePostScreen({ navigation, route }) {
 
   // ── Publish / Update ───────────────────────────────────────────
   const handlePublish = async () => {
-    if (!selectedTag) {
-      Alert.alert('Chưa chọn tag', 'Vui lòng chọn tag cho bài viết.');
-      return;
-    }
     if (!content.trim() && totalCount === 0) {
       Alert.alert('Nội dung trống', 'Vui lòng viết gì đó hoặc thêm hình ảnh/video.');
       return;
     }
     if (locationLoading) setLocationLoading(false);
 
-    const originalTags = editPost?.tags || [];
-    const finalTags = selectedTag === 'Không chọn'
-      ? originalTags.filter((t) => t === 'Tìm đội')
-      : originalTags.includes('Tìm đội')
-        ? ['Tìm đội', selectedTag]
-        : [selectedTag];
+    const finalTags = editPost?.tags || [];
+    const sportType = editPost?.sportType || '';
 
     const formData = new FormData();
     formData.append('content', content.trim());
@@ -337,38 +329,8 @@ export function CreatePostScreen({ navigation, route }) {
               <Text style={styles.userName}>
                 {user?.name || 'Thành viên VibeSport'}
               </Text>
-              <TouchableOpacity
-                onPress={() => setShowTagDropdown(!showTagDropdown)}
-                style={styles.tagDropdownTrigger}
-              >
-                <Text style={styles.tagDropdownText}>{selectedTag || 'Chọn tag'}</Text>
-                <Ionicons name="chevron-down" size={14} color="#FF6B35" />
-              </TouchableOpacity>
             </View>
           </View>
-
-          {/* ── Tag dropdown ── */}
-          {showTagDropdown && (
-            <View style={styles.dropdownOptions}>
-              {[
-                { name: 'Không chọn' },
-                ...(catalogTags.length
-                  ? catalogTags.filter((t) => ['Bóng đá', 'Cầu lông', 'Pickleball'].includes(t.name))
-                  : [{ name: 'Bóng đá' }, { name: 'Cầu lông' }, { name: 'Pickleball' }])
-              ].map((tag) => (
-                <TouchableOpacity
-                  key={tag._id || tag.name}
-                  onPress={() => { setSelectedTag(tag.name); setShowTagDropdown(false); }}
-                  style={[styles.dropdownItem, selectedTag === tag.name && styles.dropdownItemActive]}
-                >
-                  <Text style={[styles.dropdownItemText, selectedTag === tag.name && styles.dropdownItemTextActive]}>
-                    {tag.name}
-                  </Text>
-                  {selectedTag === tag.name && <Ionicons name="checkmark" size={16} color="#FF6B35" />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
 
           {/* ── Text input ── */}
           <TextInput

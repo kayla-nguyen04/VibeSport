@@ -924,7 +924,6 @@ export default function CourtsPage() {
                 <p className="court-address">📍 {court.address}</p>
                 <div className="court-meta-row">
                   <span>⏰ {court.openTime} – {court.closeTime}</span>
-                  <span>⭐ {court.rating?.toFixed(1) || '4.5'}</span>
                 </div>
                 <div className="court-price-row">
                   <span className="price-label">💰 Giá thuê:</span>
@@ -954,7 +953,6 @@ export default function CourtsPage() {
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span className="rating-badge-mobile">⭐ {selectedCourt.rating?.toFixed(1) || '4.5'} ({selectedCourt.reviewCount || 0} đánh giá)</span>
                 <button className="close-btn" onClick={() => setShowDetailModal(false)}>✕</button>
               </div>
             </div>

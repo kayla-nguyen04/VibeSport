@@ -1,3 +1,28 @@
+// Safe console wrappers to avoid LogBox / Fabric errors when logging complex objects
+const _origConsole = { ...console };
+const safeSerialize = (v) => {
+  try {
+    if (v && typeof v === 'object') {
+      if (v.$$typeof) return '[ReactElement]';
+      return JSON.stringify(v);
+    }
+    if (typeof v === 'function') return '[Function]';
+    return String(v);
+  } catch (e) {
+    try { return String(v); } catch { return '[Unserializable]'; }
+  }
+};
+['log','info','warn','error','debug'].forEach((m) => {
+  console[m] = (...args) => {
+    try {
+      const safeArgs = args.map((a) => safeSerialize(a));
+      _origConsole[m](...safeArgs);
+    } catch (e) {
+      _origConsole[m]('Console wrapper error:', e);
+    }
+  };
+});
+
 import { Provider } from 'react-redux';
 import { StatusBar } from 'expo-status-bar';
 import {

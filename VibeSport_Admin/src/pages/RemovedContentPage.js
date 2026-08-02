@@ -29,7 +29,9 @@ function truncateText(text, maxLength = 80) {
 
 export default function RemovedContentPage() {
   const [posts, setPosts] = useState([]);
+  const [courts, setCourts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [courtsLoading, setCourtsLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
 
@@ -71,9 +73,24 @@ export default function RemovedContentPage() {
     }
   }, [pagination.page, pagination.limit, filterCategory]);
 
+  const fetchRemovedCourts = useCallback(async () => {
+    try {
+      setCourtsLoading(true);
+      const res = await api.get('/courts', { params: { status: 'removed_by_admin' } });
+      if (res.data.success) {
+        setCourts(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Fetch removed courts failed:', err.message);
+    } finally {
+      setCourtsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchRemovedPosts();
-  }, [fetchRemovedPosts]);
+    fetchRemovedCourts();
+  }, [fetchRemovedPosts, fetchRemovedCourts]);
 
   const handleCategoryChange = (cat) => {
     setFilterCategory(cat);
@@ -91,13 +108,29 @@ export default function RemovedContentPage() {
       if (res.data.success) {
         showToast('Đã khôi phục bài viết thành công');
         setConfirmRestore(null);
-        // Refresh list - bài viết sẽ biến mất vì không còn removed
         fetchRemovedPosts();
       } else {
         showToast(res.data.message || 'Khôi phục thất bại', 'error');
       }
     } catch (err) {
       showToast(err.response?.data?.message || 'Lỗi khi khôi phục bài viết', 'error');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleRestoreCourt = async (court) => {
+    try {
+      setRestoring(true);
+      const res = await api.put(`/courts/${court._id}`, { status: 'active' });
+      if (res.data.success) {
+        showToast('Đã khôi phục sân thành công');
+        fetchRemovedCourts();
+      } else {
+        showToast(res.data.message || 'Khôi phục sân thất bại', 'error');
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Lỗi khi khôi phục sân', 'error');
     } finally {
       setRestoring(false);
     }
@@ -141,6 +174,48 @@ export default function RemovedContentPage() {
         <div className="total-count">
           Tổng: <strong>{pagination.total}</strong> bài viết đã gỡ
         </div>
+      </div>
+
+      <div className="table-card" style={{ marginBottom: 24 }}>
+        <div className="section-title-row">
+          <h2>Sân đã xóa</h2>
+        </div>
+
+        {courtsLoading ? (
+          <div className="loading-state">
+            <div className="spinner"></div>
+            <p>Đang tải sân đã xóa...</p>
+          </div>
+        ) : courts.length === 0 ? (
+          <div className="empty-state">
+            <p>Không có sân nào đã bị xóa</p>
+          </div>
+        ) : (
+          <table className="removed-table">
+            <thead>
+              <tr>
+                <th>Tên sân</th>
+                <th>Địa chỉ</th>
+                <th>Ngày xóa</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {courts.map((court) => (
+                <tr key={court._id}>
+                  <td>{court.name}</td>
+                  <td>{court.address || 'N/A'}</td>
+                  <td>{formatDate(court.removedAt || court.updatedAt)}</td>
+                  <td>
+                    <button className="restore-btn" onClick={() => handleRestoreCourt(court)} disabled={restoring}>
+                      Khôi phục
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Table */}

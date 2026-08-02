@@ -18,7 +18,7 @@ import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { BackButton } from '../components/BackButton';
 import { getMatches } from '../services/matchService';
-import { submitMatchRatings } from '../services/ratingApi';
+import { submitMatchRatings, getMyMatchRatings } from '../services/ratingApi';
 
 const PAGE_SIZE = 10;
 const ORANGE = '#FF6B00';
@@ -118,7 +118,18 @@ export default function MatchHistoryScreen({ navigation }) {
   };
 
   // Mở Đánh giá cho 1 cá nhân
-  const handleOpenSingleRating = (match, targetUser) => {
+  const handleOpenSingleRating = async (match, targetUser) => {
+    if (!token) return Alert.alert('Thông báo', 'Vui lòng đăng nhập để đánh giá.');
+    try {
+      const ids = await getMyMatchRatings(match._id, token);
+      const targetId = typeof targetUser === 'object' ? (targetUser._id || targetUser.id) : targetUser;
+      if (ids && ids.map((i) => String(i)).includes(String(targetId))) {
+        Alert.alert('Thông báo', 'Bạn đã đánh giá người này cho trận này rồi.');
+        return;
+      }
+    } catch (e) {
+      console.warn('Không thể kiểm tra đánh giá trước khi mở modal:', e.message);
+    }
     setSingleRatingTarget({ match, targetUser });
     setStars(5);
     setComment('');

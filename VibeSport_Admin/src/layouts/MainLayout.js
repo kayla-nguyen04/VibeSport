@@ -101,7 +101,6 @@ const navGroups = [
   {
     label: 'Kiểm duyệt',
     items: [
-      { key: '/reports', icon: icons.reports, label: 'Báo cáo vi phạm' },
       { key: '/deleted-content', icon: icons.deleted, label: 'Nội dung đã xóa' },
     ],
   },

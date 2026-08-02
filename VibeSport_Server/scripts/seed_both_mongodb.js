@@ -1,6 +1,7 @@
 require('dotenv').config({ path: require('node:path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const Court = require('../models/Court');
+const CourtRating = require('../models/CourtRating');
 const User = require('../models/User');
 
 const RAW_COURTS = [
@@ -288,7 +289,8 @@ async function seedTargetDB(uri, label) {
 
     // Clear and insert Courts
     await CourtModel.deleteMany({});
-    console.log(`✓ Cleared collection 'courts' in ${label}`);
+    await conn.model('CourtRating', CourtRating.schema).deleteMany({});
+    console.log(`✓ Cleared collection 'courts' and 'courtratings' in ${label}`);
 
     const createdCourts = [];
     for (const data of RAW_COURTS) {
@@ -355,8 +357,24 @@ async function seedTargetDB(uri, label) {
         ],
         locationCoords: { lat: 21.0285, lng: 105.8542 },
       });
+
+      const CourtRatingModel = conn.model('CourtRating', CourtRating.schema);
+      const ratingDocs = [];
+      for (let i = 0; i < 10; i += 1) {
+        ratingDocs.push({
+          courtId: c._id,
+          userId: new mongoose.Types.ObjectId(),
+          stars: 5,
+          comment: 'Đánh giá 5 sao',
+        });
+      }
+      await CourtRatingModel.insertMany(ratingDocs);
+      c.rating = 5.0;
+      c.reviewCount = 10;
+      await c.save();
+
       createdCourts.push(c);
-      console.log(`  + Seeded Court [${c.sportType.toUpperCase()}]: ${c.name} (ID: ${c._id})`);
+      console.log(`  + Seeded Court [${c.sportType.toUpperCase()}]: ${c.name} (ID: ${c._id}) with ${ratingDocs.length} five-star ratings`);
     }
 
     owner.courts = createdCourts.map((c) => c._id);

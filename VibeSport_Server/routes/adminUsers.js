@@ -1,5 +1,7 @@
 const express = require('express');
 const User = require('../models/User');
+const Post = require('../models/Post');
+const Match = require('../models/Match');
 const ReportUser = require('../models/ReportUser');
 const requireAdmin = require('../middleware/adminAuth');
 
@@ -121,6 +123,42 @@ router.get('/:id/reports', async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi khi lấy báo cáo người dùng:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+});
+
+router.get('/:id/activity', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [posts, matches] = await Promise.all([
+      Post.find({ userId: id })
+        .populate('userId', 'name picture')
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+      Match.find({
+        $or: [
+          { createdBy: id },
+          { participants: id },
+        ],
+      })
+        .populate('createdBy', 'name picture')
+        .populate('participants', 'name picture')
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        posts,
+        matches,
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi khi lấy hoạt động người dùng:', error);
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 });
