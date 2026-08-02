@@ -14,7 +14,6 @@ async function notifyUserViolation(userId, postId, reason, category) {
     const user = await User.findById(userId).select('name').lean();
     const userName = user?.name || 'Người dùng';
 
-    // Tạo preview nội dung (tối đa 50 ký tự)
     const contentPreview = post.content?.length > 50
       ? post.content.substring(0, 50) + '...'
       : post.content || 'Không có nội dung';
@@ -32,13 +31,12 @@ async function notifyUserViolation(userId, postId, reason, category) {
     const notification = new Notification({
       userId,
       type: 'violation_removed',
-      fromUserId: null, // từ hệ thống
+      fromUserId: null,
       message,
       postId,
     });
     await notification.save();
 
-    // Emit socket notification nếu có
     if (global.io) {
       const populated = await Notification.findById(notification._id)
         .populate('postId', 'content mediaUrls');
@@ -102,7 +100,6 @@ exports.removePostViolation = async (req, res) => {
     const { postId } = req.params;
     const { reason, category } = req.body;
 
-    // Validation
     if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
       return res.status(400).json({
         success: false,
@@ -126,7 +123,6 @@ exports.removePostViolation = async (req, res) => {
       });
     }
 
-    // Kiểm tra đã bị xóa chưa
     if (post.status === 'removed_by_admin') {
       return res.status(400).json({
         success: false,
@@ -137,7 +133,6 @@ exports.removePostViolation = async (req, res) => {
     const previousStatus = post.status;
     const adminId = req.admin._id;
 
-    // Update post - soft delete
     post.status = 'removed_by_admin';
     post.removalReason = reason.trim();
     post.removalCategory = category;
@@ -145,7 +140,6 @@ exports.removePostViolation = async (req, res) => {
     post.removedAt = new Date();
     await post.save();
 
-    // Ghi log vào ModerationLog
     await ModerationLog.create({
       postId: post._id,
       adminId,
@@ -157,10 +151,8 @@ exports.removePostViolation = async (req, res) => {
       newStatus: 'removed_by_admin',
     });
 
-    // Gửi thông báo cho user (non-blocking)
     notifyUserViolation(post.userId, post._id, reason.trim(), category);
 
-    // Đánh dấu tất cả report liên quan là đã xử lý
     await Report.updateMany({ postId: post._id, status: 'pending' }, { status: 'reviewed' });
 
     res.status(200).json({
@@ -206,7 +198,6 @@ exports.restorePost = async (req, res) => {
     const previousStatus = post.status;
     const adminId = req.admin._id;
 
-    // Restore post
     post.status = 'active';
     post.removalReason = null;
     post.removalCategory = null;
@@ -214,7 +205,6 @@ exports.restorePost = async (req, res) => {
     post.removedAt = null;
     await post.save();
 
-    // Ghi log
     await ModerationLog.create({
       postId: post._id,
       adminId,
@@ -226,10 +216,8 @@ exports.restorePost = async (req, res) => {
       newStatus: 'active',
     });
 
-    // Gửi thông báo cho user (non-blocking)
     notifyUserRestore(post.userId, post._id);
 
-    // Đánh dấu tất cả report liên quan là đã xử lý
     await Report.updateMany({ postId: post._id, status: 'pending' }, { status: 'reviewed' });
 
     res.status(200).json({
@@ -259,26 +247,13 @@ exports.getAdminPosts = async (req, res) => {
     const order = req.query.order === 'asc' ? 1 : -1;
     const status = req.query.status;
 
-    // Validate sortBy
     const validSortFields = ['createdAt', 'reportCount', 'likesCount', 'commentsCount'];
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
 
+    // ✅ FIX: lookup + addFields PHẢI chạy trước $match theo hasPendingReports,
+    // nếu không field này chưa tồn tại khi filter → luôn trả về rỗng/sai
     const pipeline = [
-      // 1. Filter theo status
-      ...(status && status !== 'all'
-        ? [
-            status === 'reported'
-              ? { $match: { status: 'active', hasPendingReports: true } }
-              : status === 'removed'
-                ? { $match: { status: 'removed_by_admin' } }
-                : status === 'pending_review'
-                  ? { $match: { status: 'pending_review' } }
-                  : status === 'resolved'
-                    ? { $match: { $or: [{ status: 'hidden' }, { status: 'active', hasPendingReports: false }] } }
-                    : { $match: { status } },
-          ]
-        : [{ $match: {} }]),
-      // 2. Lookup reports để kiểm tra pending
+      // 1. Lookup reports pending trước
       {
         $lookup: {
           from: 'reports',
@@ -295,14 +270,28 @@ exports.getAdminPosts = async (req, res) => {
           as: 'pendingReportsLookup',
         },
       },
-      // 3. Thêm hasPendingReports
+      // 2. Tính hasPendingReports
       {
         $addFields: {
           hasPendingReports: { $gt: [{ $size: '$pendingReportsLookup' }, 0] },
         },
       },
-      // 4. Bỏ field tạm
       { $project: { pendingReportsLookup: 0 } },
+
+      // 3. Bây giờ mới filter theo status — hasPendingReports đã sẵn sàng
+      ...(status && status !== 'all'
+        ? [
+            status === 'reported'
+              ? { $match: { status: 'active', hasPendingReports: true } }
+              : status === 'removed_by_admin' || status === 'removed'
+                ? { $match: { status: 'removed_by_admin' } }
+                : status === 'pending_review'
+                  ? { $match: { status: 'pending_review' } }
+                  : status === 'resolved'
+                    ? { $match: { $or: [{ status: 'hidden' }, { status: 'active', hasPendingReports: false }] } }
+                    : { $match: { status } },
+          ]
+        : [{ $match: {} }]),
     ];
 
     const countPipeline = [...pipeline, { $count: 'total' }];
@@ -314,7 +303,6 @@ exports.getAdminPosts = async (req, res) => {
 
     const total = countResult.length > 0 ? countResult[0].total : 0;
 
-    // Populate userId và removedBy sau aggregate
     const userIds = [...new Set(posts.map(p => p.userId).filter(Boolean))];
     const removedByIds = [...new Set(posts.map(p => p.removedBy).filter(Boolean))];
     const [users, removedBies] = await Promise.all([
@@ -364,13 +352,11 @@ exports.getAdminPostById = async (req, res) => {
       });
     }
 
-    // Lấy log moderation
     const moderationLogs = await ModerationLog.find({ postId })
       .populate('adminId', 'name email')
       .sort({ createdAt: -1 })
       .lean();
 
-    // Lấy các báo cáo gần nhất (mới nhất trước), populate reporterId
     const recentReports = await Report.find({ postId })
       .populate('reporterId', 'name picture')
       .sort({ createdAt: -1 })
@@ -435,7 +421,7 @@ exports.getModerationLogs = async (req, res) => {
 exports.updateReportCount = async (req, res) => {
   try {
     const { postId } = req.params;
-    const { action } = req.body; // 'increment' | 'decrement'
+    const { action } = req.body;
 
     let post;
     if (action === 'increment') {
