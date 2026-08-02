@@ -34,7 +34,6 @@ function createSessionPayload(user) {
       position: user.position ?? null,
       area: user.area ?? null,
       bio: user.bio ?? null,
-      featuredPost: user.featuredPost ?? null,
       rating: user.rating ?? 0,
       profileCompleted: Boolean(user.profileCompleted),
     },
@@ -132,13 +131,16 @@ router.post('/login', async (request, response) => {
       return;
     }
 
-    user.lastSeenAt = new Date();
-    await user.save();
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { lastSeenAt: new Date() } }
+    );
 
     const payload = createSessionPayload(user);
     await Session.create({ userId: user._id, token: payload.token });
     response.json(payload);
   } catch (error) {
+    console.error('Error in /auth/login:', error);
     response.status(500).json({ message: 'Lỗi máy chủ khi đăng nhập.' });
   }
 });
@@ -215,7 +217,7 @@ router.post('/google', async (request, response) => {
 
 router.put('/update-profile', async (request, response) => {
   try {
-    const { userId, name, phone, picture, favoriteSport, favoriteSports, position, area, bio, featuredPost, profileCompleted } = request.body ?? {};
+    const { userId, name, phone, picture, favoriteSport, position, area, bio, profileCompleted } = request.body ?? {};
 
     if (!userId) {
       response.status(400).json({ message: 'Thiếu thông tin ID người dùng (userId).' });
@@ -237,16 +239,9 @@ router.put('/update-profile', async (request, response) => {
       updateFields.picture = picture;
     }
     if (favoriteSport !== undefined) updateFields.favoriteSport = favoriteSport;
-    if (favoriteSports !== undefined) {
-      const normalizedFavoriteSports = Array.isArray(favoriteSports)
-        ? favoriteSports.map((sport) => String(sport).trim()).filter(Boolean)
-        : [];
-      updateFields.favoriteSports = normalizedFavoriteSports;
-    }
     if (position !== undefined) updateFields.position = position;
     if (area !== undefined) updateFields.area = area;
     if (bio !== undefined) updateFields.bio = bio;
-    if (featuredPost !== undefined) updateFields.featuredPost = featuredPost;
 
     if (profileCompleted !== undefined) {
       updateFields.profileCompleted = Boolean(profileCompleted);
@@ -276,11 +271,9 @@ router.put('/update-profile', async (request, response) => {
         provider: user.provider ?? 'email',
         phone: user.phone ?? null,
         favoriteSport: user.favoriteSport ?? null,
-        favoriteSports: user.favoriteSports ?? [],
         position: user.position ?? null,
         area: user.area ?? null,
         bio: user.bio ?? null,
-        featuredPost: user.featuredPost ?? null,
         rating: user.rating ?? 0,
         profileCompleted: Boolean(user.profileCompleted),
       },

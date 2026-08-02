@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen } from "./Screen";
 import { primary } from "../theme";
 
@@ -694,24 +695,29 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
     onClose();
     const ownerId = court.ownerUser?._id || court.ownerUser?.id || court.owner?._id || court.owner?.id || "6699a1b2c3d4e5f678901234";
     if (navigation) {
-      navigation.navigate("UserProfile", { userId: ownerId });
+      navigation.navigate("UserProfile", {
+        userId: ownerId,
+        initialProfile: court.ownerUser || court.owner,
+      });
     }
   };
 
+  const insets = useSafeAreaInsets();
   const [activeAccordionSport, setActiveAccordionSport] = useState(court?.sportType || "football");
+  const topInsetPadding = Platform.OS === 'ios' ? (insets.top > 0 ? insets.top : 47) : (insets.top || 0);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <Screen style={styles.safeArea}>
+      <Screen style={[styles.safeArea, { paddingTop: topInsetPadding }]} edges={['left', 'right']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={onClose} activeOpacity={0.7}>
-            <Text style={{ fontSize: 22, color: "#333", fontWeight: "700", paddingHorizontal: 4 }}>‹</Text>
+            <Ionicons name="chevron-back" size={26} color="#1F2937" />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {court.name || "Chi tiết sân bãi"}
           </Text>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 32 }} />
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>

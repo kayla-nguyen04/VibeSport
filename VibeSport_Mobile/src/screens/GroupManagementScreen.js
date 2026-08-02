@@ -1134,9 +1134,7 @@ useEffect(() => {
         <View style={styles.darkModalContainer}>
           {/* Header */}
           <View style={[styles.darkHeader, { paddingTop: insets.top > 0 ? insets.top : (Platform.OS === 'ios' ? 44 : 16) }]}>
-            <TouchableOpacity onPress={() => setShowMembersModal(false)} style={styles.darkHeaderBtn} hitSlop={10}>
-              <Ionicons name="chevron-back" size={26} color="#111827" />
-            </TouchableOpacity>
+            <BackButton onPress={() => setShowMembersModal(false)} style={styles.darkHeaderBtn} />
             
             <View style={styles.darkHeaderTitleWrap}>
               <Text style={styles.darkHeaderTitle}>Thành viên</Text>
@@ -1222,7 +1220,7 @@ useEffect(() => {
                     onPress={() => {
                       if (hasDetails && member._id) {
                         setShowMembersModal(false);
-                        navigation.navigate('UserProfile', { userId: member._id });
+                        navigation.navigate('UserProfile', { userId: member._id, initialProfile: member });
                       }
                     }}
                     style={styles.darkFriendAvatarContainer}
@@ -1242,7 +1240,7 @@ useEffect(() => {
                     onPress={() => {
                       if (hasDetails && member._id) {
                         setShowMembersModal(false);
-                        navigation.navigate('UserProfile', { userId: member._id });
+                        navigation.navigate('UserProfile', { userId: member._id, initialProfile: member });
                       }
                     }}
                     style={styles.darkFriendInfoWrap}
@@ -1296,7 +1294,10 @@ useEffect(() => {
                   onPress={() => {
                     setShowOptionsModal(false);
                     setShowMembersModal(false);
-                    navigation.navigate('UserProfile', { userId: selectedMember?._id });
+                    navigation.navigate('UserProfile', {
+                      userId: selectedMember?._id,
+                      initialProfile: selectedMember,
+                    });
                   }}
                 >
                   <Text style={styles.optionsItemTextBlue}>Xem trang cá nhân</Text>
@@ -1569,9 +1570,7 @@ useEffect(() => {
         <View style={styles.darkModalContainer}>
           {/* Header */}
           <View style={[styles.darkHeader, { paddingTop: insets.top > 0 ? insets.top : (Platform.OS === 'ios' ? 44 : 16) }]}>
-            <TouchableOpacity onPress={() => setShowJoinRequestsModal(false)} style={styles.darkHeaderBtn} hitSlop={10}>
-              <Ionicons name="chevron-back" size={26} color="#111827" />
-            </TouchableOpacity>
+            <BackButton onPress={() => setShowJoinRequestsModal(false)} style={styles.darkHeaderBtn} />
             
             <View style={styles.darkHeaderTitleWrap}>
               <Text style={styles.darkHeaderTitle}>Yêu cầu chờ duyệt</Text>

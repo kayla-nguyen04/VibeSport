@@ -138,3 +138,20 @@ dist
 !.yarn/versions
 
 .eas.json
+
+# Temporary screenshots & Junk Images
+runtime-*.png
+screenshot-*.png
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary scratch scripts & logs
+scratch/
+tmp/
+*.log

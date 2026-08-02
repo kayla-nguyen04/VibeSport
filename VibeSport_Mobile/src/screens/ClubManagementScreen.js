@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { HeaderIconButton } from '../components/ProfileScreenComponents';
+import { BackButton } from '../components/BackButton';
 import { getUserTeamsRequest } from '../services/userApi';
-import { icon, primary, spacing } from '../theme';
+import { primary } from '../theme';
 import { styles } from './ProfileScreen.styles';
 
 export default function ClubManagementScreen({ navigation }) {
@@ -58,9 +58,7 @@ export default function ClubManagementScreen({ navigation }) {
     <Screen edges={['top', 'left', 'right']} style={styles.screen}>
       <ScreenHeader style={styles.headerBar}>
         <View style={styles.headerSide}>
-          <HeaderIconButton onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={spacing.xl} color={icon.dark} />
-          </HeaderIconButton>
+          <BackButton onPress={() => navigation.goBack()} />
         </View>
         <Text style={styles.headerTitle}>Quản lý FC</Text>
         <View style={[styles.headerSide, styles.headerRightSide]} />

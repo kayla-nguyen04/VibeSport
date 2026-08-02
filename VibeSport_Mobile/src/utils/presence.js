@@ -6,9 +6,14 @@ export function isUserOnline(lastSeenAt) {
 }
 
 export function formatPresenceLabel(lastSeenAt) {
-  if (!lastSeenAt) return 'Chưa hoạt động';
+  if (!lastSeenAt) return '';
 
   const diffMs = Date.now() - new Date(lastSeenAt).getTime();
+  if (isNaN(diffMs)) return '';
+
+  const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+  if (diffMs > FORTY_EIGHT_HOURS_MS) return '';
+
   if (diffMs < ONLINE_THRESHOLD_MS) return 'Đang hoạt động';
 
   const diffMins = Math.floor(diffMs / 60000);
@@ -18,11 +23,9 @@ export function formatPresenceLabel(lastSeenAt) {
   if (diffHours < 24) return `Hoạt động ${diffHours} giờ trước`;
 
   const diffDays = Math.floor(diffMs / 86400000);
-  if (diffDays < 30) return `Hoạt động ${diffDays} ngày trước`;
+  if (diffDays <= 2) return `Hoạt động ${diffDays} ngày trước`;
 
-  const d = new Date(lastSeenAt);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `Hoạt động lần cuối ${mm}/${d.getFullYear()}`;
+  return '';
 }
 
 export function getPresenceDisplay(lastSeenAt) {

@@ -6,31 +6,29 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { HeaderIconButton } from '../components/ProfileScreenComponents';
+import { BackButton } from '../components/BackButton';
 import { getMatches } from '../services/matchService';
-import { API_BASE_URL } from '../components/constants/api';
 import { icon, primary, spacing } from '../theme';
 
 const PAGE_SIZE = 10;
 
-// Bộ cấu hình nhãn chữ và màu sắc tối giản cho 4 trạng thái trận đấu
+// Bộ cấu hình nhãn chữ và màu sắc cho trận đã hoàn thành
 const getStatusConfig = (status) => {
   switch (status) {
     case 'completed':
-      return { label: 'Đã hoàn thành', color: '#10B981' }; // Màu xanh lá 🟢
+    case 'ended':
+      return { label: 'Đã hoàn thành', color: '#10B981' }; // 🟢 Xanh lá
     case 'cancelled':
-      return { label: 'Đã hủy', color: '#EF4444' };       // Màu đỏ 🔴
-    case 'full':
-      return { label: 'Đang diễn ra', color: '#0B74FF' };  // Màu xanh dương 🔵
-    case 'open':
+      return { label: 'Đã hủy', color: '#EF4444' };       // 🔴 Đỏ
     default:
-      return { label: 'Sắp diễn ra', color: '#F5A623' };   // Màu vàng 🟡
+      return { label: 'Đã kết thúc', color: '#10B981' };
   }
 };
 
@@ -47,7 +45,7 @@ export default function MatchHistoryScreen({ navigation }) {
   const pageRef = React.useRef(1);
   const isFetching = React.useRef(false);
 
-  // Luồng nạp dữ liệu gộp song song (Trận tự tạo + Trận tham gia) giúp xem toàn bộ lịch sử
+  // Nạp dữ liệu gộp song song (Trận tự tạo + Trận tham gia)
   const loadMatchesData = useCallback(async ({ refresh = false } = {}) => {
     if (!token || !userId || isFetching.current) return;
 
@@ -78,12 +76,13 @@ export default function MatchHistoryScreen({ navigation }) {
         if (match && match._id) uniqueMap.set(String(match._id), match);
       });
 
-      const uniqueList = Array.from(uniqueMap.values()).sort((a, b) => {
-        return new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date);
-      });
+      // ĐÃ CẢI THIỆN: Chỉ giữ lại các trận đấu ĐÃ KẾT THÚC / HOÀN THÀNH
+      const completedList = Array.from(uniqueMap.values())
+        .filter((item) => item.status === 'completed' || item.teamStatus === 'ended' || item.status === 'cancelled')
+        .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
 
-      setMatches((current) => (refresh ? uniqueList : [...current, ...uniqueList]));
-      setHasMore(uniqueList.length === PAGE_SIZE * 2);
+      setMatches((current) => (refresh ? completedList : [...current, ...completedList]));
+      setHasMore(completedList.length === PAGE_SIZE * 2);
       pageRef.current = refresh ? 2 : pageRef.current + 1;
     } catch (error) {
       console.warn('[MatchHistoryScreen] Fetch matches logic error:', error);
@@ -107,18 +106,28 @@ export default function MatchHistoryScreen({ navigation }) {
     }
   };
 
+  // Hàm chuyển màn hình sang Chi tiết trận đấu để tiến hành Đánh giá
+  const handleOpenDetail = (matchId) => {
+    navigation.navigate('MatchDetail', { matchId });
+  };
+
   const renderMatchItem = ({ item }) => {
     const statusConfig = getStatusConfig(item.status);
     const displayDate = item.date && item.startTime ? `${item.startTime} • ${item.date}` : 'Chưa cập nhật thời gian';
 
     return (
-      <View style={uiStyles.matchCard}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => handleOpenDetail(item._id)}
+        style={uiStyles.matchCard}
+      >
         {/* DÒNG 1: ⚽ Tên trận đấu */}
         <View style={uiStyles.row1}>
           <MaterialCommunityIcons name="soccer" size={20} color="#1F2937" />
           <Text style={uiStyles.matchTitle} numberOfLines={1}>
             {item.title || 'Trận đấu giao hữu'}
           </Text>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
         </View>
 
         {/* DÒNG 2: 📍 Tên sân thi đấu ────── Trạng thái */}
@@ -143,7 +152,7 @@ export default function MatchHistoryScreen({ navigation }) {
           <MaterialCommunityIcons name="clock-outline" size={15} color="#7C8190" />
           <Text style={uiStyles.timeText}>{displayDate}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -151,9 +160,7 @@ export default function MatchHistoryScreen({ navigation }) {
     <Screen edges={['top', 'left', 'right']} style={uiStyles.screen}>
       <ScreenHeader style={uiStyles.headerBar}>
         <View style={uiStyles.headerSide}>
-          <HeaderIconButton onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={spacing.xl} color={icon.dark} />
-          </HeaderIconButton>
+          <BackButton onPress={() => navigation.goBack()} />
         </View>
         <Text style={uiStyles.headerTitle}>Lịch sử trận đấu</Text>
         <View style={[uiStyles.headerSide, uiStyles.headerRightSide]} />
@@ -179,8 +186,8 @@ export default function MatchHistoryScreen({ navigation }) {
           ListEmptyComponent={
             <View style={uiStyles.centerState}>
               <MaterialCommunityIcons name="soccer-field" size={54} color="#D1D5DB" />
-              <Text style={uiStyles.emptyTitle}>Chưa có lịch sử trận đấu</Text>
-              <Text style={uiStyles.emptySubtitle}>Bạn chưa tham gia trận đấu nào.</Text>
+              <Text style={uiStyles.emptyTitle}>Chưa có lịch sử trận đấu đã kết thúc</Text>
+              <Text style={uiStyles.emptySubtitle}>Các trận đấu đã hoàn thành sẽ xuất hiện tại đây để bạn đánh giá.</Text>
             </View>
           }
           ListFooterComponent={
@@ -194,7 +201,6 @@ export default function MatchHistoryScreen({ navigation }) {
   );
 }
 
-// ─── HỆ THỐNG UI STYLES ĐỒNG BỘ MẪU ──────────────────────────────────────────
 const uiStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F4F6FB' },
   headerBar: {
@@ -214,7 +220,6 @@ const uiStyles = StyleSheet.create({
   loadingText: { marginTop: 12, color: '#6B7280', fontSize: 14, fontWeight: '500' },
   listContent: { paddingVertical: 12 },
   
-  // Thiết kế khung Card bo tròn 16px phẳng sạch sẽ tinh tế
   matchCard: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
@@ -234,6 +239,7 @@ const uiStyles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#111827',
+    flex: 1,
   },
   row2: {
     flexDirection: 'row',
@@ -288,5 +294,6 @@ const uiStyles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
     textAlign: 'center',
+    paddingHorizontal: 24,
   },
 });

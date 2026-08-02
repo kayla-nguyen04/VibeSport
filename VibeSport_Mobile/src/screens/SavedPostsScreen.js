@@ -15,6 +15,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { BackButton } from '../components/BackButton';
 import { fetchSavedPosts } from '../redux/postSlice';
 import { API_BASE_URL } from '../components/constants/api';
 
@@ -99,13 +100,7 @@ export default function SavedPostsScreen({ navigation }) {
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={20} color="#1F2937" />
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
         <Text style={styles.headerTitle}>Bài viết đã lưu</Text>
         <View style={{ width: 36 }} />
       </ScreenHeader>
@@ -164,8 +159,6 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -227,7 +220,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   coverImage: {
-    width: 86,
     height: 86,
     borderRadius: 12,
     backgroundColor: '#E5E7EB',

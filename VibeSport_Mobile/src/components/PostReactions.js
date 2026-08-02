@@ -27,13 +27,7 @@ export const REACTION_FILTERS = [{ type: 'all', label: 'Tất cả' }];
 export const getReactionMeta = () => VIBE_REACTION;
 
 export function VibeReactionIcon({ size = 20, style }) {
-  return (
-    <Image
-      source={VIBE_LOGO}
-      style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
-      resizeMode="cover"
-    />
-  );
+  return <Ionicons name="heart" size={size} color="#EF4444" style={style} />;
 }
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];

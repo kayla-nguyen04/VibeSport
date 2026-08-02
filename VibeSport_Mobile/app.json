@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "VibeSport_Mobile",
-    "slug": "vibesport-mobile",
+    "slug": "VibeSport-Mobile",
     "scheme": "vibesportmobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -38,8 +38,7 @@
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "BLUETOOTH_CONNECT"
-      ],
-      "usesCleartextTraffic": true
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -57,7 +56,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "0d191d7b-2eed-4c2f-8d6d-357c9f41e2e7"
+        "projectId": "2a008692-d344-4b00-8f7d-517b43014dda"
       }
     }
   }

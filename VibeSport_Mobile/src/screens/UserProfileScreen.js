@@ -1,103 +1,296 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Modal,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useDispatch, useSelector } from 'react-redux';
-import { getUserProfileRequest, toggleFollowRequest, reportUserRequest } from '../services/userApi';
-import { openConversation } from '../redux/chatSlice';
+
+import { BackButton } from '../components/BackButton';
+import { API_BASE_URL } from '../components/constants/api';
+import {
+  HeaderIconButton,
+  ProfileHeaderCard,
+  ProfilePostCard,
+  ProfileTabBar,
+} from '../components/ProfileScreenComponents';
+import { ReportModal } from '../components/ReportModal';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { openConversation } from '../redux/chatSlice';
 import {
-  ProfileHeaderCard,
-  StatsCard,
-  InfoCard,
-} from '../components/ProfileScreenComponents';
+  fetchSavedPosts,
+  likePost,
+  savePost,
+  unlikePost,
+  unsavePost,
+} from '../redux/postSlice';
+import { getMatches } from '../services/matchService';
+import { getPostsRequest, reportPostRequest } from '../services/postApi';
+import {
+  getUserProfileRequest,
+  reportUserRequest,
+  toggleFollowRequest,
+} from '../services/userApi';
+import { icon, primary } from '../theme';
 import { styles as profileStyles } from './ProfileScreen.styles';
 
 const ACCENT = '#FF6B35';
+const profileCache = new Map();
+const profilePostsCache = new Map();
+const profileHistoryCache = new Map();
+
+function getUserId(user) {
+  if (!user) return null;
+  return user._id || user.id || user.userId || user.user?._id || user.user?.id;
+}
+
+function getPostId(post) {
+  return post?._id || post?.id;
+}
+
+function getPostAuthorId(post) {
+  const author = post?.userId || post?.createdBy || post?.author || post?.user;
+  return typeof author === 'object' && author !== null
+    ? getUserId(author)
+    : author;
+}
+
+function fixMediaUrl(url) {
+  if (!url) return url;
+  return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
+}
+
+function getStatusConfig(status) {
+  switch (status) {
+    case 'completed':
+      return { label: 'Đã hoàn thành', color: '#10B981' };
+    case 'cancelled':
+      return { label: 'Đã hủy', color: '#EF4444' };
+    case 'full':
+      return { label: 'Đang diễn ra', color: '#0B74FF' };
+    default:
+      return { label: 'Sắp diễn ra', color: '#F5A623' };
+  }
+}
 
 export function UserProfileScreen({ route, navigation }) {
   const dispatch = useDispatch();
-  const { userId } = route.params;
+  const { userId, initialProfile } = route.params || {};
   const token = useSelector((state) => state.auth.token);
+  const currentUser = useSelector((state) => state.auth.user);
+  const feedPosts = useSelector((state) => state.posts?.posts || []);
+  const savedPosts = useSelector((state) => state.posts?.savedPosts || []);
+  const currentUserId = getUserId(currentUser);
+  const cacheKey = `${String(currentUserId || '')}:${String(userId || '')}`;
 
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedProfile = useMemo(() => {
+    const cached = profileCache.get(cacheKey);
+    if (cached) return cached;
+    const cachedPost = [...feedPosts, ...savedPosts].find(
+      (post) => String(getPostAuthorId(post) || '') === String(userId || '')
+    );
+    const author = cachedPost?.userId;
+    return author && typeof author === 'object' ? author : null;
+  }, [cacheKey, feedPosts, savedPosts, userId]);
+
+  const cachedPosts = useMemo(() => {
+    const cached = profilePostsCache.get(cacheKey);
+    if (cached) return cached;
+    return feedPosts.filter(
+      (post) => String(getPostAuthorId(post) || '') === String(userId || '')
+    );
+  }, [cacheKey, feedPosts, userId]);
+
+  const cachedHistory = profileHistoryCache.get(cacheKey) || [];
+
+  const [profile, setProfile] = useState(
+    () => ({
+      ...(cachedProfile || {}),
+      ...(initialProfile || {}),
+      _id: userId,
+      name: initialProfile?.name || cachedProfile?.name || 'Thành viên VibeSport',
+    })
+  );
+  const [posts, setPosts] = useState(cachedPosts);
+  const [postsLoading, setPostsLoading] = useState(cachedPosts.length === 0);
+  const [historyMatches, setHistoryMatches] = useState(cachedHistory);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('posts');
+  const scrollViewRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(240);
+  const scrollOffsetRef = useRef(0);
+
+  const handleSelectTab = (tabKey) => {
+    if (tabKey === activeTab) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      if (tabKey === 'posts') {
+        handleRefresh();
+      }
+    } else {
+      setActiveTab(tabKey);
+      if (scrollOffsetRef.current >= headerHeight) {
+        requestAnimationFrame(() => {
+          scrollViewRef.current?.scrollTo({ y: headerHeight, animated: false });
+        });
+      }
+    }
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
   const [isOptionsSheetVisible, setIsOptionsSheetVisible] = useState(false);
   const [isReportSheetVisible, setIsReportSheetVisible] = useState(false);
+  const [optionsPost, setOptionsPost] = useState(null);
+  const [postToReport, setPostToReport] = useState(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
-  const loadProfile = useCallback(async () => {
-    setLoading(true);
+  const mergedPosts = useMemo(() => {
+    const livePostsById = new Map(
+      [...feedPosts, ...savedPosts].map((post) => [getPostId(post), post])
+    );
+    return posts.map((post) => {
+      const livePost = livePostsById.get(getPostId(post));
+      return livePost ? { ...post, ...livePost } : post;
+    });
+  }, [feedPosts, posts, savedPosts]);
+
+  const patchPost = useCallback((postId, updater) => {
+    setPosts((current) => current.map((post) => {
+      if (getPostId(post) !== postId) return post;
+      return typeof updater === 'function' ? updater(post) : { ...post, ...updater };
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (cacheKey && profile) profileCache.set(cacheKey, profile);
+  }, [cacheKey, profile]);
+
+  useEffect(() => {
+    if (cacheKey) profilePostsCache.set(cacheKey, posts);
+  }, [cacheKey, posts]);
+
+  useEffect(() => {
+    if (cacheKey) profileHistoryCache.set(cacheKey, historyMatches);
+  }, [cacheKey, historyMatches]);
+
+  const loadProfile = useCallback(async ({ showError = false } = {}) => {
+    if (!userId || !token) return;
     try {
-      const res = await getUserProfileRequest(userId, token);
-      setProfile(res.data || res);
+      const response = await getUserProfileRequest(userId, token);
+      const nextProfile = response?.data || response?.user || response;
+      if (nextProfile) setProfile(nextProfile);
     } catch (error) {
-      Alert.alert('Lỗi', error?.message || 'Không tải được trang cá nhân');
-      navigation.goBack();
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (showError) {
+        Alert.alert('Lỗi', error?.message || 'Không tải được trang cá nhân.');
+      }
     }
-  }, [navigation, token, userId]);
+  }, [token, userId]);
+
+  const loadPosts = useCallback(async () => {
+    if (!userId || !token) return;
+    try {
+      const response = await getPostsRequest(1, 50, token, null, userId);
+      const nextPosts = response?.data || response?.posts || [];
+      setPosts(Array.isArray(nextPosts) ? nextPosts : []);
+    } catch (error) {
+      console.warn('[UserProfileScreen] Load posts error:', error);
+    } finally {
+      setPostsLoading(false);
+    }
+  }, [token, userId]);
+
+  const loadHistory = useCallback(async () => {
+    if (!userId || !token) return;
+    setHistoryLoading(true);
+    try {
+      const response = await getMatches(
+        { userId, participantId: userId, limit: 30, page: 1 },
+        token
+      );
+      const nextMatches = Array.isArray(response)
+        ? response
+        : response?.data || response?.matches || [];
+      setHistoryMatches(Array.isArray(nextMatches) ? nextMatches : []);
+    } catch (error) {
+      console.warn('[UserProfileScreen] Load history error:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [token, userId]);
 
   useEffect(() => {
     loadProfile();
-  }, [loadProfile]);
+    loadPosts();
+  }, [loadPosts, loadProfile]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && historyMatches.length === 0) {
+      loadHistory();
+    }
+  }, [activeTab, historyMatches.length, loadHistory]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadProfile();
-  }, [loadProfile]);
+    await Promise.all([
+      loadProfile({ showError: true }),
+      loadPosts(),
+      activeTab === 'history' ? loadHistory() : Promise.resolve(),
+    ]);
+    setRefreshing(false);
+  }, [activeTab, loadHistory, loadPosts, loadProfile]);
 
-  const openFollowList = useCallback(
-    (initialTab) => {
-      const rawOwnerName = profile?.name || profile?.email?.split('@')[0] || 'Người dùng VibeSport';
-      const mappedOwnerName =
-        rawOwnerName === 'Long Nguyên' || rawOwnerName === 'Long Nguyễn' || rawOwnerName === 'Long'
-          ? 'Longabc'
-          : rawOwnerName;
-      navigation.navigate('FollowList', {
-        initialTab,
-        userId,
-        ownerName: mappedOwnerName,
-      });
-    },
-    [navigation, profile?.email, profile?.name, userId]
-  );
+  const openFollowList = useCallback((initialTab) => {
+    navigation.navigate('FollowList', {
+      initialTab,
+      userId,
+      ownerName: profile?.name,
+    });
+  }, [navigation, profile?.name, userId]);
 
   const handleFollow = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || followLoading) return;
+
+    const previousFollowing = Boolean(profile.isFollowing);
+    const nextFollowing = !previousFollowing;
+    const previousFollowerCount = profile.followerCount ?? 0;
+
     setFollowLoading(true);
+    setProfile((current) => ({
+      ...current,
+      isFollowing: nextFollowing,
+      followerCount: Math.max(0, previousFollowerCount + (nextFollowing ? 1 : -1)),
+    }));
+
     try {
-      const res = await toggleFollowRequest(userId, token);
-      const nextFollowing = Boolean(res.following);
+      const response = await toggleFollowRequest(userId, token);
       setProfile((current) => ({
         ...current,
-        isFollowing: nextFollowing,
-        followerCount: (current?.followerCount ?? 0) + (nextFollowing ? 1 : -1),
-        isFollowedBy: res.isFollowedBy,
+        isFollowing: Boolean(response.following),
+        isFollowedBy: response.isFollowedBy ?? current.isFollowedBy,
       }));
     } catch (error) {
-      Alert.alert('Lỗi', error?.message || 'Không cập nhật được theo dõi');
+      setProfile((current) => ({
+        ...current,
+        isFollowing: previousFollowing,
+        followerCount: previousFollowerCount,
+      }));
+      Alert.alert('Lỗi', error?.message || 'Không cập nhật được theo dõi.');
     } finally {
       setFollowLoading(false);
     }
-  }, [profile, token, userId]);
+  }, [followLoading, profile, token, userId]);
 
   const handleMessage = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || messageLoading) return;
     setMessageLoading(true);
     try {
       const result = await dispatch(openConversation(userId)).unwrap();
@@ -106,105 +299,279 @@ export function UserProfileScreen({ route, navigation }) {
         peer: result.data.peer,
       });
     } catch (error) {
-      Alert.alert('Lỗi', error?.message || error || 'Không thể mở cuộc trò chuyện');
+      Alert.alert('Lỗi', error?.message || error || 'Không thể mở cuộc trò chuyện.');
     } finally {
       setMessageLoading(false);
     }
-  }, [dispatch, navigation, profile, userId]);
+  }, [dispatch, messageLoading, navigation, profile, userId]);
 
-  const handleReportReason = useCallback(async (reason) => {
+  const handleOpenPost = useCallback((post) => {
+    navigation.navigate('PostDetail', { postId: getPostId(post), post });
+  }, [navigation]);
+
+  const handleToggleLike = useCallback(async (post) => {
+    const postId = getPostId(post);
+    if (!postId) return;
+
+    const snapshot = post;
+    patchPost(postId, (current) => ({
+      ...current,
+      isLiked: !post.isLiked,
+      reactionType: post.isLiked ? null : 'vibe',
+      likesCount: Math.max(0, (current.likesCount || 0) + (post.isLiked ? -1 : 1)),
+    }));
+
+    try {
+      const response = post.isLiked
+        ? await dispatch(unlikePost(postId)).unwrap()
+        : await dispatch(likePost({ postId, reactionType: 'vibe' })).unwrap();
+      patchPost(postId, {
+        isLiked: response.isLiked,
+        reactionType: response.reactionType,
+        likesCount: response.likesCount,
+        topReactions: response.topReactions,
+      });
+    } catch (error) {
+      patchPost(postId, snapshot);
+      Alert.alert('Lỗi', error?.error || 'Không thể cập nhật cảm xúc.');
+    }
+  }, [dispatch, patchPost]);
+
+  const handleToggleSave = useCallback((post) => {
+    const postId = getPostId(post);
+    const isSaved = Boolean(
+      post.isSaved || savedPosts.some((item) => getPostId(item) === postId)
+    );
+    patchPost(postId, { isSaved: !isSaved });
+
+    dispatch(isSaved ? unsavePost(postId) : savePost(postId))
+      .unwrap()
+      .then(() => dispatch(fetchSavedPosts()))
+      .catch((error) => {
+        patchPost(postId, { isSaved });
+        Alert.alert('Lỗi', error?.error || 'Không thể cập nhật bài viết đã lưu.');
+      });
+  }, [dispatch, patchPost, savedPosts]);
+
+  const handleShare = useCallback(async (post) => {
+    try {
+      const authorName = post.userId?.name || profile?.name || 'Thành viên VibeSport';
+      const content = post.content?.trim() || '';
+      const mediaLine = post.mediaUrls?.length
+        ? `\n\nXem ảnh: ${fixMediaUrl(post.mediaUrls[0])}`
+        : '';
+      await Share.share({
+        title: 'VibeSport',
+        message: content
+          ? `${authorName} chia sẻ trên VibeSport: "${content}"${mediaLine}`
+          : `${authorName} đã chia sẻ một bài viết trên VibeSport.${mediaLine}`,
+      });
+    } catch (error) {
+      if (error?.message !== 'User did not share') {
+        console.warn('[UserProfileScreen] Share error:', error);
+      }
+    }
+  }, [profile?.name]);
+
+  const handleReportPost = useCallback(async (reason) => {
+    if (!postToReport || !token) return;
+    try {
+      setReportModalVisible(false);
+      await reportPostRequest(getPostId(postToReport), reason, token);
+      setPostToReport(null);
+      Alert.alert('Thành công', 'Cảm ơn bạn đã gửi báo cáo.');
+    } catch (error) {
+      Alert.alert('Lỗi', error?.message || 'Không thể gửi báo cáo bài viết.');
+    }
+  }, [postToReport, token]);
+
+  const handleReportUser = useCallback(async (reason) => {
     setIsReportSheetVisible(false);
     try {
-      const res = await reportUserRequest(userId, reason, token);
-      Alert.alert(
-        'Báo cáo thành công',
-        `Cảm ơn bạn đã gửi báo cáo. Chúng tôi sẽ xem xét lý do "${reason}" đối với trang cá nhân này và tiến hành xử lý nếu có vi phạm.`,
-        [{ text: 'Đóng' }]
-      );
-      if (res.data?.reportCount !== undefined) {
-        setProfile((current) => ({
-          ...current,
-          reportCount: res.data.reportCount,
-        }));
-      }
+      await reportUserRequest(userId, reason, token);
+      Alert.alert('Báo cáo thành công', 'Cảm ơn bạn đã gửi báo cáo.');
     } catch (error) {
-      Alert.alert('Lỗi', error?.message || 'Không thể gửi báo cáo');
+      Alert.alert('Lỗi', error?.message || 'Không thể gửi báo cáo.');
     }
-  }, [userId, token]);
+  }, [token, userId]);
 
-  const followLabel = profile?.isFollowing && profile?.isFollowedBy
-    ? 'Bạn bè'
-    : profile?.isFollowing
-      ? 'Đang theo dõi'
-      : profile?.isFollowedBy
-        ? 'Theo dõi lại'
-        : 'Theo dõi';
-
-  if (loading && !profile) {
-    return (
-      <Screen style={profileStyles.screen}>
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color={ACCENT} />
-          <Text style={styles.emptyText}>Đang tải hồ sơ...</Text>
-        </View>
-      </Screen>
-    );
-  }
+  const followLabel = profile?.isFollowing
+    ? 'Đang theo dõi'
+    : profile?.isFollowedBy
+      ? 'Theo dõi lại'
+      : 'Theo dõi';
 
   return (
-    <Screen style={profileStyles.screen}>
+    <Screen edges={['top', 'left', 'right']} style={profileStyles.screen}>
       <ScreenHeader style={profileStyles.headerBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBack}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </TouchableOpacity>
-        <Text style={profileStyles.headerTitle}>Hồ Sơ</Text>
-        <TouchableOpacity onPress={() => setIsOptionsSheetVisible(true)} style={styles.headerBack}>
-          <Ionicons name="ellipsis-horizontal" size={24} color="#111827" />
-        </TouchableOpacity>
+        <View style={profileStyles.headerSide}>
+          <BackButton onPress={() => navigation.goBack()} />
+        </View>
+        <Text style={profileStyles.headerTitle}>Hồ sơ</Text>
+        <View style={[profileStyles.headerSide, profileStyles.headerRightSide]}>
+          <HeaderIconButton onPress={() => setIsOptionsSheetVisible(true)}>
+            <Ionicons name="ellipsis-horizontal" size={24} color={icon.dark} />
+          </HeaderIconButton>
+        </View>
       </ScreenHeader>
 
       <ScrollView
+        ref={scrollViewRef}
         style={{ flex: 1 }}
         contentContainerStyle={profileStyles.listContent}
         showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[1]}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={ACCENT} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={ACCENT}
+          />
         }
       >
-        <ProfileHeaderCard profile={profile} />
+        <View
+          style={profileStyles.profileInfoCardBox}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setHeaderHeight(h);
+          }}
+        >
+          <ProfileHeaderCard
+            profile={profile}
+            isSelf={false}
+            onOpenFollowList={openFollowList}
+          />
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.actionBtn, profile?.isFollowing && styles.actionBtnFollowing]}
-            onPress={handleFollow}
-            disabled={followLoading}
-          >
-            <Text style={[styles.actionBtnText, profile?.isFollowing && styles.followText]}>
-              {followLoading ? 'Đang xử lý...' : followLabel}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.actionBtn, styles.messageBtn]}
-            onPress={handleMessage}
-            disabled={messageLoading}
-          >
-            <Ionicons name="chatbubble-outline" size={18} color="#0b74ff" />
-            <Text style={[styles.actionBtnText, { color: '#0b74ff' }]}> 
-              {messageLoading ? 'Đang mở...' : 'Nhắn tin'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.actionButton, profile?.isFollowing && styles.followingButton]}
+              onPress={handleFollow}
+              disabled={followLoading}
+            >
+              <Text
+                style={[
+                  styles.actionButtonText,
+                  profile?.isFollowing && styles.followingButtonText,
+                ]}
+              >
+                {followLabel}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.actionButton, styles.messageButton]}
+              onPress={handleMessage}
+              disabled={messageLoading}
+            >
+              {messageLoading ? (
+                <ActivityIndicator size="small" color="#0B74FF" />
+              ) : (
+                <>
+                  <Ionicons name="chatbubble-outline" size={18} color="#0B74FF" />
+                  <Text style={[styles.actionButtonText, styles.messageButtonText]}>
+                    Nhắn tin
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <StatsCard profile={profile} onOpenFollowList={openFollowList} />
-        <InfoCard profile={profile} />
+        <View style={profileStyles.stickyTabBarWrap}>
+          <ProfileTabBar
+            activeTab={activeTab}
+            onSelectTab={handleSelectTab}
+            includeSaved={false}
+          />
+        </View>
+
+        <View style={profileStyles.tabContentCardBox}>
+          {activeTab === 'posts' ? (
+            postsLoading && mergedPosts.length === 0 ? (
+              <ActivityIndicator size="small" color={primary.DEFAULT} style={styles.tabLoading} />
+            ) : mergedPosts.length > 0 ? (
+              mergedPosts.map((post) => (
+                <ProfilePostCard
+                  key={getPostId(post)}
+                  post={post}
+                  profile={profile}
+                  onOpenPost={handleOpenPost}
+                  onOpenAuthor={() => {}}
+                  onToggleLike={handleToggleLike}
+                  onShare={handleShare}
+                  onOpenMenu={setOptionsPost}
+                />
+              ))
+            ) : (
+              <EmptyTab
+                iconName="newspaper-outline"
+                title="Chưa có bài viết nào"
+                subtitle="Các bài viết của người này sẽ xuất hiện ở đây."
+              />
+            )
+          ) : historyLoading ? (
+            <ActivityIndicator size="small" color={primary.DEFAULT} style={styles.tabLoading} />
+          ) : historyMatches.length > 0 ? (
+            historyMatches.map((match) => {
+              const statusConfig = getStatusConfig(match.status);
+              return (
+                <TouchableOpacity
+                  key={match._id || match.id}
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate('MatchDetail', {
+                    matchId: match._id || match.id,
+                  })}
+                  style={profileStyles.inlineMatchCard}
+                >
+                  <View style={profileStyles.inlineMatchTopRow}>
+                    <Text style={profileStyles.inlineMatchTitle} numberOfLines={1}>
+                      {match.title || match.sport || 'Trận đấu'}
+                    </Text>
+                    <View
+                      style={[
+                        profileStyles.statusBadge,
+                        { backgroundColor: `${statusConfig.color}15` },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          profileStyles.statusText,
+                          { color: statusConfig.color },
+                        ]}
+                      >
+                        {statusConfig.label}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={profileStyles.inlineMatchSub} numberOfLines={1}>
+                    {match.locationName || 'Sân thi đấu'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <EmptyTab
+              iconName="time-outline"
+              title="Chưa có lịch sử trận đấu"
+              subtitle="Các trận đấu đã tham gia hoặc tạo sẽ xuất hiện ở đây."
+            />
+          )}
+        </View>
       </ScrollView>
 
       <OptionsSheet
         visible={isOptionsSheetVisible}
         onClose={() => setIsOptionsSheetVisible(false)}
-        onReport={() => setIsReportSheetVisible(true)}
+        onReport={() => {
+          setIsOptionsSheetVisible(false);
+          setIsReportSheetVisible(true);
+        }}
       />
 
       <ReportSheet
@@ -214,177 +581,257 @@ export function UserProfileScreen({ route, navigation }) {
           setIsReportSheetVisible(false);
           setIsOptionsSheetVisible(true);
         }}
-        onSelectReason={handleReportReason}
+        onSelectReason={handleReportUser}
+      />
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={optionsPost !== null}
+        onRequestClose={() => setOptionsPost(null)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setOptionsPost(null)}
+          style={profileStyles.sheetOverlay}
+        >
+          <View style={profileStyles.sheetContainer}>
+            <View style={profileStyles.sheetHandle} />
+            <Text style={profileStyles.sheetTitle}>Tùy chọn bài viết</Text>
+
+            {optionsPost ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    handleToggleSave(post);
+                  }}
+                  style={profileStyles.sheetOption}
+                >
+                  <Ionicons
+                    name={optionsPost.isSaved ? 'bookmark' : 'bookmark-outline'}
+                    size={20}
+                    color={icon.dark}
+                    style={styles.sheetIcon}
+                  />
+                  <Text style={profileStyles.sheetOptionText}>
+                    {optionsPost.isSaved
+                      || savedPosts.some((item) => getPostId(item) === getPostId(optionsPost))
+                      ? 'Bỏ lưu bài viết'
+                      : 'Lưu bài viết'}
+                  </Text>
+                </TouchableOpacity>
+                <View style={profileStyles.sheetDivider} />
+
+                <TouchableOpacity
+                  onPress={() => {
+                    const post = optionsPost;
+                    setOptionsPost(null);
+                    setPostToReport(post);
+                    setReportModalVisible(true);
+                  }}
+                  style={profileStyles.sheetOption}
+                >
+                  <Ionicons
+                    name="flag-outline"
+                    size={20}
+                    color="#EF4444"
+                    style={styles.sheetIcon}
+                  />
+                  <Text
+                    style={[
+                      profileStyles.sheetOptionText,
+                      profileStyles.sheetOptionTextDanger,
+                    ]}
+                  >
+                    Báo cáo bài viết
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <ReportModal
+        visible={reportModalVisible}
+        onClose={() => {
+          setReportModalVisible(false);
+          setPostToReport(null);
+        }}
+        onSelectReason={handleReportPost}
       />
     </Screen>
   );
 }
 
+function EmptyTab({ iconName, title, subtitle }) {
+  return (
+    <View style={profileStyles.emptyTabBox}>
+      <Ionicons name={iconName} size={48} color="#D1D5DB" />
+      <Text style={profileStyles.emptyTabTitle}>{title}</Text>
+      <Text style={profileStyles.emptyTabSub}>{subtitle}</Text>
+    </View>
+  );
+}
+
 function OptionsSheet({ visible, onClose, onReport }) {
   return (
-    <Modal
-      animationType="slide"
-      transparent
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={onClose}
-        style={profileStyles.sheetOverlay}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={profileStyles.sheetContainer}
-        >
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <TouchableOpacity activeOpacity={1} onPress={onClose} style={profileStyles.sheetOverlay}>
+        <View style={profileStyles.sheetContainer}>
           <View style={profileStyles.sheetHandle} />
           <Text style={profileStyles.sheetTitle}>Tùy chọn</Text>
-          
-          <TouchableOpacity
-            activeOpacity={0.78}
-            onPress={() => {
-              onClose();
-              onReport();
-            }}
-            style={[profileStyles.sheetOption, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 }]}
-          >
-            <Text style={[profileStyles.sheetOptionText, { color: ACCENT, fontWeight: '600' }]}>
+          <TouchableOpacity activeOpacity={0.78} onPress={onReport} style={profileStyles.sheetOption}>
+            <Ionicons name="flag-outline" size={20} color={ACCENT} style={styles.sheetIcon} />
+            <Text style={[profileStyles.sheetOptionText, { color: ACCENT }]}>
               Báo cáo trang cá nhân
             </Text>
-            <Ionicons name="flag-outline" size={20} color={ACCENT} />
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
       </TouchableOpacity>
     </Modal>
   );
 }
 
 const REPORT_REASONS = [
-  'Vấn đề liên quan đến người dưới 18 tuổi',
-  'Bắt nạt, quấy rối hoặc lăng mạ/lạm dụng/ngược đãi',
-  'Tự tử hoặc tự hại bản thân',
-  'Nội dung mang tính bạo lực, thù ghét hoặc gây phiền toái',
-  'Bán hoặc quảng bá mặt hàng bị hạn chế',
-  'Nội dung người lớn',
-  'Thông tin sai sự thật, lừa đảo hoặc gian lận',
-  'Trang cá nhân giả',
-  'Quyền sở hữu trí tuệ',
+  'Giả mạo người khác',
+  'Quấy rối hoặc bắt nạt',
+  'Nội dung không phù hợp',
+  'Thông tin sai sự thật hoặc lừa đảo',
+  'Spam',
+  'Lý do khác',
 ];
 
 function ReportSheet({ visible, onClose, onSelectReason, onBack }) {
   return (
-    <Modal
-      animationType="slide"
-      transparent
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={onClose}
-        style={profileStyles.sheetOverlay}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[profileStyles.sheetContainer, { maxHeight: '80%' }]}
-        >
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <TouchableOpacity activeOpacity={1} onPress={onClose} style={profileStyles.sheetOverlay}>
+        <View style={[profileStyles.sheetContainer, styles.reportSheet]}>
           <View style={profileStyles.sheetHandle} />
-          
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(99, 94, 94, 0.19)' }}>
-            <TouchableOpacity onPress={onBack} style={{ padding: 4 }}>
+          <View style={styles.reportHeader}>
+            <TouchableOpacity onPress={onBack} style={styles.reportBackButton}>
               <Ionicons name="chevron-back" size={24} color={ACCENT} />
             </TouchableOpacity>
-            <Text style={{ fontSize: 16, fontWeight: 'bold', color: ACCENT }}>Báo cáo</Text>
-            <View style={{ width: 32 }} />
+            <Text style={styles.reportTitle}>Báo cáo</Text>
+            <View style={styles.reportHeaderSpacer} />
           </View>
 
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827', marginTop: 16, marginBottom: 8 }}>
+          <Text style={styles.reportQuestion}>
             Tại sao bạn báo cáo trang cá nhân này?
           </Text>
-          <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
-            Báo cáo của bạn là ẩn danh. Nếu ai đó đang gặp nguy hiểm, hãy gọi cho dịch vụ khẩn cấp tại địa phương.
-          </Text>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 10 }}>
-            {REPORT_REASONS.map((reason, index) => (
-              <View key={index}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => onSelectReason(reason)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingVertical: 14,
-                  }}
-                >
-                  <Text style={{ flex: 1, fontSize: 14, color: '#1F2937', paddingRight: 8 }}>
-                    {reason}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={ACCENT} />
-                </TouchableOpacity>
-                {index < REPORT_REASONS.length - 1 && (
-                  <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(99, 94, 94, 0.19)' }} />
-                )}
-              </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {REPORT_REASONS.map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                activeOpacity={0.7}
+                onPress={() => onSelectReason(reason)}
+                style={styles.reportReason}
+              >
+                <Text style={styles.reportReasonText}>{reason}</Text>
+                <Ionicons name="chevron-forward" size={18} color={ACCENT} />
+              </TouchableOpacity>
             ))}
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </TouchableOpacity>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  centerState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#9CA3AF',
-    paddingTop: 16,
-    fontSize: 14,
-  },
-  headerBack: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
-    marginHorizontal: 16,
-    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
   },
-  actionBtn: {
+  actionButton: {
     flex: 1,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#F3F4F6',
     borderRadius: 10,
-    paddingVertical: 12,
     borderWidth: 1,
+    borderColor: '#FFCFBD',
+    backgroundColor: '#FFF4EF',
+  },
+  followingButton: {
     borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
   },
-  actionBtnFollowing: {
-    backgroundColor: '#FFF0EA',
-    borderColor: '#FFD4C2',
+  actionButtonText: {
+    color: ACCENT,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
-  actionBtnText: {
+  followingButtonText: {
+    color: '#374151',
+  },
+  messageButton: {
+    borderColor: '#DBEAFE',
+    backgroundColor: '#FFFFFF',
+  },
+  messageButtonText: {
+    color: '#0B74FF',
+  },
+  tabLoading: {
+    marginVertical: 28,
+  },
+  sheetIcon: {
+    marginRight: 12,
+  },
+  reportSheet: {
+    maxHeight: '80%',
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+  },
+  reportBackButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportTitle: {
+    color: ACCENT,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  reportHeaderSpacer: {
+    width: 36,
+  },
+  reportQuestion: {
+    marginTop: 16,
+    marginBottom: 8,
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  reportReason: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+  },
+  reportReasonText: {
+    flex: 1,
+    paddingRight: 12,
     color: '#1F2937',
     fontSize: 14,
-    fontWeight: '600',
-  },
-  followText: {
-    color: ACCENT,
-  },
-  messageBtn: {
-    backgroundColor: '#FFFFFF',
   },
 });

@@ -20,6 +20,10 @@ import JoinGroupScreen from '../screens/JoinGroupScreen';
 import ProfileManagementScreen from '../screens/ProfileManagementScreen';
 import ClubManagementScreen from '../screens/ClubManagementScreen';
 import MatchHistoryScreen from '../screens/MatchHistoryScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { NotificationSettingsScreen } from '../screens/NotificationSettingsScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import { TermsPolicyScreen } from '../screens/TermsPolicyScreen';
 import { CallScreen } from '../screens/CallScreen';
 
 export const linking = {
@@ -71,6 +75,10 @@ export function MainNavigator({ initialRouteName = 'Home' }) {
       <Stack.Screen name="ProfileManagementScreen" component={ProfileManagementScreen} />
       <Stack.Screen name="ClubManagementScreen" component={ClubManagementScreen} />
       <Stack.Screen name="MatchHistoryScreen" component={MatchHistoryScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="TermsPolicy" component={TermsPolicyScreen} />
       <Stack.Screen name="Call" component={CallScreen} options={{ animation: 'fade' }} />
     </Stack.Navigator>
   );

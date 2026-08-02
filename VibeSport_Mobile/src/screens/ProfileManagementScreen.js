@@ -16,13 +16,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { HeaderIconButton, EmptyState } from '../components/ProfileScreenComponents';
+import { BackButton } from '../components/BackButton';
+import { EmptyState } from '../components/ProfileScreenComponents';
 import { PostImages } from '../components/PostImages';
 import { TagIcon } from '../components/TagIcon';
 import { fetchPosts, deletePost, likePost, unlikePost } from '../redux/postSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { VibeReactionIcon, VIBE_REACTION } from '../components/PostReactions';
-import { icon, primary, spacing } from '../theme';
+import { primary, spacing } from '../theme';
 import { styles as profileStyles } from './ProfileScreen.styles';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
@@ -265,9 +266,7 @@ export default function ProfileManagementScreen({ navigation }) {
     <Screen edges={['top', 'left', 'right']} style={profileStyles.screen}>
       <ScreenHeader style={profileStyles.headerBar}>
         <View style={profileStyles.headerSide}>
-          <HeaderIconButton onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={spacing.xl} color={icon.dark} />
-          </HeaderIconButton>
+          <BackButton onPress={() => navigation.goBack()} />
         </View>
         <Text style={profileStyles.headerTitle}>Bài viết của tôi</Text>
         <TouchableOpacity 

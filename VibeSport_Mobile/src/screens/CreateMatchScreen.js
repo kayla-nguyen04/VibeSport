@@ -2956,7 +2956,10 @@ export default function CreateMatchScreen({ navigation, route }) {
                   ? (selectedContactUser._id || selectedContactUser.id)
                   : selectedContactUser;
                 const targetId = String(rawId || "6a6465f17b201152379c08cc");
-                navigation.navigate("UserProfile", { userId: targetId });
+                navigation.navigate("UserProfile", {
+                  userId: targetId,
+                  initialProfile: selectedContactUser,
+                });
               }}
               activeOpacity={0.8}
             >
@@ -3397,11 +3400,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginHorizontal: 9,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
     marginBottom: 0,
-    height: 74,
+    height: 58,
     paddingHorizontal: 12,
     paddingVertical: 0,
     borderWidth: 1,

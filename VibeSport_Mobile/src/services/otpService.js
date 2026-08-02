@@ -1,6 +1,6 @@
 import { API_BASE_URL } from '../components/constants/api';
 
-export const sendOtp = async (email) => {
+export const sendOtp = async (email, type = 'register') => {
   const response = await fetch(
     `${API_BASE_URL}/api/otp/send-otp`,
     {
@@ -8,7 +8,7 @@ export const sendOtp = async (email) => {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, type }),
     }
   );
 

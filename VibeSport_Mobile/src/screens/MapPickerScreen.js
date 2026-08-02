@@ -17,6 +17,7 @@ import { WebView } from "react-native-webview";
 import * as Location from "expo-location";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { BackButton } from "../components/BackButton";
 
 const HANOI_LAT = 21.0285;
 const HANOI_LNG = 105.8542;
@@ -359,13 +360,7 @@ export default function MapPickerScreen({ navigation, route }) {
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <ScreenHeader style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        <BackButton onPress={() => navigation.goBack()} style={styles.backBtn} />
         <Text style={styles.headerTitle}>Chọn vị trí sân</Text>
         <View style={{ width: 36 }} />
       </ScreenHeader>
@@ -590,7 +585,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#f5f5f5",
   },
-  backIcon: { fontSize: 20, color: "#333" },
   headerTitle: { flex: 1, fontSize: 17, fontWeight: "700", color: "#1a1a1a", marginLeft: 12 },
   searchBar: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: "#fff" },
   searchWrap: {

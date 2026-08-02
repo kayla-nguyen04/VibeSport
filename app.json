@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "abeb4c8b-d627-47b1-ba6f-6893ed699120"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.vibesport.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.vibesport.app"
+    }
+  }
+}
