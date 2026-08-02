@@ -9,10 +9,7 @@ import {
 } from '../redux/slices/adminUsersSlice';
 import './Users.css';
 
-const ROLES = [
-  { value: 'Admin', label: 'Admin' },
-  { value: 'User', label: 'Users' }
-];
+
 
 export default function Users() {
   const dispatch = useDispatch();
@@ -55,14 +52,7 @@ export default function Users() {
     loadData(1, query, statusFilter, sortFilter);
   };
 
-  const handleRoleChange = async (userId, newRole) => {
-    const resultAction = await dispatch(updateUserRole({ id: userId, role: newRole }));
-    if (updateUserRole.fulfilled.match(resultAction)) {
-      showNotification('Cập nhật quyền thành công!');
-    } else {
-      showNotification(resultAction.payload || 'Lỗi cập nhật', 'error');
-    }
-  };
+
 
   const handleLockToggle = async (userId, isCurrentlyLocked) => {
     const resultAction = await dispatch(lockUnlockUser({ id: userId, isLocked: !isCurrentlyLocked }));
@@ -148,15 +138,9 @@ export default function Users() {
                 </td>
                 <td>{new Date(user.createdAt).toLocaleDateString('vi-VN')}</td>
                 <td>
-                  <select 
-                    className="table-select"
-                    value={user.role}
-                    onChange={(e) => handleRoleChange(user._id, e.target.value)}
-                  >
-                    {ROLES.map(role => (
-                      <option key={role.value} value={role.value}>{role.label}</option>
-                    ))}
-                  </select>
+                  <span style={{ fontWeight: '500' }}>
+                    {user.role === 'Admin' ? 'Admin' : user.role === 'CourtOwner' ? 'Chủ sân' : 'Người dùng'}
+                  </span>
                 </td>
                 <td>
                   <span className={`status-badge ${user.isLocked ? 'status-locked' : 'status-active'}`}>

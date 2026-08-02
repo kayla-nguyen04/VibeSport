@@ -36,14 +36,34 @@ router.get('/', async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    const [users, total] = await Promise.all([
-      User.find(query)
-        .select('-passwordHash -googleId')
-        .sort(sort)
-        .skip(skip)
-        .limit(limit),
-      User.countDocuments(query)
-    ]);
+    let ownerMatch = { ...query };
+    if (status === 'reported') {
+      ownerMatch._id = null;
+    }
+
+    const pipeline = [
+      { $match: query },
+      { $project: { passwordHash: 0, googleId: 0 } },
+      { 
+        $unionWith: { 
+          coll: "courtowners",
+          pipeline: [
+            { $match: ownerMatch },
+            { $project: { passwordHash: 0 } },
+            { $addFields: { role: 'CourtOwner', isCourtOwner: true } }
+          ]
+        }
+      },
+      { $sort: sort },
+      { $facet: {
+          metadata: [ { $count: "total" } ],
+          data: [ { $skip: skip }, { $limit: limit } ]
+      } }
+    ];
+
+    const results = await User.aggregate(pipeline);
+    const users = results[0].data;
+    const total = results[0].metadata[0] ? results[0].metadata[0].total : 0;
 
     res.json({
       success: true,
@@ -92,9 +112,15 @@ router.patch('/:id/lock', async (req, res) => {
       return res.status(400).json({ success: false, message: 'isLocked phải là boolean' });
     }
 
-    const user = await User.findByIdAndUpdate(id, { isLocked }, { returnDocument: 'after' }).select('-passwordHash -googleId');
+    let user = await User.findByIdAndUpdate(id, { isLocked }, { returnDocument: 'after' }).select('-passwordHash -googleId');
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+      user = await CourtOwner.findByIdAndUpdate(id, { isLocked }, { returnDocument: 'after' }).select('-passwordHash');
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+      }
+      user = user.toObject();
+      user.role = 'CourtOwner';
+      user.isCourtOwner = true;
     }
 
     res.json({ 
