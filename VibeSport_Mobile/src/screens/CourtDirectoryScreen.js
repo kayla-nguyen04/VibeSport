@@ -81,7 +81,9 @@ export default function CourtDirectoryScreen({ navigation }) {
   // Lọc sân theo tìm kiếm và môn thể thao
   const filteredCourts = courts.filter((court) => {
     const matchesSport =
-      selectedSport === "all" || court.sportType === selectedSport;
+      selectedSport === "all" ||
+      court.sportType === selectedSport ||
+      (Array.isArray(court.sports) && court.sports.includes(selectedSport));
     const query = searchQuery.trim().toLowerCase();
     const matchesSearch =
       !query ||
@@ -102,7 +104,12 @@ export default function CourtDirectoryScreen({ navigation }) {
         ? court.images[0]
         : "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800";
 
-    const sportLabel = SPORT_NAMES[court.sportType] || "Bóng đá";
+    // Lấy label môn thể thao (hỗ trợ cả multi-sport)
+    const courtSports = Array.isArray(court.sports) && court.sports.length > 0
+      ? court.sports
+      : court.sportType ? [court.sportType] : ['football'];
+    const sportLabel = courtSports.map((s) => SPORT_NAMES[s] || s).join(" · ");
+    const primaryTag = SPORT_NAMES[courtSports[0]] || "Bóng đá";
 
     // Tính hiển thị giá DV từ serviceDetails hoặc constant range
     const drinkMin = court.serviceDetails?.drinkService?.minPrice || 10000;
@@ -124,7 +131,7 @@ export default function CourtDirectoryScreen({ navigation }) {
           
           {/* Badge Môn thể thao */}
           <View style={styles.sportBadge}>
-            <TagIcon tagName={sportLabel} size={16} color="#fff" />
+            <TagIcon tagName={primaryTag} size={16} color="#fff" />
             <Text style={styles.sportBadgeText}>{sportLabel}</Text>
           </View>
 
@@ -303,7 +310,7 @@ export default function CourtDirectoryScreen({ navigation }) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[ORANGE]} />}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="ios-search" size={48} color="#D1D5DB" />
+              <Ionicons name="search" size={48} color="#D1D5DB" />
               <Text style={styles.emptyTitle}>Không tìm thấy mẫu sân phù hợp</Text>
               <Text style={styles.emptySubtitle}>Thử thay đổi từ khóa hoặc bộ lọc môn thể thao</Text>
             </View>

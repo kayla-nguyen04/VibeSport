@@ -22,7 +22,63 @@ import {
   SafeAreaView,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { WebView } from "react-native-webview";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+
+const inlineGoogleMapHtml = (lat, lng) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #f3f4f6; }
+    #map { width: 100%; height: 100%; min-height: 220px; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map, marker;
+    var initLat = ${lat || 21.0285};
+    var initLng = ${lng || 105.8542};
+
+    function post(type, payload) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(Object.assign({ type: type }, payload || {})));
+      }
+    }
+
+    function initMap() {
+      map = L.map("map", { zoomControl: true, attributionControl: false }).setView([initLat, initLng], 15);
+      L.tileLayer("https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
+        maxZoom: 20,
+        subdomains: ["mt0", "mt1", "mt2", "mt3"]
+      }).addTo(map);
+
+      marker = L.marker([initLat, initLng], { draggable: true }).addTo(map);
+
+      map.on("click", function(e) {
+        marker.setLatLng(e.latlng);
+        post("location", { lat: e.latlng.lat, lng: e.latlng.lng });
+      });
+
+      marker.on("dragend", function() {
+        var pos = marker.getLatLng();
+        post("location", { lat: pos.lat, lng: pos.lng });
+      });
+
+      setTimeout(function() { map.invalidateSize(); }, 250);
+    }
+
+    document.addEventListener("DOMContentLoaded", initMap);
+  </script>
+</body>
+</html>
+`;
 
 import { createMatch, updateMatch, deleteMatch } from "../services/matchService";
 import * as ImagePicker from "expo-image-picker";
@@ -960,6 +1016,22 @@ export default function CreateMatchScreen({ navigation, route }) {
   const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
   const [isCourtPresetsExpanded, setIsCourtPresetsExpanded] = useState(false);
 
+  const handleSwitchAddressInputType = (newMode) => {
+    if (newMode !== addressInputType) {
+      setAddressInputType(newMode);
+      setLocationName("");
+      setSpecificAddress("");
+      setCourtDescription("");
+      setSelectedCourtObj(null);
+      setLocationCoords(null);
+      if (typeof setSelectedContactUser === "function") setSelectedContactUser(null);
+      setContactPhone("");
+      setServiceCost("");
+      setServiceCostMin("");
+      setServiceCostMax("");
+    }
+  };
+
   const activePitchType = useMemo(() => {
     if (sport === "football") {
       return footballMaxPlayers === 10 ? "Sân 5" : footballMaxPlayers === 14 ? "Sân 7" : "Sân 11";
@@ -1096,6 +1168,20 @@ export default function CreateMatchScreen({ navigation, route }) {
   const [serviceCost, setServiceCost] = useState(
     editMatch?.serviceCost ? String(editMatch.serviceCost) : ""
   );
+  const [serviceCostMin, setServiceCostMin] = useState(() => {
+    if (editMatch?.serviceCost) {
+      const parts = String(editMatch.serviceCost).split("-");
+      return parts[0] || "";
+    }
+    return "";
+  });
+  const [serviceCostMax, setServiceCostMax] = useState(() => {
+    if (editMatch?.serviceCost) {
+      const parts = String(editMatch.serviceCost).split("-");
+      return parts[1] || "";
+    }
+    return "";
+  });
   const [selectedContactUser, setSelectedContactUser] = useState(
     editMatch?.contactAppUser || null
   );
@@ -1215,7 +1301,7 @@ export default function CreateMatchScreen({ navigation, route }) {
     return 4; // default is 2 vs 2
   });
 
-  // ── Effect to update/reset form fields when editMatch changes ──
+  // ── Effect to update form fields when editMatch changes ──
   useEffect(() => {
     if (editMatch) {
       setSport(editMatch.sport || "football");
@@ -1246,32 +1332,6 @@ export default function CreateMatchScreen({ navigation, route }) {
       if ((editMatch.sport === "badminton" || editMatch.sport === "pickleball") && editMatch.maxPlayers) {
         setRacketMaxPlayers(editMatch.maxPlayers);
       }
-    } else {
-      setSport("football");
-      setTitle("");
-      setSelectedDate(new Date());
-      setSelectedTimeSlot("19:00");
-      setEndTimeSlot("20:30");
-      setCostPerPerson("");
-      setLocationName("");
-      setLocationCoords(null);
-      setNote("");
-      setContactPhone("");
-      setContactZalo("");
-      setContactFacebook("");
-      setCourtDescription("");
-      setSpecificAddress("");
-      setSkillLevel("Người mới");
-      setServiceCost("");
-      setSelectedContactUser(null);
-      setSelectedPositionIds([]);
-      setBenchMembersTeam1("");
-      setBenchMembersTeam2("");
-      setMaxPlayersOther("2");
-      setFootballMaxPlayers(10);
-      setRacketMaxPlayers(4);
-      setSelectedCourtObj(null);
-      setSelectedChatGroupId(null);
     }
   }, [editMatch]);
 
@@ -1508,8 +1568,9 @@ export default function CreateMatchScreen({ navigation, route }) {
     () => ({
       sport,
       title,
-      selectedDate: selectedDate.toISOString(),
+      selectedDate: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
       selectedTimeSlot,
+      endTimeSlot,
       maxPlayersOther,
       footballMaxPlayers,
       racketMaxPlayers,
@@ -1536,6 +1597,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       title,
       selectedDate,
       selectedTimeSlot,
+      endTimeSlot,
       maxPlayersOther,
       footballMaxPlayers,
       racketMaxPlayers,
@@ -1565,6 +1627,7 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (draft.title != null) setTitle(draft.title);
     if (draft.selectedDate) setSelectedDate(new Date(draft.selectedDate));
     if (draft.selectedTimeSlot) setSelectedTimeSlot(draft.selectedTimeSlot);
+    if (draft.endTimeSlot) setEndTimeSlot(draft.endTimeSlot);
     if (draft.maxPlayersOther != null) setMaxPlayersOther(String(draft.maxPlayersOther));
     if (draft.footballMaxPlayers != null) setFootballMaxPlayers(Number(draft.footballMaxPlayers));
     if (draft.racketMaxPlayers != null) setRacketMaxPlayers(Number(draft.racketMaxPlayers));
@@ -1597,6 +1660,7 @@ export default function CreateMatchScreen({ navigation, route }) {
         if (draft) applyFormDraft(draft);
         if (loc) {
           setLocationName(loc.address || "");
+          setSpecificAddress(loc.address || "");
           setLocationCoords({ lat: loc.lat, lng: loc.lng });
         }
         navigation.setParams({ formDraft: undefined, selectedLocation: undefined });
@@ -1798,8 +1862,8 @@ export default function CreateMatchScreen({ navigation, route }) {
       courtDescription: courtDescription.trim(),
       specificAddress: specificAddress.trim(),
       skillLevel,
-      serviceCost: Number(serviceCost || 0),
-      chatGroupId: selectedChatGroupId || null,
+      serviceCost: serviceCost ? String(serviceCost) : "",
+      chatGroupId: selectedChatGroupId || (editMatch?.chatGroupId?._id || editMatch?.chatGroupId) || null,
       contactAppUser: selectedContactUser ? (selectedContactUser._id || selectedContactUser.id) : null,
       ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
     };
@@ -1849,36 +1913,59 @@ export default function CreateMatchScreen({ navigation, route }) {
 
       const payload = buildPayload();
 
-      if (isEditMode) {
-        await updateMatch(editMatch._id, payload, token);
-        Alert.alert("Thành công", "Cập nhật trận đấu thành công", [
-          {
-            text: "OK",
-            onPress: () => {
-              if (navigation) {
-                navigation.setParams({ editMatch: null });
-                navigation.navigate("Home", { screen: "MatchesTab" });
-              }
-            }
-          }
-        ]);
-      } else {
-        await createMatch(payload, token);
-        Alert.alert(
-          "Thành công",
-          "Đã tạo trận đấu thành công!",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                if (navigation) {
-                  navigation.setParams({ editMatch: null });
-                  navigation.navigate("Home", { screen: "MatchesTab" });
+      const processSave = async () => {
+        try {
+          if (isEditMode) {
+            await updateMatch(editMatch._id, payload, token);
+            Alert.alert("Thành công", "Cập nhật trận đấu thành công", [
+              {
+                text: "OK",
+                onPress: () => {
+                  if (navigation) {
+                    navigation.setParams({ editMatch: null });
+                    navigation.navigate("Home", { screen: "MatchesTab" });
+                  }
                 }
               }
-            }
+            ]);
+          } else {
+            await createMatch(payload, token);
+            Alert.alert(
+              "Thành công 🎉",
+              "Đã tạo trận đấu thành công!",
+              [
+                {
+                  text: "OK",
+                  onPress: () => {
+                    if (navigation) {
+                      navigation.setParams({ editMatch: null });
+                      navigation.navigate("Home", { screen: "MatchesTab" });
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        } catch (error) {
+          Alert.alert("Lỗi", error.message);
+        }
+      };
+
+      const b1 = Number(benchMembersTeam1 || 0);
+      const b2 = Number(benchMembersTeam2 || 0);
+      const hasNoBench = (b1 === 0 && b2 === 0);
+
+      if (!isEditMode && hasNoBench) {
+        Alert.alert(
+          "Thông báo vị trí dự bị ",
+          "Trận đấu này chưa chọn vị trí dự bị nào. Bạn vẫn có thể tiếp tục tạo trận đấu!",
+          [
+            { text: "Tiếp tục tạo trận", onPress: processSave },
+            { text: "Hủy ", style: "cancel" },
           ]
         );
+      } else {
+        await processSave();
       }
     } catch (error) {
       Alert.alert("Lỗi", error.message);
@@ -2534,7 +2621,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                     backgroundColor: addressInputType === item.mode ? ORANGE : "#F3F4F6",
                     alignItems: "center",
                   }}
-                  onPress={() => setAddressInputType(item.mode)}
+                  onPress={() => handleSwitchAddressInputType(item.mode)}
                   activeOpacity={0.7}
                 >
                   <Text style={{
@@ -2613,6 +2700,23 @@ export default function CreateMatchScreen({ navigation, route }) {
                           Alert.alert("Sân không hỗ trợ", `${court.name} không có sẵn loại ${activePitchDisplayTag}. Vui lòng chọn sân khác.`);
                           return;
                         }
+
+                        // Bấm thêm 1 lần nữa => Bỏ chọn sân
+                        if (isSelected) {
+                          setSelectedCourtObj(null);
+                          setLocationName("");
+                          setSpecificAddress("");
+                          setCourtDescription("");
+                          setLocationCoords(null);
+                          setSelectedContactUser(null);
+                          setContactPhone("");
+                          setServiceCost("");
+                          setServiceCostMin("");
+                          setServiceCostMax("");
+                          return;
+                        }
+
+                        // Chọn sân
                         setSelectedCourtObj(court);
                         setLocationName(court.name);
                         setSpecificAddress(court.address);
@@ -2626,6 +2730,8 @@ export default function CreateMatchScreen({ navigation, route }) {
                         const overallMin = Math.min(dMin, eMin);
                         const overallMax = Math.max(dMax, eMax);
                         setServiceCost(`${overallMin}-${overallMax}`);
+                        setServiceCostMin(String(overallMin));
+                        setServiceCostMax(String(overallMax));
                         setLocationCoords(court.locationCoords || court.coords);
                         const targetOwner = (typeof court.owner === "object" && court.owner !== null)
                           ? court.owner
@@ -2737,25 +2843,83 @@ export default function CreateMatchScreen({ navigation, route }) {
 
             {/* Map link option */}
             {addressInputType === "map" && (
-              <View>
+              <View style={{ gap: 10 }}>
+                <View style={{ height: 220, borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB" }}>
+                  <WebView
+                    originWhitelist={["*"]}
+                    source={{ html: inlineGoogleMapHtml(locationCoords?.lat, locationCoords?.lng) }}
+                    style={{ flex: 1 }}
+                    onMessage={async (event) => {
+                      try {
+                        const data = JSON.parse(event.nativeEvent.data);
+                        if (data.type === "location" && data.lat != null && data.lng != null) {
+                          const newCoords = { lat: data.lat, lng: data.lng };
+                          setLocationCoords(newCoords);
+                          try {
+                            const resp = await fetch(
+                              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${data.lat}&lon=${data.lng}&zoom=18&addressdetails=1&accept-language=vi`,
+                              { headers: { 'User-Agent': 'VibeSportMobile/1.0' } }
+                            );
+                            const json = await resp.json();
+                            if (json && json.display_name) {
+                              setLocationName(json.display_name);
+                              setSpecificAddress(json.display_name);
+                            }
+                          } catch (e) {}
+                        }
+                      } catch (e) {}
+                    }}
+                    scrollEnabled={false}
+                  />
+                </View>
+
+                {/* Ô hiển thị & nhập Vị trí/Địa chỉ đã chọn từ bản đồ */}
+                <View style={{ marginTop: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#374151", marginBottom: 6 }}>
+                    📍 Vị trí / Địa chỉ chọn từ bản đồ:
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: (locationName || specificAddress) ? "#FFF7ED" : "#F9FAFB",
+                        borderColor: (locationName || specificAddress) ? "#FFD8A8" : "#E5E7EB",
+                        color: (locationName || specificAddress) ? "#C2410C" : "#111827",
+                        fontWeight: "600",
+                        fontSize: 13.5,
+                        minHeight: 46,
+                      },
+                    ]}
+                    value={locationName || specificAddress}
+                    onChangeText={(text) => {
+                      setLocationName(text);
+                      setSpecificAddress(text);
+                    }}
+                    placeholder="Chạm trên bản đồ hoặc bấm nút dưới để chọn vị trí..."
+                    placeholderTextColor="#9CA3AF"
+                    multiline
+                  />
+                </View>
+
                 <TouchableOpacity
                   style={styles.mapLink}
                   onPress={() =>
                     navigation.navigate("MapPicker", {
                       currentLocation: locationCoords,
-                      currentAddress: locationName,
+                      currentAddress: locationName || specificAddress,
                       formDraft: buildFormDraft(),
                     })
                   }
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="location-outline" size={18} color={ORANGE} style={styles.mapLinkIcon} />
-                  <Text style={styles.mapLinkText}>Chọn vị trí</Text>
+                  <Ionicons name="map-outline" size={18} color={ORANGE} style={styles.mapLinkIcon} />
+                  <Text style={styles.mapLinkText}>📌 Mở rộng bản đồ Google Maps toàn màn hình</Text>
                 </TouchableOpacity>
+
                 {locationCoords && (
-                  <View style={[styles.coordBadge, { marginTop: 6 }]}>
+                  <View style={[styles.coordBadge, { marginTop: 2 }]}>
                     <Text style={styles.coordBadgeText}>
-                      ✓ Tọa độ: {locationCoords.lat.toFixed(4)}, {locationCoords.lng.toFixed(4)} ({locationName || "Đã chọn"})
+                      ✓ Tọa độ Google Maps: {locationCoords.lat.toFixed(4)}, {locationCoords.lng.toFixed(4)}
                     </Text>
                   </View>
                 )}
@@ -2874,37 +3038,82 @@ export default function CreateMatchScreen({ navigation, route }) {
         })()}
 
         {/* Chi phí dịch vụ (Short title) */}
-        <Text style={styles.sectionLabel}>Chi phí dịch vụ ước tính</Text>
-        <View style={[styles.inputWrapper, selectedCourtObj ? { backgroundColor: "#F3F4F6" } : null]}>
-          {selectedCourtObj ? (
-            <>
-              <Ionicons name="lock-closed" size={16} color="#9CA3AF" style={{ marginLeft: 12, marginRight: 4 }} />
-              <Text style={{ flex: 1, color: "#374151", fontSize: 14, fontWeight: "700", paddingVertical: 12 }}>
-                {(() => {
-                  const parts = serviceCost.split("-");
-                  if (parts.length === 2) {
-                    const fmt = (n) => formatNumberWithDots(String(parseInt(n, 10)));
-                    return `${fmt(parts[0])} – ${fmt(parts[1])} VND`;
-                  }
-                  return serviceCost ? `${formatNumberWithDots(serviceCost)} VND` : "Liên hệ sân";
-                })()}
-              </Text>
-              <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
-            </>
-          ) : (
-            <>
+        <Text style={styles.sectionLabel}>Giá dịch vụ</Text>
+        {selectedCourtObj ? (
+          <View style={[styles.inputWrapper, { backgroundColor: "#F3F4F6" }]}>
+            <Ionicons name="lock-closed" size={16} color="#9CA3AF" style={{ marginLeft: 12, marginRight: 4 }} />
+            <Text style={{ flex: 1, color: "#374151", fontSize: 14, fontWeight: "700", paddingVertical: 12 }}>
+              {(() => {
+                const minFmt = serviceCostMin ? formatNumberWithDots(serviceCostMin) : "";
+                const maxFmt = serviceCostMax ? formatNumberWithDots(serviceCostMax) : "";
+                if (minFmt && maxFmt) return `${minFmt} – ${maxFmt} VND`;
+                if (minFmt) return `Từ ${minFmt} VND`;
+                return serviceCost ? `${formatNumberWithDots(serviceCost)} VND` : "Liên hệ sân";
+              })()}
+            </Text>
+            <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
+          </View>
+        ) : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* Ô nhập Từ ... VND */}
+            <View style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#FFF",
+              borderWidth: 1,
+              borderColor: "#E5E7EB",
+              borderRadius: 12,
+              paddingHorizontal: 12,
+            }}>
+              <Text style={{ fontSize: 13, color: "#6B7280", fontWeight: "600", marginRight: 4 }}>Từ</Text>
               <TextInput
-                style={[styles.input, styles.costInput]}
-                value={formatNumberWithDots(serviceCost)}
-                onChangeText={(text) => setServiceCost(text.replace(/[^0-9]/g, ""))}
+                style={{ flex: 1, paddingVertical: 10, fontSize: 14, fontWeight: "700", color: "#111827" }}
+                value={formatNumberWithDots(serviceCostMin)}
+                onChangeText={(text) => {
+                  const raw = text.replace(/[^0-9]/g, "");
+                  setServiceCostMin(raw);
+                  const combined = serviceCostMax ? `${raw}-${serviceCostMax}` : raw;
+                  setServiceCost(combined);
+                }}
                 keyboardType="numeric"
-                placeholder="Chi phí ước tính khi thi đấu"
-                placeholderTextColor="#bbb"
+                placeholder="0"
+                placeholderTextColor="#BBB"
               />
-              <Text style={styles.currencySuffix}>VND</Text>
-            </>
-          )}
-        </View>
+              <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: "600", marginLeft: 4 }}>VND</Text>
+            </View>
+
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#6B7280" }}>–</Text>
+
+            {/* Ô nhập Đến ... VND */}
+            <View style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#FFF",
+              borderWidth: 1,
+              borderColor: "#E5E7EB",
+              borderRadius: 12,
+              paddingHorizontal: 12,
+            }}>
+              <Text style={{ fontSize: 13, color: "#6B7280", fontWeight: "600", marginRight: 4 }}>Đến</Text>
+              <TextInput
+                style={{ flex: 1, paddingVertical: 10, fontSize: 14, fontWeight: "700", color: "#111827" }}
+                value={formatNumberWithDots(serviceCostMax)}
+                onChangeText={(text) => {
+                  const raw = text.replace(/[^0-9]/g, "");
+                  setServiceCostMax(raw);
+                  const combined = serviceCostMin ? `${serviceCostMin}-${raw}` : raw;
+                  setServiceCost(combined);
+                }}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor="#BBB"
+              />
+              <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: "600", marginLeft: 4 }}>VND</Text>
+            </View>
+          </View>
+        )}
 
         {/* Trình độ (Short title) */}
         <Text style={styles.sectionLabel}>Trình độ</Text>

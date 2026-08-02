@@ -161,9 +161,8 @@ const matchSchema = new Schema(
     },
 
     serviceCost: {
-      type: Number,
-      default: 31250,
-      min: 0,
+      type: Schema.Types.Mixed,
+      default: "",
     },
 
     selectedPositionIds: {
@@ -263,6 +262,11 @@ const matchSchema = new Schema(
       type: String,
       enum: ["not_started", "ongoing", "paused", "ended"],
       default: "not_started",
+    },
+
+    notifiedStart30Min: {
+      type: Boolean,
+      default: false,
     },
 
     memberRoles: [

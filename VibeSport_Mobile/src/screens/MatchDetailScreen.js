@@ -13,7 +13,6 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
-  Clipboard,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -144,6 +143,24 @@ const formatCost = (c) => {
   if (!c || c === 0) return "Miễn phí";
   const formatted = c.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${formatted} vnd/ người`;
+};
+
+const formatServiceCostDisplay = (cost) => {
+  if (cost == null || cost === "" || cost === 0 || cost === "0") return "Liên hệ sân";
+  const costStr = String(cost).trim();
+  if (costStr.includes("-")) {
+    const parts = costStr.split("-");
+    const p1 = parseInt(parts[0], 10);
+    const p2 = parseInt(parts[1], 10);
+    if (!isNaN(p1) && !isNaN(p2)) {
+      return `${p1.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} – ${p2.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} VND`;
+    }
+  }
+  const num = parseInt(costStr, 10);
+  if (!isNaN(num) && num > 0) {
+    return `${num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} VND`;
+  }
+  return costStr;
 };
 
 const getRelativeTime = (dateStr) => {
@@ -372,13 +389,32 @@ export default function MatchDetailScreen({ navigation, route }) {
     try {
       setActionLoading(true);
       await updateTeamStatus(matchId, newStatus);
-      Alert.alert(
-        "Thành công",
-        newStatus === "ongoing"
-          ? "Trận đấu đã BẮT ĐẦU!"
-          : "Trận đấu đã KẾT THÚC!"
-      );
       await reloadMatch();
+
+      if (newStatus === "ended") {
+        Alert.alert(
+          "Trận đấu đã KẾT THÚC! 🏆",
+          "Hãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi trong trận đấu này nhé!",
+          [
+            {
+              text: "Đánh giá ngay ⭐",
+              onPress: () => {
+                const otherParticipants = (match?.participants || []).filter(
+                  (p) => getUserId(p) !== userId
+                );
+                if (otherParticipants.length > 0) {
+                  handleOpenSingleRating(otherParticipants[0]);
+                } else {
+                  Alert.alert("Thông báo", "Trận đấu không có thành viên nào khác để đánh giá.");
+                }
+              },
+            },
+            { text: "Để sau", style: "cancel" },
+          ]
+        );
+      } else {
+        Alert.alert("Thành công 🎉", "Trận đấu đã BẮT ĐẦU!");
+      }
     } catch (err) {
       Alert.alert("Thông báo", err.message || "Không thể cập nhật trạng thái trận đấu");
     } finally {
@@ -387,14 +423,29 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleStartMatch = () => {
-    Alert.alert(
-      "Xác nhận bắt đầu",
-      "Bạn có chắc chắn muốn BẮT ĐẦU trận đấu này ngay bây giờ?",
-      [
-        { text: "Hủy", style: "cancel" },
-        { text: "Bắt đầu", onPress: () => handleToggleTeamStatus("ongoing") },
-      ]
-    );
+    const joinedCount = (match?.participants || []).length;
+    const requiredCount = match?.maxPlayers || 10;
+    const isNotEnough = joinedCount < requiredCount;
+
+    if (isNotEnough) {
+      Alert.alert(
+        "⚠️ CẢNH BÁO CHƯA ĐỦ NGƯỜI",
+        `Trận đấu hiện tại chưa đủ số lượng người chơi đã tìm (Hiện tại: ${joinedCount}/${requiredCount} người).\n\nBạn có chắc chắn vẫn muốn BẮT ĐẦU trận đấu không?`,
+        [
+          { text: "Hủy", style: "cancel" },
+          { text: "Vẫn bắt đầu", onPress: () => handleToggleTeamStatus("ongoing") },
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Xác nhận bắt đầu",
+        "Bạn có chắc chắn muốn BẮT ĐẦU trận đấu này ngay bây giờ?",
+        [
+          { text: "Hủy", style: "cancel" },
+          { text: "Bắt đầu", onPress: () => handleToggleTeamStatus("ongoing") },
+        ]
+      );
+    }
   };
 
   const handleEndMatch = () => {
@@ -448,6 +499,31 @@ export default function MatchDetailScreen({ navigation, route }) {
   const ownerRoleEntry = Array.isArray(match?.memberRoles)
     ? match.memberRoles.find((entry) => entry?.role === "owner")
     : null;
+
+  // Mở Popup Đánh giá cho 1 cá nhân
+  const handleOpenSingleRating = (targetUser) => {
+    const isMatchEnded = match?.teamStatus === "ended" || match?.status === "completed";
+    if (!isMatchEnded) {
+      Alert.alert("Thông báo", "Bạn chỉ có thể đánh giá thành viên sau khi trận đấu đã KẾT THÚC!");
+      return;
+    }
+
+    const targetId = getUserId(targetUser);
+    const isTargetParticipant = (match?.participants || []).some(
+      (p) => getUserId(p) === targetId
+    );
+
+    if (!isTargetParticipant) {
+      Alert.alert("Thông báo", "Chỉ được đánh giá những người dùng từng thi đấu chung trong trận này.");
+      return;
+    }
+
+    const targetName = targetUser?.name || "Người chơi";
+    setSingleRatingTarget({ id: targetId, name: targetName });
+    setSingleStars(5);
+    setSingleComment("");
+  };
+
   const ownerId = getUserId(ownerRoleEntry?.userId || creator || match?.createdBy);
   const isOwner = !!ownerId && String(ownerId) === String(userId);
   const maxCount = match?.maxPlayers || 10;
@@ -917,17 +993,6 @@ export default function MatchDetailScreen({ navigation, route }) {
     }
   };
 
-  const handleCopyInviteLink = () => {
-    const inviteLink = `https://vibesport.app/match/${match._id}?invite=true`;
-    Clipboard.setString(inviteLink);
-    Alert.alert(
-      "Đã sao chép link mời 🎉",
-      "Link mời tham gia bài viết đã được chép vào khay nhớ tạm:\n\n" +
-        inviteLink +
-        "\n\nBất kỳ ai có link này khi tham gia sẽ được VÀO THẲNG TRẬN ĐẤU mà KHÔNG CẦN CHỦ TRẬN DUYỆT."
-    );
-  };
-
   // ─── Owner: Invite from following list ───────────────────────
   const handleOpenInvite = async () => {
     if (isMatchStarted) {
@@ -1019,14 +1084,6 @@ export default function MatchDetailScreen({ navigation, route }) {
     ]);
   };
 
-  // Mở Popup Đánh giá cho 1 cá nhân
-  const handleOpenSingleRating = (targetUser) => {
-    const targetId = getUserId(targetUser);
-    const targetName = targetUser?.name || "Người chơi";
-    setSingleRatingTarget({ id: targetId, name: targetName });
-    setSingleStars(5);
-    setSingleComment("");
-  };
 
   // Gửi Đánh giá cho 1 cá nhân
   const handleSubmitSingleRating = async () => {
@@ -1064,31 +1121,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         <Text style={styles.headerTitle}>Chi tiết trận đấu</Text>
         
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          {isOwner && (
-            <>
-              {match.teamStatus !== "ongoing" && (
-                <TouchableOpacity
-                  style={{ padding: 6 }}
-                  onPress={handleEdit}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="create-outline" size={22} color={ORANGE} />
-                </TouchableOpacity>
-              )}
 
-              <TouchableOpacity
-                style={{ padding: 6 }}
-                onPress={handleDelete}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={22}
-                  color={match.teamStatus === "ongoing" ? "#9CA3AF" : "#EF4444"}
-                />
-              </TouchableOpacity>
-            </>
-          )}
 
           {isOwner && match.status !== "completed" && (
             <TouchableOpacity
@@ -1249,7 +1282,7 @@ export default function MatchDetailScreen({ navigation, route }) {
 
                     <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight: 15 }}>
                       <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
-                      <Text style={{ fontSize: 14, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ≈ {formatCost(match.serviceCost || 31250)}</Text>
+                      <Text style={{ fontSize: 14, color: "#374151", fontWeight: "600" }}>Giá DV: {formatServiceCostDisplay(match.serviceCost)}</Text>
                     </View>
                   </View>
                 );
@@ -1711,13 +1744,6 @@ export default function MatchDetailScreen({ navigation, route }) {
             </ScreenHeader>
 
             <View style={{ flex: 1, paddingHorizontal: 16 }}>
-              <View style={styles.copyLinkBox}>
-                <Text style={styles.copyLinkLabel}>Link: <Text style={styles.copyLinkValue}>{match._id}</Text></Text>
-                <TouchableOpacity style={styles.copyLinkBtn} onPress={() => Alert.alert("Đã sao chép link")}>
-                  <Text style={styles.copyLinkBtnText}>Sao chép link</Text>
-                </TouchableOpacity>
-              </View>
-
               {inviteLoading ? (
                 <View style={styles.centered}>
                   <ActivityIndicator size="large" color={ORANGE} />
@@ -1916,19 +1942,6 @@ export default function MatchDetailScreen({ navigation, route }) {
           </ScreenHeader>
           
           <View style={{ flex: 1, paddingHorizontal: 16 }}>
-            <View style={styles.copyLinkBox}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={styles.copyLinkLabel}>Link mời trực tiếp (Không cần duyệt):</Text>
-                <Text style={styles.copyLinkValue} numberOfLines={1}>
-                  https://vibesport.app/match/{match._id}?invite=true
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.copyLinkBtn} onPress={handleCopyInviteLink} activeOpacity={0.8}>
-                <Ionicons name="copy-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.copyLinkBtnText}>Sao chép link</Text>
-              </TouchableOpacity>
-            </View>
-
             {inviteLoading ? (
               <View style={styles.centered}>
                 <ActivityIndicator size="large" color={ORANGE} />
@@ -2095,7 +2108,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   backButton: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: "#111", marginLeft: 8 },
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: "#111", marginLeft: 8 },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {
     backgroundColor: "#fff",
@@ -2108,7 +2121,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  joinHeaderBtnText: { color: '#333', fontSize: 17, fontWeight: '700' },
+  joinHeaderBtnText: { color: '#333', fontSize: 16, fontWeight: '700' },
   joinBottomBtn: {
     marginTop: 12,
     backgroundColor: ORANGE,

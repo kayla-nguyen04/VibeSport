@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
 import './Growth.css';
@@ -15,7 +15,12 @@ export default function Growth() {
   // Tooltip interactive state
   const [hoveredPoint, setHoveredPoint] = useState(null);
 
-  const fetchGrowthData = async () => {
+  const fetchGrowthData = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -33,13 +38,13 @@ export default function Growth() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (token) {
       fetchGrowthData();
     }
-  }, [token]);
+  }, [token, fetchGrowthData]);
 
   if (loading) {
     return (

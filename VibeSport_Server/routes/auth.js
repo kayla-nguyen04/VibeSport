@@ -163,7 +163,7 @@ router.post('/forgot-password', async (request, response) => {
     const user = await User.findOneAndUpdate(
       { email: normalizedEmail },
       { passwordHash: hashPassword(password) },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!user) {
@@ -199,7 +199,7 @@ router.post('/google', async (request, response) => {
         provider: 'google',
         lastSeenAt: new Date(),
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
 
     if (user.isLocked) {
@@ -252,7 +252,7 @@ router.put('/update-profile', async (request, response) => {
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: updateFields },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!user) {

@@ -189,20 +189,18 @@ router.get("/", async (req, res) => {
       filter.sport = sport;
     }
 
-    const targetUser = (userId || participantId || createdBy || "").trim();
-    if (targetUser) {
-      const userConditions = [
-        { createdBy: targetUser },
-        { participants: targetUser }
-      ];
-      if (mongoose.Types.ObjectId.isValid(targetUser)) {
-        const objId = new mongoose.Types.ObjectId(targetUser);
-        userConditions.push(
-          { createdBy: objId },
-          { participants: objId }
-        );
+    if (createdBy && createdBy.trim()) {
+      filter.createdBy = createdBy.trim();
+    } else if (participantId && participantId.trim()) {
+      filter.participants = participantId.trim();
+    } else if (userId && userId.trim()) {
+      const uid = userId.trim();
+      const uConds = [{ createdBy: uid }, { participants: uid }];
+      if (mongoose.Types.ObjectId.isValid(uid)) {
+        const objId = new mongoose.Types.ObjectId(uid);
+        uConds.push({ createdBy: objId }, { participants: objId });
       }
-      filter.$or = userConditions;
+      filter.$or = uConds;
     }
 
     // Search by keyword (title or locationName)
@@ -484,10 +482,14 @@ router.put("/:id", authMiddleware, async (req, res) => {
     if (contactPhone !== undefined) match.contactPhone = contactPhone;
     if (contactZalo !== undefined) match.contactZalo = contactZalo;
     if (contactFacebook !== undefined) match.contactFacebook = contactFacebook;
-    if (contactAppUser !== undefined) match.contactAppUser = contactAppUser;
+    if (contactAppUser !== undefined) {
+      match.contactAppUser = (contactAppUser && contactAppUser !== "" && contactAppUser !== "null") ? contactAppUser : null;
+    }
     if (skillLevel !== undefined) match.skillLevel = skillLevel;
-    if (serviceCost !== undefined) match.serviceCost = Number(serviceCost || 31250);
-    if (req.body.chatGroupId !== undefined) match.chatGroupId = req.body.chatGroupId || null;
+    if (serviceCost !== undefined) match.serviceCost = serviceCost;
+    if (req.body.chatGroupId) {
+      match.chatGroupId = req.body.chatGroupId;
+    }
 
     if (!match.createdBy) {
       match.createdBy = userId;

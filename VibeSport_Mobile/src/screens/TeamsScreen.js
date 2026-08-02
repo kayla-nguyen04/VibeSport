@@ -83,6 +83,24 @@ const formatCost = (c) => {
   return `${formatted}đ`;
 };
 
+const formatServiceCostDisplay = (cost) => {
+  if (cost == null || cost === "" || cost === 0 || cost === "0") return "Liên hệ sân";
+  const costStr = String(cost).trim();
+  if (costStr.includes("-")) {
+    const parts = costStr.split("-");
+    const p1 = parseInt(parts[0], 10);
+    const p2 = parseInt(parts[1], 10);
+    if (!isNaN(p1) && !isNaN(p2)) {
+      return `${p1.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} – ${p2.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} VND`;
+    }
+  }
+  const num = parseInt(costStr, 10);
+  if (!isNaN(num) && num > 0) {
+    return `${num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} VND`;
+  }
+  return costStr;
+};
+
 const getInitials = (name) => {
   if (!name) return "?";
   const p = name.trim().split(" ");
@@ -660,7 +678,7 @@ export default function TeamsScreen({ navigation }) {
             {/* Tiền dịch vụ */}
             <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
-              <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>Chi phí dịch vụ ước tính ≈ {formatCost(item.serviceCost || 31250)}</Text>
+              <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>Giá DV: {formatServiceCostDisplay(item.serviceCost)}</Text>
             </View>
           </View>
         </View>

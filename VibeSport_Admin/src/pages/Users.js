@@ -43,7 +43,7 @@ export default function Users() {
   useEffect(() => {
     loadData(1, searchQuery, statusFilter, sortFilter);
     return () => dispatch(clearError());
-  }, [loadData, dispatch, statusFilter, sortFilter]);
+  }, [loadData, dispatch, statusFilter, sortFilter, searchQuery]);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });

@@ -899,7 +899,6 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
             {/* 5. Bảng giá thuê sân theo Môn thể thao & Loại sân */}
             <View style={styles.sectionCard}>
               <Text style={styles.sectionHeader}>Bảng giá thuê sân </Text>
-    
 
               <View style={{ gap: 8, marginTop: 10 }}>
                 {[
@@ -908,7 +907,7 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                     title: "Bảng giá Môn Bóng đá",
                     bg: "#ECFDF5",
                     borderColor: "#A7F3D0",
-                    prices: [
+                    fallbackPrices: [
                       { type: "Sân 5 (5v5)", price: "300.000đ - 450.000đ / giờ" },
                       { type: "Sân 7 (7v7)", price: "600.000đ - 900.000đ / giờ" },
                       { type: "Sân 11 (11v11)", price: "1.000.000đ - 1.500.000đ / giờ" },
@@ -919,7 +918,7 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                     title: "Bảng giá Môn Cầu lông",
                     bg: "#EFF6FF",
                     borderColor: "#BFDBFE",
-                    prices: [
+                    fallbackPrices: [
                       { type: "Sân đơn (1v1)", price: "120.000đ - 180.000đ / giờ" },
                       { type: "Sân đôi (2v2)", price: "200.000đ - 280.000đ / giờ" },
                     ],
@@ -929,13 +928,20 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                     title: "Bảng giá Môn Pickleball",
                     bg: "#F3E8FF",
                     borderColor: "#E9D5FF",
-                    prices: [
+                    fallbackPrices: [
                       { type: "Sân đơn (1v1)", price: "150.000đ - 220.000đ / giờ" },
                       { type: "Sân đôi (2v2)", price: "250.000đ - 350.000đ / giờ" },
                     ],
                   },
                 ].filter(s => !court.sportType || court.sportType === s.sportKey || (court.sports && court.sports.includes(s.sportKey))).map((sportMenu) => {
                   const isExpanded = activeAccordionSport === sportMenu.sportKey;
+
+                  // Use real priceTable rows if available (has sportKey), else fall back
+                  const realRows = Array.isArray(court.priceTable)
+                    ? court.priceTable.filter((r) => r.sportKey === sportMenu.sportKey && r.fieldType && r.price)
+                    : [];
+                  const hasPriceTableData = realRows.length > 0;
+
                   return (
                     <View key={sportMenu.sportKey} style={{ borderRadius: 12, overflow: "hidden" }}>
                       <TouchableOpacity
@@ -973,16 +979,26 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                           padding: 12,
                           gap: 8,
                         }}>
-                          {sportMenu.prices
-                            .filter((p) => isPitchSupportedByCourt(court, p.type))
-                            .map((p, idx) => (
-                              <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-                                <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>• {p.type}:</Text>
-                                <Text style={{ fontSize: 13, fontWeight: "700", color: ORANGE }}>
-                                  {getCourtPitchPriceDisplay(court, p)}
-                                </Text>
-                              </View>
-                            ))}
+                          {hasPriceTableData
+                            ? realRows.map((r, idx) => (
+                                <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>• {r.fieldType}:</Text>
+                                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#EA580C" }}>
+                                    {Number(r.price).toLocaleString("vi-VN")}đ / giờ
+                                  </Text>
+                                </View>
+                              ))
+                            : sportMenu.fallbackPrices
+                                .filter((p) => isPitchSupportedByCourt(court, p.type))
+                                .map((p, idx) => (
+                                  <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>• {p.type}:</Text>
+                                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#EA580C" }}>
+                                      {getCourtPitchPriceDisplay(court, p)}
+                                    </Text>
+                                  </View>
+                                ))
+                          }
                         </View>
                       )}
                     </View>
@@ -1022,13 +1038,29 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
               <Text style={{ fontSize: 13, fontWeight: "700", color: "#374151", marginTop: 14, marginBottom: 8 }}>
                 Ảnh Bảng giá & Dịch vụ niêm yết tại sân:
               </Text>
-              <View style={{ borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#111827" }}>
-                <Image
-                  source={require("../../assets/bang_gia_dich_vu.png")}
-                  style={{ width: "100%", height: 230 }}
-                  resizeMode="contain"
-                />
-              </View>
+
+              {Array.isArray(court?.serviceMenuImages) && court.serviceMenuImages.length > 0 ? (
+                <View style={{ gap: 10 }}>
+                  {court.serviceMenuImages.map((imageUrl, index) => (
+                    <View
+                      key={`${imageUrl}-${index}`}
+                      style={{ borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#111827" }}
+                    >
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={{ width: "100%", height: 230 }}
+                        resizeMode="contain"
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={{ borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>
+                    Chưa có ảnh bảng giá dịch vụ
+                  </Text>
+                </View>
+              )}
             </View>
 
 

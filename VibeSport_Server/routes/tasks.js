@@ -81,7 +81,7 @@ router.put('/:id', async (request, response) => {
     if (description !== undefined) updateData.description = description;
     if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null;
 
-    const updatedTask = await Task.findByIdAndUpdate(id, updateData, { new: true })
+    const updatedTask = await Task.findByIdAndUpdate(id, updateData, { returnDocument: 'after' })
       .populate('sprintId', 'name startDate endDate')
       .populate('assigneeId', 'name email role')
       .populate('updatedBy', 'name email');
