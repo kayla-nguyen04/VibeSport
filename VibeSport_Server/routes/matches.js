@@ -120,6 +120,13 @@ router.post("/", authMiddleware, async (req, res) => {
       pickleball: "2v2",
     };
 
+    // Prepare invitedMembers: only accept if client provided an explicit array of ids
+    const rawInvited = Array.isArray(req.body.invitedMembers) ? req.body.invitedMembers : [];
+    const sanitizedInvited = rawInvited
+      .map((v) => (typeof v === 'object' ? (v._id || v.id) : v))
+      .filter((v) => v)
+      .map((v) => String(v));
+
     const match = await Match.create({
       sport,
       formation: formation || defaultFormation[sport],
@@ -155,6 +162,7 @@ router.post("/", authMiddleware, async (req, res) => {
       currentPlayers: 1,
       memberRoles: [{ userId, role: "owner" }],
       memberPositions: [{ userId, positionId: "" }],
+      invitedMembers: sanitizedInvited,
     });
 
     if (req.body.chatGroupId) {
@@ -278,21 +286,21 @@ router.get("/:id", async (req, res) => {
 });
 
 // Join a match
-router.post("/:id/join", async (req, res) => {
+// NOTE: Only allow direct join if the authenticated user is an invited member
+// or has a direct invite that does not require owner approval. Otherwise clients
+// must call /request-join to create a pending request for the owner to accept.
+router.post("/:id/join", authMiddleware, async (req, res) => {
   try {
-    const { userId, selectedPositionIds } = req.body;
-    if (!userId) {
-      return res.status(400).json({ success: false, message: "Thiếu userId" });
-    }
+    const userId = req.userId; // trust authenticated user id
+    const { selectedPositionIds } = req.body;
 
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
-    const isAlreadyParticipant = match.participants.some(
-      (p) => String(p._id || p) === String(userId)
-    );
+    // Prevent adding if already participant
+    const isAlreadyParticipant = match.participants.some((p) => String(p._id || p) === String(userId));
     if (isAlreadyParticipant) {
       return res.status(400).json({ success: false, message: "Bạn đã tham gia trận đấu này rồi" });
     }
@@ -301,32 +309,38 @@ router.post("/:id/join", async (req, res) => {
       return res.status(400).json({ success: false, message: "Trận đấu đã đầy người" });
     }
 
+    // Check invitation status: only invited members or direct owner-invites can join directly
+    const isInvitedMember = Array.isArray(match.invitedMembers) && match.invitedMembers.some((p) => String(p) === String(userId));
+    const pendingInviteEntry = (match.pendingInviteRequests || []).find((entry) => String(entry.userId) === String(userId));
+    const hasDirectInvite = pendingInviteEntry && !pendingInviteEntry.requiresOwnerApproval;
+
+    if (!isInvitedMember && !hasDirectInvite) {
+      return res.status(403).json({ success: false, message: "Bạn chưa được mời trực tiếp. Hãy gửi yêu cầu tham gia để chờ chủ trận duyệt." });
+    }
+
+    // Proceed to add participant
     match.participants.push(userId);
     match.currentPlayers = match.participants.length;
     if (match.currentPlayers >= match.maxPlayers) {
       match.status = "full";
     }
 
-    // Process position requested if provided
+    // If selected positions provided, store them as memberPositions
     if (Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0) {
-      if (!match.pendingJoinRequestPositions) match.pendingJoinRequestPositions = [];
-      match.pendingJoinRequestPositions = match.pendingJoinRequestPositions.filter(
-        (entry) => String(entry.userId) !== String(userId)
-      );
-      match.pendingJoinRequestPositions.push({ userId, positionIds: selectedPositionIds });
+      if (!match.memberPositions) match.memberPositions = [];
+      const positionStr = selectedPositionIds.join(",");
+      match.memberPositions.push({ userId, positionId: positionStr });
     }
 
-    // Clean up from pending requests or invited lists
+    // Remove any pending join/request/invite entries for this user
     if (Array.isArray(match.pendingJoinRequests)) {
-      match.pendingJoinRequests = match.pendingJoinRequests.filter(
-        (p) => String(p._id || p) !== String(userId)
-      );
+      match.pendingJoinRequests = match.pendingJoinRequests.filter((p) => String(p) !== String(userId));
     }
+    match.pendingJoinRequestPositions = (match.pendingJoinRequestPositions || []).filter((entry) => String(entry.userId) !== String(userId));
     if (Array.isArray(match.invitedMembers)) {
-      match.invitedMembers = match.invitedMembers.filter(
-        (p) => String(p._id || p) !== String(userId)
-      );
+      match.invitedMembers = match.invitedMembers.filter((p) => String(p) !== String(userId));
     }
+    match.pendingInviteRequests = (match.pendingInviteRequests || []).filter((entry) => String(entry.userId) !== String(userId));
 
     await match.save();
 

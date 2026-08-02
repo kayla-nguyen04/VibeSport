@@ -118,7 +118,7 @@ export async function rejectJoinMatch(matchId, ownerId, userId, token = null) {
   );
 }
 
-export async function joinMatch(matchId, userId, token = null) {
+export async function joinMatch(matchId, userId, selectedPositionIds = [], token = null) {
   return matchRequest(
     `${MATCHES_URL}/${matchId}/join`,
     {
@@ -126,7 +126,7 @@ export async function joinMatch(matchId, userId, token = null) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, selectedPositionIds }),
     },
     token
   );

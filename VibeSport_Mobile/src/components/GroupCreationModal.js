@@ -153,7 +153,7 @@ const GroupCreationModal = ({ visible, onClose, onGroupCreated }) => {
   };
 
   const handleCreateGroup = async () => {
-    if (!groupName.trim() || selectedUserIds.length < 1) return;
+    if (!groupName.trim() || selectedUserIds.length < 2) return;
     setCreatingGroup(true);
     try {
       const result = await dispatch(
@@ -242,9 +242,9 @@ const GroupCreationModal = ({ visible, onClose, onGroupCreated }) => {
                 <Text style={styles.title}>Nhóm mới</Text>
                 <TouchableOpacity
                   onPress={() => setStep(2)}
-                  disabled={selectedUserIds.length < 1}
+                  disabled={selectedUserIds.length < 2}
                 >
-                  <Text style={[styles.nextBtn, selectedUserIds.length < 1 && styles.nextBtnDisabled]}>
+                  <Text style={[styles.nextBtn, selectedUserIds.length < 2 && styles.nextBtnDisabled]}>
                     Tiếp
                   </Text>
                 </TouchableOpacity>
@@ -263,11 +263,9 @@ const GroupCreationModal = ({ visible, onClose, onGroupCreated }) => {
                 </View>
               </View>
 
-              {selectedUserIds.length > 0 && (
-                <Text style={styles.selectedCount}>
-                  Đã chọn: {selectedUserIds.length} người
-                </Text>
-              )}
+              <Text style={styles.selectedCount}>
+                Đã chọn: {selectedUserIds.length} người {selectedUserIds.length < 2 ? '(Cần chọn tối thiểu 2 người)' : ''}
+              </Text>
 
               <Text style={styles.sectionLabel}>Gợi ý</Text>
               {loadingFriends ? (

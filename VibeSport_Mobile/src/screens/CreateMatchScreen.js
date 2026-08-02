@@ -1007,6 +1007,7 @@ export default function CreateMatchScreen({ navigation, route }) {
   );
   const [note, setNote] = useState(editMatch?.note || "");
   const [contactPhone, setContactPhone] = useState(editMatch?.contactPhone || "");
+  const [contactPhoneError, setContactPhoneError] = useState("");
   const [contactZalo, setContactZalo] = useState(editMatch?.contactZalo || "");
   const [contactFacebook, setContactFacebook] = useState(editMatch?.contactFacebook || "");
   const [courtDescription, setCourtDescription] = useState(editMatch?.courtDescription || "");
@@ -1025,10 +1026,26 @@ export default function CreateMatchScreen({ navigation, route }) {
       setSelectedCourtObj(null);
       setLocationCoords(null);
       if (typeof setSelectedContactUser === "function") setSelectedContactUser(null);
-      setContactPhone("");
+      setContactPhone(normalizePhone(""));
       setServiceCost("");
       setServiceCostMin("");
       setServiceCostMax("");
+    }
+  };
+
+  const normalizePhone = (val) => {
+    if (val == null) return "";
+    const s = String(val || "").replace(/\D/g, "");
+    return s.slice(0, 10);
+  };
+
+  const handlePhoneBlur = () => {
+    if (!contactPhone || contactPhone.trim() === "") {
+      setContactPhoneError("Số điện thoại không được để trống");
+    } else if (contactPhone.length > 11) {
+      setContactPhoneError("Số điện thoại tối đa 11 chữ số");
+    } else {
+      setContactPhoneError("");
     }
   };
 
@@ -1214,15 +1231,15 @@ export default function CreateMatchScreen({ navigation, route }) {
     setSelectedContactUser(u);
     const userPhone = u?.phone || u?.phoneNumber || u?.contactPhone || "";
     if (userPhone) {
-      setContactPhone(userPhone);
+      setContactPhone(normalizePhone(userPhone));
     } else {
       const targetId = u?._id || u?.id;
       if (targetId) {
         getUserProfileRequest(targetId, token)
           .then((res) => {
             const fullUserData = res?.data || res;
-            if (fullUserData?.phone) {
-              setContactPhone(fullUserData.phone);
+              if (fullUserData?.phone) {
+              setContactPhone(normalizePhone(fullUserData.phone));
               setSelectedContactUser((prev) => (prev ? { ...prev, phone: fullUserData.phone } : prev));
             }
           })
@@ -1237,7 +1254,7 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (selectedContactUser) {
       const userPhone = selectedContactUser.phone || selectedContactUser.phoneNumber || selectedContactUser.contactPhone || "";
       if (userPhone) {
-        setContactPhone(userPhone);
+        setContactPhone(normalizePhone(userPhone));
       } else {
         const targetId = selectedContactUser._id || selectedContactUser.id;
         if (targetId) {
@@ -1245,7 +1262,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             .then((res) => {
               const fullUserData = res?.data || res;
               if (fullUserData?.phone) {
-                setContactPhone(fullUserData.phone);
+                setContactPhone(normalizePhone(fullUserData.phone));
                 setSelectedContactUser((prev) => (prev ? { ...prev, phone: fullUserData.phone } : prev));
               }
             })
@@ -1313,7 +1330,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       setLocationName(editMatch.locationName || "");
       setLocationCoords(editMatch.location?.lat != null ? { lat: editMatch.location.lat, lng: editMatch.location.lng } : null);
       setNote(editMatch.note || "");
-      setContactPhone(editMatch.contactPhone || "");
+      setContactPhone(normalizePhone(editMatch.contactPhone || ""));
       setContactZalo(editMatch.contactZalo || "");
       setContactFacebook(editMatch.contactFacebook || "");
       setCourtDescription(editMatch.courtDescription || "");
@@ -1347,8 +1364,10 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const handleNextStepInline = () => {
-    if (selectedGroupUserIds.length >= 1) {
+    if (selectedGroupUserIds.length >= 2) {
       setGroupCreationStepInline(2);
+    } else {
+      Alert.alert("Thông báo", "Vui lòng chọn ít nhất 2 người dùng để tạo nhóm");
     }
   };
 
@@ -1409,7 +1428,7 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const handleCreateGroupInline = async () => {
-    if (!newGroupNameInput.trim() || selectedGroupUserIds.length < 1) return;
+    if (!newGroupNameInput.trim() || selectedGroupUserIds.length < 2) return;
     setCreatingGroupInline(true);
     try {
       const result = await dispatch(
@@ -1508,6 +1527,24 @@ export default function CreateMatchScreen({ navigation, route }) {
     return `${hh}g ${mm}p`;
   };
 
+  const combineDateAndTime = (dateObj, timeStr) => {
+    try {
+      const base = dateObj ? new Date(dateObj) : new Date();
+      const parts = (timeStr || "00:00").split(":").map(Number);
+      const hh = Number.isFinite(parts[0]) ? parts[0] : 0;
+      const mm = Number.isFinite(parts[1]) ? parts[1] : 0;
+      base.setHours(hh, mm, 0, 0);
+      return base;
+    } catch (e) {
+      return new Date();
+    }
+  };
+
+  const roundUpMinutes = (date, step = 15) => {
+    const ms = 1000 * 60 * step;
+    return new Date(Math.ceil(date.getTime() / ms) * ms);
+  };
+
   // Picker handlers
   const onDateChange = (event, date) => {
     if (Platform.OS === "android") {
@@ -1515,6 +1552,24 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
     if (event.type === "set" && date) {
       setSelectedDate(date);
+      // If user picks today, ensure start time is not in the past
+      const now = new Date();
+      const pickedDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const todayDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (pickedDay.getTime() === todayDay.getTime()) {
+        const currentRounded = roundUpMinutes(new Date(now.getTime() + 30 * 60 * 1000), 15);
+        const curH = String(currentRounded.getHours()).padStart(2, "0");
+        const curM = String(currentRounded.getMinutes()).padStart(2, "0");
+        const candidate = `${curH}:${curM}`;
+        const currentStartDT = combineDateAndTime(date, selectedTimeSlot);
+        const nowDT = new Date();
+        if (currentStartDT < nowDT) {
+          setSelectedTimeSlot(candidate);
+          // set sensible default end time = +1h
+          const endDT = new Date(currentRounded.getTime() + 60 * 60 * 1000);
+          setEndTimeSlot(`${String(endDT.getHours()).padStart(2, "0")}:${String(endDT.getMinutes()).padStart(2, "0")}`);
+        }
+      }
     }
   };
 
@@ -1525,7 +1580,21 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (event.type === "set" && date) {
       const hh = String(date.getHours()).padStart(2, "0");
       const mm = String(date.getMinutes()).padStart(2, "0");
-      setSelectedTimeSlot(`${hh}:${mm}`);
+      const newSlot = `${hh}:${mm}`;
+      // Validate: if selectedDate is today, disallow times in the past
+      const newStartDT = combineDateAndTime(selectedDate || new Date(), newSlot);
+      const now = new Date();
+      if (newStartDT < now && (new Date(selectedDate).toDateString() === now.toDateString())) {
+        Alert.alert("Lỗi", "Không thể chọn thời gian đã qua.");
+        return;
+      }
+      // Validate: start must be strictly before end
+      const curEndDT = combineDateAndTime(selectedDate || new Date(), endTimeSlot || "23:59");
+      if (newStartDT >= curEndDT) {
+        Alert.alert("Lỗi", "Giờ bắt đầu phải nhỏ hơn giờ kết thúc.");
+        return;
+      }
+      setSelectedTimeSlot(newSlot);
     }
   };
 
@@ -1536,7 +1605,20 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (event.type === "set" && date) {
       const hh = String(date.getHours()).padStart(2, "0");
       const mm = String(date.getMinutes()).padStart(2, "0");
-      setEndTimeSlot(`${hh}:${mm}`);
+      const newSlot = `${hh}:${mm}`;
+      // Validate: if selectedDate is today, disallow end times in the past
+      const newEndDT = combineDateAndTime(selectedDate || new Date(), newSlot);
+      const now = new Date();
+      if (newEndDT < now && (new Date(selectedDate).toDateString() === now.toDateString())) {
+        Alert.alert("Lỗi", "Không thể chọn thời gian đã qua.");
+        return;
+      }
+      const curStartDT = combineDateAndTime(selectedDate || new Date(), selectedTimeSlot || "00:00");
+      if (newEndDT <= curStartDT) {
+        Alert.alert("Lỗi", "Giờ kết thúc phải lớn hơn giờ bắt đầu.");
+        return;
+      }
+      setEndTimeSlot(newSlot);
     }
   };
 
@@ -1638,7 +1720,7 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (draft.benchMembersTeam2 != null) setBenchMembersTeam2(String(draft.benchMembersTeam2));
     if (draft.locationName != null) setLocationName(draft.locationName);
     if (draft.locationCoords) setLocationCoords(draft.locationCoords);
-    if (draft.contactPhone != null) setContactPhone(draft.contactPhone);
+    if (draft.contactPhone != null) setContactPhone(normalizePhone(draft.contactPhone));
     if (draft.contactZalo != null) setContactZalo(draft.contactZalo);
     if (draft.contactFacebook != null) setContactFacebook(draft.contactFacebook);
     if (draft.courtDescription != null) setCourtDescription(draft.courtDescription);
@@ -1903,6 +1985,14 @@ export default function CreateMatchScreen({ navigation, route }) {
         Alert.alert("Dữ liệu không hợp lệ", "Đội 2 tối đa là 3 thành viên dự bị");
         return false;
       }
+    }
+    if (!contactPhone || contactPhone.trim() === "") {
+      Alert.alert("Thiếu thông tin", "Vui lòng nhập số điện thoại liên hệ");
+      return false;
+    }
+    if (!/^\d{1,11}$/.test(contactPhone)) {
+      Alert.alert("Dữ liệu không hợp lệ", "Số điện thoại chỉ được chứa chữ số và tối đa 11 ký tự");
+      return false;
     }
     return true;
   };
@@ -2709,7 +2799,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                           setCourtDescription("");
                           setLocationCoords(null);
                           setSelectedContactUser(null);
-                          setContactPhone("");
+                          setContactPhone(normalizePhone(""));
                           setServiceCost("");
                           setServiceCostMin("");
                           setServiceCostMax("");
@@ -2744,7 +2834,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                           });
 
                         setSelectedContactUser(targetOwner);
-                        setContactPhone(targetOwner.phone || targetOwner.phoneNumber || court.phone || "");
+                        setContactPhone(normalizePhone(targetOwner.phone || targetOwner.phoneNumber || court.phone || ""));
                         setIsCourtPresetsExpanded(false);
                       }}
                     >
@@ -3251,16 +3341,21 @@ export default function CreateMatchScreen({ navigation, route }) {
             <TextInput
               style={[styles.input, selectedCourtObj ? { color: "#6B7280" } : null]}
               value={contactPhone}
-              onChangeText={setContactPhone}
+              onChangeText={(val) => { const v = normalizePhone(val); setContactPhone(v); if (contactPhoneError) setContactPhoneError(""); }}
               placeholder="Số điện thoại liên hệ"
               placeholderTextColor="#bbb"
               keyboardType="phone-pad"
+              maxLength={11}
+              onBlur={handlePhoneBlur}
               editable={!selectedCourtObj}
             />
             {selectedCourtObj && (
               <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
             )}
           </View>
+          {contactPhoneError ? (
+            <Text style={{ color: "#dc2626", fontSize: 12, marginTop: 6, marginLeft: 12 }}>{contactPhoneError}</Text>
+          ) : null}
         </View>
 
         {/* Nhóm chat gắn với trận đấu */}

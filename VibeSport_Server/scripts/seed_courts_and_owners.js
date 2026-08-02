@@ -1,6 +1,7 @@
 require('dotenv').config({ path: require('node:path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const Court = require('../models/Court');
+const CourtRating = require('../models/CourtRating');
 const CourtOwner = require('../models/CourtOwner');
 const User = require('../models/User');
 
@@ -268,7 +269,8 @@ async function seedCourtsAndOwners() {
 
     // Seed Courts
     await Court.deleteMany({});
-    console.log('Cleared existing courts.');
+    await CourtRating.deleteMany({});
+    console.log('Cleared existing courts and court ratings.');
 
     for (const courtData of RAW_COURTS) {
       const court = await Court.create({
@@ -280,7 +282,22 @@ async function seedCourtsAndOwners() {
         ],
         locationCoords: { lat: 21.0285, lng: 105.8542 },
       });
-      console.log(`Seeded Court: ${court.name} (${court.sportType})`);
+
+      const ratingDocs = [];
+      for (let i = 0; i < 10; i += 1) {
+        ratingDocs.push({
+          courtId: court._id,
+          userId: new mongoose.Types.ObjectId(),
+          stars: 5,
+          comment: 'Đánh giá 5 sao',
+        });
+      }
+      await CourtRating.insertMany(ratingDocs);
+      court.rating = 5.0;
+      court.reviewCount = 10;
+      await court.save();
+
+      console.log(`Seeded Court: ${court.name} (${court.sportType}) with ${ratingDocs.length} five-star ratings`);
     }
 
     console.log('All 15 courts successfully seeded into MongoDB!');

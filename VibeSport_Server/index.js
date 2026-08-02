@@ -765,6 +765,13 @@ app.get('/health', (_, response) => {
 // Mount authentication routes
 app.use('/auth', authRouter);
 
+// Global error handler to ensure server always returns JSON on errors
+app.use((err, req, res, next) => {
+  console.error('[GLOBAL ERROR HANDLER]', err && err.stack ? err.stack : err);
+  if (res.headersSent) return next(err);
+  res.status(err?.status || 500).json({ message: err?.message || 'Lỗi máy chủ nội bộ' });
+});
+
 mongoose
   .connect(MONGODB_URI)
   .then(async () => {
