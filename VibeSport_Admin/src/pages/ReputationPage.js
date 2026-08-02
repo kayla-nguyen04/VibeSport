@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import api from '../utils/api';
+import axios from 'axios';
 import './ReputationPage.css';
 
 export default function ReputationPage() {
@@ -13,8 +13,10 @@ export default function ReputationPage() {
   const fetchReputationData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/ratings/admin/list', {
+      const token = localStorage.getItem('adminToken');
+      const res = await axios.get('http://localhost:4000/api/ratings/admin/list', {
         params: { search: searchQuery.trim() || undefined },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.data?.success) {
         setUsers(res.data.data || []);

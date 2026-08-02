@@ -4,8 +4,7 @@ import {
   fetchUsers, 
   updateUserRole, 
   lockUnlockUser, 
-  fetchUserReports, 
-  resolveUserReports, 
+  fetchUserActivity,
   clearError 
 } from '../redux/slices/adminUsersSlice';
 import './Users.css';
@@ -22,12 +21,12 @@ export default function Users() {
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState(null);
   
-  const [statusFilter, setStatusFilter] = useState('all');
+  const statusFilter = 'all';
   const [sortFilter, setSortFilter] = useState('newest');
   
   const [selectedUser, setSelectedUser] = useState(null);
-  const [reports, setReports] = useState([]);
-  const [reportsLoading, setReportsLoading] = useState(false);
+  const [activity, setActivity] = useState({ posts: [], matches: [] });
+  const [activityLoading, setActivityLoading] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
   const loadData = useCallback((page = 1, search = '', status = 'all', sortBy = 'newest') => {
@@ -35,8 +34,8 @@ export default function Users() {
       page, 
       limit: 10, 
       search,
-      status: status === 'reported' ? 'reported' : '',
-      sortBy: sortBy === 'reportCount' ? 'reportCount' : ''
+      status: '',
+      sortBy: ''
     }));
   }, [dispatch]);
 
@@ -80,33 +79,22 @@ export default function Users() {
   const handleOpenDetail = async (user) => {
     setSelectedUser(user);
     setShowDetailModal(true);
-    setReportsLoading(true);
+    setActivityLoading(true);
     try {
-      const resultAction = await dispatch(fetchUserReports({ id: user._id }));
-      if (fetchUserReports.fulfilled.match(resultAction)) {
-        setReports(resultAction.payload.data);
-      } else {
-        showNotification(resultAction.payload || 'Không thể tải báo cáo', 'error');
-      }
-    } catch (err) {
-      showNotification('Lỗi khi tải báo cáo', 'error');
-    } finally {
-      setReportsLoading(false);
-    }
-  };
+      const activityAction = await dispatch(fetchUserActivity({ id: user._id }));
 
-  const handleResolveReports = async (userId) => {
-    try {
-      const resultAction = await dispatch(resolveUserReports({ id: userId }));
-      if (resolveUserReports.fulfilled.match(resultAction)) {
-        showNotification('Đã xử lý bỏ qua báo cáo thành công!');
-        setShowDetailModal(false);
-        loadData(pagination.page, searchQuery, statusFilter, sortFilter);
+      if (fetchUserActivity.fulfilled.match(activityAction)) {
+        setActivity({
+          posts: activityAction.payload.data?.posts || [],
+          matches: activityAction.payload.data?.matches || [],
+        });
       } else {
-        showNotification(resultAction.payload || 'Lỗi xử lý báo cáo', 'error');
+        showNotification(activityAction.payload || 'Không thể tải hoạt động người dùng', 'error');
       }
     } catch (err) {
-      showNotification('Lỗi khi xử lý báo cáo', 'error');
+      showNotification('Lỗi khi tải dữ liệu chi tiết người dùng', 'error');
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -136,7 +124,6 @@ export default function Users() {
               <th>Người dùng</th>
               <th>Ngày tham gia</th>
               <th>Vai trò</th>
-              <th>Báo cáo</th>
               <th>Trạng thái</th>
               <th>Thao tác</th>
             </tr>
@@ -170,15 +157,6 @@ export default function Users() {
                       <option key={role.value} value={role.value}>{role.label}</option>
                     ))}
                   </select>
-                </td>
-                <td>
-                  {user.reportCount > 0 ? (
-                    <span className="report-badge reported" onClick={() => handleOpenDetail(user)}>
-                      {user.reportCount} report
-                    </span>
-                  ) : (
-                    <span className="report-badge-zero">0</span>
-                  )}
                 </td>
                 <td>
                   <span className={`status-badge ${user.isLocked ? 'status-locked' : 'status-active'}`}>
@@ -258,18 +236,9 @@ export default function Users() {
       {/* Filters */}
       <div className="filters-bar">
         <div className="filter-group">
-          <label>Trạng thái:</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">Tất cả</option>
-            <option value="reported">Bị báo cáo</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
           <label>Sắp xếp:</label>
           <select value={sortFilter} onChange={(e) => setSortFilter(e.target.value)}>
             <option value="newest">Mới nhất</option>
-            <option value="reportCount">Bị báo cáo nhiều nhất</option>
           </select>
         </div>
       </div>
@@ -328,53 +297,58 @@ export default function Users() {
                 </div>
               </div>
 
-              {/* Reports Section */}
+              {/* User Activity Section */}
               <div className="detail-section">
-                <label>Lịch sử báo cáo vi phạm ({selectedUser.reportCount || 0} lượt):</label>
-                {reportsLoading ? (
-                  <div className="modal-loading">Đang tải lịch sử báo cáo...</div>
-                ) : reports.length > 0 ? (
-                  <div className="report-history-list">
-                    {reports.map((report) => (
-                      <div key={report._id} className="report-item">
-                        <div className="report-item-header">
-                          <div className="report-reporter">
-                            {report.reporterId?.picture ? (
-                              <img src={report.reporterId.picture} alt="" className="avatar-xs" />
-                            ) : (
-                              <div className="avatar-xs avatar-placeholder">
-                                {(report.reporterId?.name || report.reporterId?.email || '?')[0].toUpperCase()}
-                              </div>
-                            )}
-                            <span className="reporter-name">
-                              {report.reporterId?.name || report.reporterId?.email || 'Người dùng ẩn danh'}
-                            </span>
-                          </div>
-                          <span className="report-time">
-                            {new Date(report.createdAt).toLocaleString('vi-VN')}
-                          </span>
-                        </div>
-                        <div className="report-reason-content">
-                          <strong>Lý do báo cáo:</strong> {report.reason}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <label>Hoạt động gần đây</label>
+                {activityLoading ? (
+                  <div className="modal-loading">Đang tải hoạt động người dùng...</div>
                 ) : (
-                  <div className="no-reports-msg">Chưa có báo cáo vi phạm nào hoặc các báo cáo đã được xử lý.</div>
+                  <div className="activity-section-grid">
+                    <div className="activity-column">
+                      <h4>Bài viết đã đăng ({activity.posts.length})</h4>
+                      {activity.posts.length > 0 ? (
+                        <div className="activity-list">
+                          {activity.posts.map((post) => (
+                            <div key={post._id} className="activity-item">
+                              <div className="activity-item-title">{post.content || 'Không có nội dung'}</div>
+                              <div className="activity-item-meta">
+                                {post.createdAt ? new Date(post.createdAt).toLocaleString('vi-VN') : 'Không rõ thời gian'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="no-reports-msg">Không có bài viết nào.</div>
+                      )}
+                    </div>
+
+                    <div className="activity-column">
+                      <h4>Trận đấu đã tham gia / tạo ({activity.matches.length})</h4>
+                      {activity.matches.length > 0 ? (
+                        <div className="activity-list">
+                          {activity.matches.map((match) => (
+                            <div key={match._id} className="activity-item activity-item-match">
+                              <div className="activity-item-title">{match.title || 'Trận đấu không tên'}</div>
+                              <div className="activity-item-meta">
+                                {match.date ? new Date(match.date).toLocaleDateString('vi-VN') : 'Không rõ ngày'} • {match.startTime || 'Không rõ giờ'}
+                              </div>
+                              <div className="activity-item-subtext">
+                                {match.locationName || match.specificAddress || 'Địa điểm chưa rõ'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="no-reports-msg">Không có trận đấu nào.</div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
+
             </div>
             
             <div className="modal-footer">
-              {selectedUser.reportCount > 0 && (
-                <button 
-                  className="btn btn-resolve"
-                  onClick={() => handleResolveReports(selectedUser._id)}
-                >
-                  Bỏ qua báo cáo (Duyệt/Đã xử lý)
-                </button>
-              )}
               <button className="btn btn-secondary" onClick={() => setShowDetailModal(false)}>Đóng</button>
             </div>
           </div>

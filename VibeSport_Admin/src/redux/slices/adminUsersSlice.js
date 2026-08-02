@@ -48,32 +48,17 @@ export const lockUnlockUser = createAsyncThunk(
   }
 );
 
-export const fetchUserReports = createAsyncThunk(
-  'adminUsers/fetchUserReports',
+export const fetchUserActivity = createAsyncThunk(
+  'adminUsers/fetchUserActivity',
   async ({ id }, { getState, rejectWithValue }) => {
     try {
       const { token } = getState().auth;
-      const response = await axios.get(`${API_URL}/${id}/reports`, {
+      const response = await axios.get(`${API_URL}/${id}/activity`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Lỗi khi tải danh sách báo cáo');
-    }
-  }
-);
-
-export const resolveUserReports = createAsyncThunk(
-  'adminUsers/resolveUserReports',
-  async ({ id }, { getState, rejectWithValue }) => {
-    try {
-      const { token } = getState().auth;
-      const response = await axios.patch(`${API_URL}/${id}/resolve-reports`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Lỗi khi xử lý báo cáo');
+      return rejectWithValue(error.response?.data?.message || 'Lỗi khi tải hoạt động người dùng');
     }
   }
 );
@@ -122,14 +107,6 @@ const adminUsersSlice = createSlice({
       })
       // Lock/Unlock User
       .addCase(lockUnlockUser.fulfilled, (state, action) => {
-        const updatedUser = action.payload.data;
-        const index = state.users.findIndex(u => u._id === updatedUser._id);
-        if (index !== -1) {
-          state.users[index] = updatedUser;
-        }
-      })
-      // Resolve Reports
-      .addCase(resolveUserReports.fulfilled, (state, action) => {
         const updatedUser = action.payload.data;
         const index = state.users.findIndex(u => u._id === updatedUser._id);
         if (index !== -1) {
