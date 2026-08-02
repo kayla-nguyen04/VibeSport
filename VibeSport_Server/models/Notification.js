@@ -10,7 +10,7 @@ const notificationSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ['follow', 'message', 'match', 'system', 'like', 'comment', 'reply', 'group', 'violation_removed', 'post_restored'],
+      enum: ['follow', 'message', 'match', 'system', 'like', 'comment', 'reply', 'group', 'violation_removed', 'post_restored', 'match_ended', 'match_reminder', 'court_notice'],
       default: 'system',
     },
     fromUserId: {

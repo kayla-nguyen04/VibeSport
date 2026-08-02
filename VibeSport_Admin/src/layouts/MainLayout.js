@@ -73,6 +73,13 @@ const icons = {
       <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
     </svg>
   ),
+  court: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 6h18v12H3z" />
+      <path d="M12 6v12" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
 };
 
 const navGroups = [
@@ -87,6 +94,7 @@ const navGroups = [
     items: [
       { key: '/users', icon: icons.users, label: 'Người dùng' },
       { key: '/posts', icon: icons.posts, label: 'Bài viết' },
+      { key: '/courts', icon: icons.court, label: 'Quản lý mẫu sân' },
       { key: '/reputation', icon: icons.reputation, label: 'Đánh giá & uy tín' },
     ],
   },

@@ -174,6 +174,16 @@ export async function deleteMatch(matchId, token = null) {
   );
 }
 
+export async function acceptDeleteMatch(matchId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/accept-delete`,
+    {
+      method: "POST",
+    },
+    token
+  );
+}
+
 export async function updateTeamStatus(matchId, status) {
   return matchRequest(`${MATCHES_URL}/${matchId}/team-status`, {
     method: "POST",

@@ -213,6 +213,13 @@ export function useSocket() {
         dispatch(updateCommentCount(payload));
       });
 
+      socketInstance.on('account_locked', (payload) => {
+        Alert.alert(
+          '⛔ TÀI KHOẢN ĐÃ BỊ KHÓA',
+          payload?.reason || 'Tài khoản của bạn đã bị khóa do điểm đánh giá trung bình rơi xuống dưới 2.0⭐.'
+        );
+      });
+
       // ===== Cuộc gọi Agora =====
 
       // === Helper chung: cleanup toàn bộ khi cuộc gọi kết thúc từ phía peer ===

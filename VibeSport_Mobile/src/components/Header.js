@@ -1,11 +1,11 @@
 import React from 'react';
 import { StyleSheet, View, Text } from 'react-native';
-import { background, text, borderRadius } from '../theme';
+import { background, text } from '../theme';
 import BackButton from './BackButton';
 
-const HEADER_HEIGHT = 74;        
-const TITLE_FONT_SIZE = 20;      
-const TITLE_FONT_WEIGHT = '400'; 
+const HEADER_HEIGHT = 59;       // thu nhỏ 20% từ 74
+const TITLE_FONT_SIZE = 16;     // thu nhỏ 20% từ 20
+const TITLE_FONT_WEIGHT = '600';
 
 const Header = ({
   title,
@@ -41,9 +41,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: HEADER_HEIGHT,
     backgroundColor: background.primary,
-    borderRadius: borderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 4,
   },
   leftSection: {
     flex: 1,
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   centerSection: {
-    flex: 1,
+    flex: 3,
     justifyContent: 'center',
     alignItems: 'center',
   },

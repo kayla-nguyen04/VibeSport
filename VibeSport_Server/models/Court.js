@@ -6,8 +6,9 @@ const courtSchema = new Schema(
     sportType: {
       type: String,
       enum: ['football', 'badminton', 'pickleball'],
-      required: true,
+      default: 'football',
     },
+    sports: [{ type: String }],
     address: { type: String, required: true },
     district: { type: String, default: '' },
     rating: { type: Number, default: 4.5 },
@@ -17,6 +18,11 @@ const courtSchema = new Schema(
     phone: { type: String, default: '' },
     openTime: { type: String, default: '06:00' },
     closeTime: { type: String, default: '23:00' },
+    status: {
+      type: String,
+      enum: ['active', 'hidden'],
+      default: 'active',
+    },
     fieldTypes: [{ type: String }],
     pitchOptions: [
       {
@@ -25,10 +31,12 @@ const courtSchema = new Schema(
         pricePerHour: { type: Number },
       },
     ],
-    priceGuide: [
+    priceTable: [
       {
-        type: { type: String },
-        price: { type: String },
+        sportKey: { type: String }, // 'football' | 'badminton' | 'pickleball'
+        fieldType: { type: String }, // 'Sân 5 (5v5)' | 'Sân 7 (7v7)' | 'Sân 11 (11v11)' | 'Sân đơn (1v1)' | 'Sân đôi (2v2)'
+        timeSlot: { type: String },
+        price: { type: Number },
       },
     ],
     serviceMenuImages: [{ type: String }],

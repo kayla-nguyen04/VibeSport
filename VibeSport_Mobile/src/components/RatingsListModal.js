@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   StyleSheet,
   Text,
@@ -11,17 +12,29 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { Screen } from "./Screen";
 import { ScreenHeader } from "./ScreenHeader";
 import { HeaderIconButton } from "./ProfileScreenComponents";
 import { getUserRatingsRequest } from "../services/ratingApi";
 import { icon, primary } from "../theme";
+import { API_BASE_URL } from "./constants/api";
+
+const fixMediaUrl = (url) => {
+  if (!url) return null;
+  return url.replace(/http:\/\/[\d.]+:\d+/, API_BASE_URL);
+};
+
+const getInitials = (name) => {
+  if (!name) return "?";
+  return name.trim().charAt(0).toUpperCase();
+};
 
 export function RatingsListModal({ visible, onClose, userId, token }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [ratingsList, setRatingsList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedRating, setSelectedRating] = useState(null); // Item đang được chọn để xem chi tiết
 
   useEffect(() => {
     if (visible && userId && token) {
@@ -39,6 +52,33 @@ export function RatingsListModal({ visible, onClose, userId, token }) {
       Alert.alert("Thông báo", "Không thể tải danh sách nhận xét đánh giá.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewMatch = (matchObj) => {
+    const targetMatchId = typeof matchObj === "object" && matchObj != null ? matchObj._id || matchObj.id : matchObj;
+    if (!targetMatchId) {
+      Alert.alert("Thông báo", "Trận đấu không tồn tại hoặc đã bị xóa.");
+      return;
+    }
+    onClose();
+    navigation.navigate("MatchDetail", { matchId: String(targetMatchId) });
+  };
+
+  const handleOpenProfile = (reviewerObj) => {
+    const reviewerId = typeof reviewerObj === "object" && reviewerObj != null ? reviewerObj._id || reviewerObj.id : reviewerObj;
+    if (!reviewerId) {
+      Alert.alert("Thông báo", "Không tìm thấy thông tin trang cá nhân.");
+      return;
+    }
+    onClose();
+    if (String(reviewerId) === String(userId)) {
+      navigation.navigate("Home", { screen: "ProfileTab" });
+    } else {
+      navigation.navigate("UserProfile", {
+        userId: reviewerId,
+        initialProfile: typeof reviewerObj === "object" ? reviewerObj : undefined,
+      });
     }
   };
 
@@ -66,88 +106,80 @@ export function RatingsListModal({ visible, onClose, userId, token }) {
             keyExtractor={(item) => String(item._id)}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setSelectedRating(item)}
-                style={styles.ratingCard}
-              >
-                <View style={styles.cardHeader}>
-                  <Text style={styles.reviewerName}>
-                    {item.fromUser?.name || "Thành viên"}
-                  </Text>
-                  <View style={styles.starRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Ionicons
-                        key={s}
-                        name={s <= item.stars ? "star" : "star-outline"}
-                        size={16}
-                        color="#F59E0B"
-                      />
-                    ))}
+            renderItem={({ item }) => {
+              const reviewer = item.fromUser;
+              const avatarUri = fixMediaUrl(reviewer?.picture || reviewer?.avatar);
+              const rName = reviewer?.name || "Thành viên";
+              const matchTitle = typeof item.matchId === "object" && item.matchId != null
+                ? item.matchId.title
+                : "Chi tiết trận đấu";
+
+              return (
+                <View style={styles.ratingCard}>
+                  {/* Reviewer Info Row - Clickable to open Profile */}
+                  <View style={styles.cardHeader}>
+                    <TouchableOpacity
+                      style={styles.reviewerHeader}
+                      onPress={() => handleOpenProfile(reviewer)}
+                      activeOpacity={0.7}
+                    >
+                      {avatarUri ? (
+                        <Image source={{ uri: avatarUri }} style={styles.reviewerAvatar} />
+                      ) : (
+                        <View style={styles.reviewerAvatarPlaceholder}>
+                          <Text style={styles.reviewerInitials}>{getInitials(rName)}</Text>
+                        </View>
+                      )}
+                      <Text style={styles.reviewerName}>{rName}</Text>
+                    </TouchableOpacity>
+
+                    {/* Star Rating Row */}
+                    <View style={styles.starRow}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Ionicons
+                          key={s}
+                          name={s <= item.stars ? "star" : "star-outline"}
+                          size={16}
+                          color="#F59E0B"
+                        />
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Comment */}
+                  {item.comment ? (
+                    <Text style={styles.cardComment}>"{item.comment}"</Text>
+                  ) : null}
+
+                  {/* Footer Row: Match Name & View Match Button */}
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.matchTitleText} numberOfLines={1}>
+                      Trận: {matchTitle}
+                    </Text>
+                    
+                    <TouchableOpacity
+                      style={styles.viewMatchBtn}
+                      onPress={() => handleViewMatch(item.matchId)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="football-outline" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
+                      <Text style={styles.viewMatchBtnText}>Xem trận đấu</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-
-                <Text style={styles.clickHintText}>
-                  Nhấn để xem nhận xét chi tiết ➔
-                </Text>
-              </TouchableOpacity>
-            )}
+              );
+            }}
             ListEmptyComponent={
               <View style={styles.centerState}>
                 <Ionicons name="star-outline" size={54} color="#D1D5DB" />
                 <Text style={styles.emptyTitle}>Bạn chưa có đánh giá nào</Text>
                 <Text style={styles.emptySubtitle}>
-                  Sau khi kết thúc các trận đấu, nhận xét từ bạn đấu sẽ xuất
-                  hiện tại đây.
+                  Sau khi kết thúc các trận đấu, nhận xét từ bạn đấu sẽ xuất hiện tại đây.
                 </Text>
               </View>
             }
           />
         )}
-
-        {/* POPUP CHI TIẾT NHẬN XẾT KHI CLICK VÀO HÀNG ĐÁNH GIÁ */}
-        <Modal visible={!!selectedRating} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.detailBox}>
-              <Text style={styles.detailTitle}>
-                Đánh giá từ {selectedRating?.fromUser?.name || "Thành viên"}
-              </Text>
-
-              <View style={styles.starRowCenter}>
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Ionicons
-                    key={s}
-                    name={
-                      s <= (selectedRating?.stars || 5)
-                        ? "star"
-                        : "star-outline"
-                    }
-                    size={24}
-                    color="#F59E0B"
-                  />
-                ))}
-              </View>
-
-              <Text style={styles.detailComment}>
-                {selectedRating?.comment
-                  ? `"${selectedRating.comment}"`
-                  : "Không có lời nhắn."}
-              </Text>
-
-              <Text style={styles.detailMatchText}>
-                Trận: {selectedRating?.matchId?.title || "Giao hữu"}
-              </Text>
-
-              <TouchableOpacity
-                style={styles.closeDetailBtn}
-                onPress={() => setSelectedRating(null)}
-              >
-                <Text style={styles.closeDetailBtnText}>Đóng</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       </Screen>
     </Modal>
   );
@@ -186,22 +218,86 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  reviewerName: { fontWeight: "700", fontSize: 15, color: "#111827" },
+  reviewerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    marginRight: 8,
+  },
+  reviewerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  reviewerAvatarPlaceholder: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#F97316",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reviewerInitials: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  reviewerName: {
+    fontWeight: "700",
+    fontSize: 15,
+    color: "#111827",
+  },
   starRow: { flexDirection: "row", gap: 2 },
-  clickHintText: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginTop: 6,
+  cardComment: {
+    fontSize: 13.5,
+    color: "#374151",
+    marginTop: 8,
     fontStyle: "italic",
+    lineHeight: 19,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  matchTitleText: {
+    fontSize: 12.5,
+    color: "#6B7280",
+    flex: 1,
+    marginRight: 8,
+    fontWeight: "500",
+  },
+  viewMatchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f97316",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  viewMatchBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   emptyTitle: {
     fontSize: 16,
@@ -215,41 +311,4 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: "center",
   },
-  // Detail Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  detailBox: {
-    width: "100%",
-    backgroundColor: "#FFF",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-  },
-  detailTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 10,
-  },
-  starRowCenter: { flexDirection: "row", gap: 4, marginBottom: 14 },
-  detailComment: {
-    fontSize: 14,
-    color: "#374151",
-    fontStyle: "italic",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  detailMatchText: { fontSize: 12, color: "#9CA3AF", marginBottom: 20 },
-  closeDetailBtn: {
-    backgroundColor: primary.DEFAULT,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-  },
-  closeDetailBtnText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
 });

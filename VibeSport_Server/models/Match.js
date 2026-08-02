@@ -161,9 +161,8 @@ const matchSchema = new Schema(
     },
 
     serviceCost: {
-      type: Number,
-      default: 31250,
-      min: 0,
+      type: Schema.Types.Mixed,
+      default: "",
     },
 
     selectedPositionIds: {
@@ -265,6 +264,11 @@ const matchSchema = new Schema(
       default: "not_started",
     },
 
+    notifiedStart30Min: {
+      type: Boolean,
+      default: false,
+    },
+
     memberRoles: [
       {
         userId: {
@@ -291,6 +295,12 @@ const matchSchema = new Schema(
         },
       },
     ],
+
+    deletionVote: {
+      active: { type: Boolean, default: false },
+      requestedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+      acceptedUsers: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
+    },
   },
   {
     timestamps: true,

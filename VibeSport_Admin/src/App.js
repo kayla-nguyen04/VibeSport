@@ -7,6 +7,8 @@ import Growth from './pages/Growth';
 import PostsPage from './pages/PostsPage';
 import RemovedContentPage from './pages/RemovedContentPage';
 import Users from './pages/Users';
+import CourtsPage from './pages/CourtsPage';
+import ReputationPage from './pages/ReputationPage';
 
 function App() {
   const { isAuthenticated } = useSelector((state) => state.auth);
@@ -19,6 +21,8 @@ function App() {
         <Route path="growth" element={<Growth />} />
         <Route path="users" element={<Users />} />
         <Route path="posts" element={<PostsPage />} />
+        <Route path="courts" element={<CourtsPage />} />
+        <Route path="reputation" element={<ReputationPage />} />
         <Route path="deleted-content" element={<RemovedContentPage />} />
       </Route>
     </Routes>

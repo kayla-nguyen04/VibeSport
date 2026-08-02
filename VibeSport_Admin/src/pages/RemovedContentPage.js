@@ -69,7 +69,7 @@ export default function RemovedContentPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, filterCategory]);
+  }, [pagination.page, pagination.limit, filterCategory]);
 
   useEffect(() => {
     fetchRemovedPosts();

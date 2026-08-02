@@ -97,7 +97,7 @@ export default function PostsPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, filterStatus, sortBy, order]);
+  }, [pagination.page, pagination.limit, filterStatus, sortBy, order]);
 
   useEffect(() => {
     fetchPosts();

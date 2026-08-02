@@ -17,6 +17,7 @@ if (!ratingController.getUserRatings) {
 }
 
 // Khai báo các đường dẫn API
+router.get('/admin/list', ratingController.getAdminReputationList);
 router.post('/', authMiddleware, ratingController.rateParticipants);
 router.get('/user/:userId', authMiddleware, ratingController.getUserRatings);
 

@@ -69,7 +69,7 @@ router.patch('/:id/role', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Role không hợp lệ' });
     }
 
-    const user = await User.findByIdAndUpdate(id, { role }, { new: true }).select('-passwordHash -googleId');
+    const user = await User.findByIdAndUpdate(id, { role }, { returnDocument: 'after' }).select('-passwordHash -googleId');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
@@ -90,7 +90,7 @@ router.patch('/:id/lock', async (req, res) => {
       return res.status(400).json({ success: false, message: 'isLocked phải là boolean' });
     }
 
-    const user = await User.findByIdAndUpdate(id, { isLocked }, { new: true }).select('-passwordHash -googleId');
+    const user = await User.findByIdAndUpdate(id, { isLocked }, { returnDocument: 'after' }).select('-passwordHash -googleId');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
@@ -131,7 +131,7 @@ router.patch('/:id/resolve-reports', async (req, res) => {
     const { id } = req.params;
     
     // Tìm user và đặt reportCount về 0
-    const user = await User.findByIdAndUpdate(id, { reportCount: 0 }, { new: true }).select('-passwordHash -googleId');
+    const user = await User.findByIdAndUpdate(id, { reportCount: 0 }, { returnDocument: 'after' }).select('-passwordHash -googleId');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }

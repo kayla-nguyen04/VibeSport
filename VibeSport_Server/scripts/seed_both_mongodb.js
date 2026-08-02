@@ -293,7 +293,6 @@ async function seedTargetDB(uri, label) {
     const createdCourts = [];
     for (const data of RAW_COURTS) {
       let pitchOptions = [];
-      let priceGuide = [];
       if (data.sportType === 'football') {
         if (data.fieldTypes && data.fieldTypes.includes("11 người")) {
           pitchOptions = [
@@ -301,19 +300,10 @@ async function seedTargetDB(uri, label) {
             { pitchType: '7v7', label: 'Sân 7v7', pricePerHour: Math.round(((data.priceFrom || 300000) + (data.priceTo || 700000)) / 2) },
             { pitchType: '11v11', label: 'Sân 11v11', pricePerHour: data.priceTo || 1000000 },
           ];
-          priceGuide = [
-            { type: 'Sân 5 (5v5)', price: '300.000đ - 450.000đ / giờ' },
-            { type: 'Sân 7 (7v7)', price: '600.000đ - 900.000đ / giờ' },
-            { type: 'Sân 11 (11v11)', price: '1.000.000đ - 1.500.000đ / giờ' },
-          ];
         } else {
           pitchOptions = [
             { pitchType: '5v5', label: 'Sân 5v5', pricePerHour: data.priceFrom || 300000 },
             { pitchType: '7v7', label: 'Sân 7v7', pricePerHour: data.priceTo || 600000 },
-          ];
-          priceGuide = [
-            { type: 'Sân 5 (5v5)', price: '300.000đ - 450.000đ / giờ' },
-            { type: 'Sân 7 (7v7)', price: '600.000đ - 800.000đ / giờ' },
           ];
         }
       } else if (data.sportType === 'badminton') {
@@ -321,18 +311,10 @@ async function seedTargetDB(uri, label) {
           { pitchType: '1v1', label: 'Sân 1v1', pricePerHour: data.priceFrom || 100000 },
           { pitchType: '2v2', label: 'Sân 2v2', pricePerHour: data.priceTo || 180000 },
         ];
-        priceGuide = [
-          { type: 'Sân đơn (1v1)', price: '120.000đ - 180.000đ / giờ' },
-          { type: 'Sân đôi (2v2)', price: '200.000đ - 280.000đ / giờ' },
-        ];
       } else {
         pitchOptions = [
           { pitchType: '1v1', label: 'Sân 1v1', pricePerHour: data.priceFrom || 120000 },
           { pitchType: '2v2', label: 'Sân 2v2', pricePerHour: data.priceTo || 220000 },
-        ];
-        priceGuide = [
-          { type: 'Sân đơn (1v1)', price: '150.000đ - 220.000đ / giờ' },
-          { type: 'Sân đôi (2v2)', price: '250.000đ - 350.000đ / giờ' },
         ];
       }
 
@@ -363,7 +345,6 @@ async function seedTargetDB(uri, label) {
         ...data,
         phone: owner.phone || "+84327765806",
         pitchOptions,
-        priceGuide,
         serviceMenuImages,
         serviceDetails,
         serviceCost: serviceDetails.avgServiceCost,
