@@ -22,7 +22,7 @@ const CATEGORY_LABELS = {
   spam: 'Spam',
   'ngôn từ thù ghét': 'Ngôn từ thù ghét',
   'nội dung không phù hợp': 'Nội dung không phù hợp',
-  'vi phạm bản quyền': 'Vi ph� thuờn quyền',
+  'vi phạm bản quyền': 'Vi phạm bản quyền',
   other: 'Khác',
 };
 
