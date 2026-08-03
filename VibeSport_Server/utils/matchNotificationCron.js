@@ -93,7 +93,8 @@ async function processMatchSchedules() {
       }
 
       // 2. TỰ ĐỘNG BẮT ĐẦU TRẬN ĐẤU (teamStatus = "ongoing")
-      if (match.teamStatus === 'not_started' && now >= matchStart) {
+      const isVotingDelete = match.deletionVote && match.deletionVote.active;
+      if (match.teamStatus === 'not_started' && now >= matchStart && !isVotingDelete) {
         match.teamStatus = 'ongoing';
         await match.save();
 

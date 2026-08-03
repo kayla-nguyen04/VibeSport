@@ -22,6 +22,7 @@ import {
 } from '../redux/notificationSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { useNotificationNavigationQueue } from '../hooks/useNotificationNavigationQueue';
+import { rejectTeamInvite } from '../services/matchService';
 
 const AVATAR_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FB8C00', '#8E24AA', '#00ACC1'];
 
@@ -45,6 +46,7 @@ export function NotificationScreen({ navigation }) {
   const dispatch = useDispatch();
   const insets = useSafeAreaInsets();
   const currentUser = useSelector((state) => state.auth.user);
+  const token = useSelector((state) => state.auth.token);
   const { notifications, loading } = useSelector((state) => state.notifications);
   const conversations = useSelector((state) => state.chat.conversations);
   const { enqueue } = useNotificationNavigationQueue(navigation);
@@ -99,6 +101,44 @@ export function NotificationScreen({ navigation }) {
         },
       ]
     );
+  };
+
+  const isMatchInviteNotification = (item) => {
+    const msg = (item.message || '').toLowerCase();
+    const type = item.type || '';
+    const hasMatchId = !!(item.matchId?._id || item.matchId);
+    return hasMatchId && (msg.includes('mời') || msg.includes('lời mời') || type === 'match_invite');
+  };
+
+  const handleAcceptInvite = (item) => {
+    if (!item.read) {
+      dispatch(markNotificationRead(item._id));
+    }
+    const matchId = item.matchId?._id || item.matchId;
+    if (matchId) {
+      navigation.navigate('MatchDetail', {
+        matchId,
+        autoOpenPositionModal: true,
+      });
+    } else {
+      Alert.alert('Thông báo', 'Không tìm thấy thông tin trận đấu.');
+    }
+  };
+
+  const handleRejectInvite = async (item) => {
+    if (!item.read) {
+      dispatch(markNotificationRead(item._id));
+    }
+    const matchId = item.matchId?._id || item.matchId;
+    const userId = currentUser?._id || currentUser?.id;
+    if (matchId && userId) {
+      try {
+        await rejectTeamInvite(matchId, userId);
+      } catch (e) {
+        console.error('Reject team invite error:', e);
+      }
+    }
+    Alert.alert('Thông báo', 'Bạn đã từ chối lời mời tham gia trận đấu này.');
   };
 
   const handleNotificationPress = (item) => {
@@ -203,6 +243,44 @@ export function NotificationScreen({ navigation }) {
             {normalizeNotificationMessage(item.message)}
           </Text>
           <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+
+          {isMatchInviteNotification(item) && (
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#FF6B35',
+                  paddingVertical: 7,
+                  paddingHorizontal: 14,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleAcceptInvite(item);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>✓ Đồng ý</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#6B7280',
+                  paddingVertical: 7,
+                  paddingHorizontal: 14,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleRejectInvite(item);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>✕ Từ chối</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {isUnread && (

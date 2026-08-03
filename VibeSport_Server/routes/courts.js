@@ -178,6 +178,9 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const requestBody = { ...req.body };
+    if (!requestBody.owner || requestBody.owner === '' || requestBody.owner === 'null') {
+      requestBody.owner = null;
+    }
     if (!requestBody.pitchOptions && Array.isArray(requestBody.priceTable) && requestBody.priceTable.length > 0) {
       requestBody.pitchOptions = normalizePitchOptions({ ...requestBody }).pitchOptions || [];
     }
@@ -188,6 +191,7 @@ router.post('/', async (req, res) => {
     const populated = await Court.findById(newCourt._id).populate('owner', 'name phone email avatar');
     res.status(201).json({ success: true, message: 'Thêm mẫu sân mới thành công', data: populated });
   } catch (err) {
+    console.error('[CourtCreateError]', err);
     res.status(400).json({ success: false, error: err.message });
   }
 });
@@ -199,6 +203,9 @@ router.put('/:id', async (req, res) => {
     if (!oldCourt) return res.status(404).json({ success: false, message: 'Không tìm thấy mẫu sân để cập nhật' });
 
     const requestBody = { ...req.body };
+    if (!requestBody.owner || requestBody.owner === '' || requestBody.owner === 'null') {
+      requestBody.owner = null;
+    }
     if (!requestBody.pitchOptions && Array.isArray(requestBody.priceTable) && requestBody.priceTable.length > 0) {
       requestBody.pitchOptions = normalizePitchOptions({ ...oldCourt.toObject(), ...requestBody }).pitchOptions || [];
     }
@@ -213,6 +220,7 @@ router.put('/:id', async (req, res) => {
 
     res.json({ success: true, message: 'Cập nhật mẫu sân thành công', data: updated });
   } catch (err) {
+    console.error('[CourtUpdateError]', err);
     res.status(400).json({ success: false, error: err.message });
   }
 });

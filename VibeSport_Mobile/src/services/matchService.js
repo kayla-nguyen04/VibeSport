@@ -29,7 +29,7 @@ async function matchRequest(url, options = {}, token = null) {
     throw new Error(result.message || "Yêu cầu thất bại");
   }
 
-  return result.data;
+  return result.data !== undefined ? result.data : result;
 }
 
 export async function createMatch(matchData, token = null) {
@@ -177,6 +177,16 @@ export async function deleteMatch(matchId, token = null) {
 export async function acceptDeleteMatch(matchId, token = null) {
   return matchRequest(
     `${MATCHES_URL}/${matchId}/accept-delete`,
+    {
+      method: "POST",
+    },
+    token
+  );
+}
+
+export async function rejectDeleteMatch(matchId, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/reject-delete`,
     {
       method: "POST",
     },

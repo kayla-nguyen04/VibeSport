@@ -679,12 +679,7 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
                     <Ionicons name="newspaper-outline" size={48} color="#D1D5DB" />
                     <Text style={styles.emptyTabTitle}>Chưa có bài viết nào</Text>
                     <Text style={styles.emptyTabSub}>Các bài viết bạn đăng trên Cộng đồng sẽ xuất hiện ở đây.</Text>
-                    <TouchableOpacity
-                      style={styles.emptyTabBtn}
-                      onPress={() => navigation.navigate('Home', { screen: 'Community' })}
-                    >
-                      <Text style={styles.emptyTabBtnText}>+ Đăng bài viết mới</Text>
-                    </TouchableOpacity>
+
                   </View>
                 )}
               </View>
