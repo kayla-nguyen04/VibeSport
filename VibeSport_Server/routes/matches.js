@@ -72,6 +72,43 @@ const getPositionLabel = (posId) => {
   return "";
 };
 
+const isMatchWithinOneHour = (match) => {
+  if (!match || !match.date) return false;
+  try {
+    let year, month, day;
+    if (match.date.includes("/")) {
+      const parts = match.date.split("/").map(Number);
+      day = parts[0];
+      month = parts[1];
+      year = parts[2];
+    } else if (match.date.includes("-")) {
+      const parts = match.date.split("-");
+      if (parts[0].length === 4) {
+        year = Number(parts[0]);
+        month = Number(parts[1]);
+        day = Number(parts[2]);
+      } else {
+        day = Number(parts[0]);
+        month = Number(parts[1]);
+        year = Number(parts[2]);
+      }
+    } else {
+      return false;
+    }
+
+    const startStr = match.startTime || "19:00";
+    const [h, m] = startStr.split(":").map(Number);
+
+    const matchStart = new Date(year, month - 1, day, h || 0, m || 0, 0);
+    const now = new Date();
+
+    const diffMs = matchStart.getTime() - now.getTime();
+    return diffMs <= 60 * 60 * 1000;
+  } catch (e) {
+    return false;
+  }
+};
+
 router.post("/", authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;
@@ -299,6 +336,14 @@ router.post("/:id/join", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
+    if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể tham gia!" });
+    }
+
+    if (match.deletionVote && match.deletionVote.active) {
+      return res.status(400).json({ success: false, message: "Trận đấu đang trong quá trình biểu quyết xóa, không thể tham gia!" });
+    }
+
     // Prevent adding if already participant
     const isAlreadyParticipant = match.participants.some((p) => String(p._id || p) === String(userId));
     if (isAlreadyParticipant) {
@@ -374,6 +419,10 @@ router.post("/:id/leave", async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
+    if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể rút khỏi trận!" });
+    }
+
     const index = match.participants.indexOf(userId);
     if (index === -1) {
       return res.status(400).json({ success: false, message: "Bạn chưa tham gia trận đấu này" });
@@ -435,9 +484,9 @@ router.put("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
-    // Quy tắc: Khi trận đấu Đang bắt đầu (ongoing), không cho phép Sửa
-    if (match.teamStatus === "ongoing") {
-      return res.status(400).json({ success: false, message: "Trận đấu đang diễn ra, không thể chỉnh sửa!" });
+    // Quy tắc: Khi trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 1 tiếng, không cho phép Sửa
+    if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể chỉnh sửa!" });
     }
 
     const creatorId = match.createdBy ? (typeof match.createdBy === "object" ? (match.createdBy._id || match.createdBy.id) : match.createdBy) : null;
@@ -555,9 +604,9 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
-    // 1. Khi Trận đấu Đang bắt đầu (ongoing): KHÔNG cho phép Xóa hay Sửa
-    if (match.teamStatus === "ongoing") {
-      return res.status(400).json({ success: false, message: "Trận đấu đang diễn ra, không thể xóa!" });
+    // 1. Khi Trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 1 tiếng: KHÔNG cho phép Xóa hay Sửa
+    if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể xóa!" });
     }
 
     // 2. Khi Trận đấu Kết thúc (ended / completed): cho phép user xóa thoải mái mà ko cần accept
@@ -567,23 +616,24 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     }
 
     // 3. Khi Trận đấu Chưa bắt đầu (not_started / open / full):
-    // Gửi thông báo accept đến toàn bộ thành viên, tổng 80% accept thì bài viết mới được xóa.
+    // Gửi thông báo accept đến toàn bộ thành viên, trên 50% accept thì bài viết mới được xóa.
     // Người chủ động xóa mặc định là đồng ý.
     const totalParticipants = Math.max(1, match.participants.length);
 
     if (totalParticipants <= 1) {
-      // Chỉ có 1 người (người tạo), 100% >= 80% -> Xóa ngay
+      // Chỉ có 1 người (người tạo), 100% > 50% -> Xóa ngay
       await Match.findByIdAndDelete(req.params.id);
       return res.json({ success: true, isDeleted: true, message: "Xóa trận đấu thành công" });
     }
 
     // Nếu có nhiều hơn 1 người tham gia -> Tạo/cập nhật vote biểu quyết xóa
     if (!match.deletionVote) {
-      match.deletionVote = { active: true, requestedBy: userId, acceptedUsers: [userId] };
+      match.deletionVote = { active: true, requestedBy: userId, acceptedUsers: [userId], rejectedUsers: [] };
     } else {
       match.deletionVote.active = true;
       match.deletionVote.requestedBy = userId;
-      const acceptedStrs = match.deletionVote.acceptedUsers.map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
+      match.deletionVote.rejectedUsers = [];
+      const acceptedStrs = (match.deletionVote.acceptedUsers || []).map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
       if (!acceptedStrs.includes(String(userId))) {
         match.deletionVote.acceptedUsers.push(userId);
       }
@@ -592,7 +642,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     const acceptedCount = match.deletionVote.acceptedUsers.length;
     const percentage = (acceptedCount / totalParticipants) * 100;
 
-    if (percentage >= 80) {
+    if (percentage > 50) {
       await Match.findByIdAndDelete(req.params.id);
       // Gửi thông báo xóa hoàn tất cho tất cả thành viên
       for (const pId of match.participants) {
@@ -602,11 +652,11 @@ router.delete("/:id", authMiddleware, async (req, res) => {
             type: "match",
             fromUserId: userId,
             matchId: match._id,
-            message: `Trận đấu "${match.title}" đã được xóa sau khi đạt đủ 80% biểu quyết đồng ý.`,
+            message: `Trận đấu "${match.title}" đã được xóa sau khi đạt trên 50% biểu quyết đồng ý.`,
           });
         } catch (e) {}
       }
-      return res.json({ success: true, isDeleted: true, message: "Đã có đủ 80% thành viên đồng ý. Xóa trận đấu thành công!" });
+      return res.json({ success: true, isDeleted: true, message: "Đã có trên 50% thành viên đồng ý. Xóa trận đấu thành công!" });
     }
 
     await match.save();
@@ -625,7 +675,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
           type: "match",
           fromUserId: userId,
           matchId: match._id,
-          message: `${requesterName} đã yêu cầu XÓA trận đấu "${match.title}". Cần 80% thành viên đồng ý (Hiện tại: ${acceptedCount}/${totalParticipants}). Vui lòng vào chi tiết trận đấu để xác nhận biểu quyết!`,
+          message: `${requesterName} đã yêu cầu XÓA trận đấu "${match.title}". Cần trên 50% thành viên đồng ý (Hiện tại: ${acceptedCount}/${totalParticipants}). Vui lòng vào chi tiết trận đấu để xác nhận biểu quyết!`,
         });
       } catch (err) {
         console.error("Gửi thông báo biểu quyết xóa lỗi:", err.message);
@@ -639,7 +689,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       acceptedCount,
       totalParticipants,
       percentage: Math.round(percentage),
-      message: `Đã gửi yêu cầu biểu quyết xóa đến các thành viên trong trận (${acceptedCount}/${totalParticipants} đồng ý, cần ≥ 80%).`,
+      message: `Đã gửi yêu cầu biểu quyết xóa đến các thành viên trong trận (${acceptedCount}/${totalParticipants} đồng ý, cần > 50%).`,
     });
   } catch (error) {
     console.error("Delete match error:", error);
@@ -667,7 +717,12 @@ router.post("/:id/accept-delete", authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, message: "Không có biểu quyết xóa nào đang diễn ra" });
     }
 
-    const acceptedStrs = match.deletionVote.acceptedUsers.map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
+    // Remove from rejectedUsers if present
+    match.deletionVote.rejectedUsers = (match.deletionVote.rejectedUsers || []).filter(
+      (u) => String(typeof u === "object" ? (u._id || u.id) : u) !== String(userId)
+    );
+
+    const acceptedStrs = (match.deletionVote.acceptedUsers || []).map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
     if (!acceptedStrs.includes(String(userId))) {
       match.deletionVote.acceptedUsers.push(userId);
     }
@@ -676,7 +731,7 @@ router.post("/:id/accept-delete", authMiddleware, async (req, res) => {
     const acceptedCount = match.deletionVote.acceptedUsers.length;
     const percentage = (acceptedCount / totalParticipants) * 100;
 
-    if (percentage >= 80) {
+    if (percentage > 50) {
       await Match.findByIdAndDelete(req.params.id);
       for (const pId of match.participants) {
         try {
@@ -685,7 +740,7 @@ router.post("/:id/accept-delete", authMiddleware, async (req, res) => {
             type: "match",
             fromUserId: userId,
             matchId: match._id,
-            message: `Trận đấu "${match.title}" đã được xóa hoàn toàn sau khi đạt đủ 80% số thành viên biểu quyết đồng ý.`,
+            message: `Trận đấu "${match.title}" đã được xóa hoàn toàn sau khi đạt trên 50% số thành viên biểu quyết đồng ý.`,
           });
         } catch (e) {}
       }
@@ -695,7 +750,7 @@ router.post("/:id/accept-delete", authMiddleware, async (req, res) => {
         acceptedCount,
         totalParticipants,
         percentage: Math.round(percentage),
-        message: "Đã đạt đủ 80% thành viên biểu quyết đồng ý! Trận đấu đã được xóa hoàn toàn.",
+        message: "Đã đạt trên 50% thành viên biểu quyết đồng ý! Trận đấu đã được xóa hoàn toàn.",
       });
     }
 
@@ -707,11 +762,93 @@ router.post("/:id/accept-delete", authMiddleware, async (req, res) => {
       acceptedCount,
       totalParticipants,
       percentage: Math.round(percentage),
-      message: `Đã ghi nhận ý kiến đồng ý xóa (${acceptedCount}/${totalParticipants} - ${Math.round(percentage)}%, cần ≥ 80%).`,
+      message: `Đã ghi nhận ý kiến đồng ý xóa (${acceptedCount}/${totalParticipants} - ${Math.round(percentage)}%, cần > 50%).`,
     });
   } catch (error) {
     console.error("Accept delete match error:", error);
     return res.status(500).json({ success: false, message: "Lỗi server khi đồng ý xóa trận đấu", error: error.message });
+  }
+});
+
+// Reject deletion vote for a match
+router.post("/:id/reject-delete", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const match = await Match.findById(req.params.id);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    const isParticipant = (match.participants || []).some(
+      (pId) => String(typeof pId === "object" ? (pId._id || pId.id) : pId) === String(userId)
+    );
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: "Chỉ thành viên trận đấu mới có thể từ chối biểu quyết xóa" });
+    }
+
+    if (!match.deletionVote || !match.deletionVote.active) {
+      return res.status(400).json({ success: false, message: "Không có biểu quyết xóa nào đang diễn ra" });
+    }
+
+    // Remove from acceptedUsers if present
+    match.deletionVote.acceptedUsers = (match.deletionVote.acceptedUsers || []).filter(
+      (u) => String(typeof u === "object" ? (u._id || u.id) : u) !== String(userId)
+    );
+
+    // Add to rejectedUsers if not present
+    const rejectedStrs = (match.deletionVote.rejectedUsers || []).map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
+    if (!rejectedStrs.includes(String(userId))) {
+      match.deletionVote.rejectedUsers.push(userId);
+    }
+
+    const totalParticipants = Math.max(1, match.participants.length);
+    const rejectedCount = match.deletionVote.rejectedUsers.length;
+    const acceptedCount = match.deletionVote.acceptedUsers.length;
+
+    // If remaining members cannot make percentage > 50%, cancel deletion request
+    const maxPossibleAccepted = totalParticipants - rejectedCount;
+    const isCanceled = (maxPossibleAccepted / totalParticipants) * 100 <= 50;
+
+    if (isCanceled) {
+      match.deletionVote.active = false;
+      await match.save();
+
+      // Send notification to participants about vote cancellation
+      for (const pId of match.participants) {
+        try {
+          await Notification.create({
+            userId: pId,
+            type: "match",
+            fromUserId: userId,
+            matchId: match._id,
+            message: `Yêu cầu XÓA trận đấu "${match.title}" đã bị HỦY do không thể đạt trên 50% số phiếu đồng ý.`,
+          });
+        } catch (e) {}
+      }
+
+      return res.json({
+        success: true,
+        isCanceled: true,
+        acceptedCount,
+        rejectedCount,
+        totalParticipants,
+        message: "Biểu quyết xóa đã bị hủy do không đủ số lượng thành viên đồng ý.",
+      });
+    }
+
+    await match.save();
+
+    return res.json({
+      success: true,
+      isCanceled: false,
+      acceptedCount,
+      rejectedCount,
+      totalParticipants,
+      message: `Đã ghi nhận ý kiến TỪ CHỐI xóa trận (${rejectedCount}/${totalParticipants} từ chối).`,
+    });
+  } catch (error) {
+    console.error("Reject delete match error:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server khi từ chối xóa trận đấu", error: error.message });
   }
 });
 
@@ -728,6 +865,14 @@ router.post("/:id/request-join", async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
+    if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể xin tham gia!" });
+    }
+
+    if (match.deletionVote && match.deletionVote.active) {
+      return res.status(400).json({ success: false, message: "Trận đấu đang trong quá trình biểu quyết xóa, không thể xin tham gia!" });
+    }
+
     const creatorId = String(match.createdBy || "");
     if (creatorId === String(userId)) {
       return res.status(400).json({ success: false, message: "Bạn là người tạo trận này" });
@@ -741,8 +886,27 @@ router.post("/:id/request-join", async (req, res) => {
       return res.status(400).json({ success: false, message: "Bạn đã gửi yêu cầu tham gia rồi" });
     }
 
-    if (match.invitedMembers && match.invitedMembers.some((p) => String(p) === String(userId))) {
-      return res.status(400).json({ success: false, message: "Bạn đã được mời tham gia đội này rồi. Hãy chấp nhận lời mời." });
+    const isInvitedMember = (match.invitedMembers || []).some((p) => String(p) === String(userId));
+    const pendingInviteEntry = (match.pendingInviteRequests || []).find((entry) => String(entry.userId) === String(userId));
+    const isDirectInvite = isInvitedMember || (pendingInviteEntry && !pendingInviteEntry.requiresOwnerApproval);
+
+    if (isDirectInvite) {
+      match.participants.push(userId);
+      match.currentPlayers = match.participants.length;
+      if (match.currentPlayers >= match.maxPlayers) {
+        match.status = "full";
+      }
+      if (Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0) {
+        if (!match.memberPositions) match.memberPositions = [];
+        match.memberPositions.push({ userId, positionId: selectedPositionIds.join(",") });
+      }
+      match.invitedMembers = (match.invitedMembers || []).filter((p) => String(p) !== String(userId));
+      match.pendingInviteRequests = (match.pendingInviteRequests || []).filter((e) => String(e.userId) !== String(userId));
+      autoAddParticipantToChatGroup(match.chatGroupId, userId);
+      await match.save();
+
+      const updated = await Match.findById(match._id).populate(populateFields);
+      return res.json({ success: true, message: "Tham gia trận đấu thành công!", data: updated });
     }
 
     if (match.participants.length >= match.maxPlayers) {
@@ -1009,6 +1173,9 @@ router.post("/:id/team-status", async (req, res) => {
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
+    if (status === "ongoing" && match.deletionVote && match.deletionVote.active) {
+      return res.status(400).json({ success: false, message: "Trận đấu đang trong quá trình biểu quyết xóa, không thể bắt đầu!" });
+    }
     match.teamStatus = status;
     // Sync match status if it is ended
     if (status === "ended") {
@@ -1085,6 +1252,14 @@ router.post("/:id/invite-member", async (req, res) => {
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
+    }
+
+    if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể mời thêm thành viên!" });
+    }
+
+    if (match.deletionVote && match.deletionVote.active) {
+      return res.status(400).json({ success: false, message: "Trận đấu đang trong quá trình biểu quyết xóa, không thể mời thêm người!" });
     }
 
     const ownerEntry = Array.isArray(match.memberRoles)

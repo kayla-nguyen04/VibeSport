@@ -275,7 +275,7 @@ const GroupCreationModal = ({ visible, onClose, onGroupCreated }) => {
               ) : (
                 <FlatList
                   data={filteredFriends}
-                  keyExtractor={(item) => String(item._id || item.id)}
+                  keyExtractor={(item, index) => String(item._id || item.id || `friend_${index}`)}
                   renderItem={renderFriendItem}
                   contentContainerStyle={styles.listContent}
                   ListEmptyComponent={

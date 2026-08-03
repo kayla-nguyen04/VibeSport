@@ -283,6 +283,43 @@ export default function TeamsScreen({ navigation }) {
     loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
   };
 
+  const isMatchStartingWithinOneHour = (matchObj) => {
+    if (!matchObj || !matchObj.date) return false;
+    try {
+      let year, month, day;
+      if (matchObj.date.includes("/")) {
+        const parts = matchObj.date.split("/").map(Number);
+        day = parts[0];
+        month = parts[1];
+        year = parts[2];
+      } else if (matchObj.date.includes("-")) {
+        const parts = matchObj.date.split("-");
+        if (parts[0].length === 4) {
+          year = Number(parts[0]);
+          month = Number(parts[1]);
+          day = Number(parts[2]);
+        } else {
+          day = Number(parts[0]);
+          month = Number(parts[1]);
+          year = Number(parts[2]);
+        }
+      } else {
+        return false;
+      }
+
+      const startStr = matchObj.startTime || "19:00";
+      const [h, m] = startStr.split(":").map(Number);
+
+      const matchStart = new Date(year, month - 1, day, h || 0, m || 0, 0);
+      const now = new Date();
+
+      const diffMs = matchStart.getTime() - now.getTime();
+      return diffMs <= 60 * 60 * 1000;
+    } catch (e) {
+      return false;
+    }
+  };
+
   const handleViewDetail = (item) => {
     navigation?.navigate?.("MatchDetail", { matchId: item._id, match: item });
   };
@@ -292,7 +329,23 @@ export default function TeamsScreen({ navigation }) {
       Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Sửa.");
       return;
     }
-    navigation?.navigate?.("CreateMatch", { editMatch: item });
+    if (isMatchStartingWithinOneHour(item)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Sửa!");
+      return;
+    }
+    Alert.alert(
+      "Xác nhận chỉnh sửa",
+      "Bạn có chắc chắn muốn chỉnh sửa thông tin trận đấu này?",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Chỉnh sửa",
+          onPress: () => {
+            navigation?.navigate?.("CreateMatch", { editMatch: item });
+          },
+        },
+      ]
+    );
   };
 
   const handleDeleteMatch = (item) => {
@@ -300,28 +353,36 @@ export default function TeamsScreen({ navigation }) {
       Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Xóa.");
       return;
     }
-    Alert.alert("Xóa trận đấu", "Bạn có chắc muốn xóa trận này?", [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "Xóa",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const res = await deleteMatch(item._id, token);
-            await loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
-            if (res?.isDeleted) {
-              Alert.alert("Thành công", res.message || "Đã xóa trận đấu");
-            } else if (res?.pendingVote) {
-              Alert.alert("Thông báo biểu quyết", res.message);
-            } else {
-              Alert.alert("Thông báo", res.message || "Đã xử lý yêu cầu.");
+    if (isMatchStartingWithinOneHour(item)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Xóa!");
+      return;
+    }
+    Alert.alert(
+      "Xác nhận xóa trận đấu",
+      "Bạn có chắc chắn muốn xóa trận đấu này không? Thao tác này sẽ hủy trận và không thể hoàn tác.",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa trận đấu",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await deleteMatch(item._id, token);
+              await loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
+              if (res?.isDeleted) {
+                Alert.alert("Thành công", res?.message || "Đã xóa trận đấu thành công.");
+              } else if (res?.pendingVote) {
+                Alert.alert("Thông báo biểu quyết", res?.message || "Đã gửi yêu cầu biểu quyết xóa.");
+              } else {
+                Alert.alert("Thông báo", res?.message || "Đã xử lý yêu cầu.");
+              }
+            } catch (err) {
+              Alert.alert("Lỗi", err?.message || String(err) || "Không thể thực hiện thao tác xóa.");
             }
-          } catch (err) {
-            Alert.alert("Lỗi", err.message);
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const handleMatchOptions = (item) => {
@@ -1043,7 +1104,7 @@ export default function TeamsScreen({ navigation }) {
                     setOptionsPost(null);
                     if (post) {
                       if (post.sport || post.locationName || post.maxPlayers) {
-                        navigation.navigate("CreateMatch", { editMatch: post });
+                        handleEditMatch(post);
                       } else {
                         navigation.navigate("CreatePost", { editPost: post });
                       }

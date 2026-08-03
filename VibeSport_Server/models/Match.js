@@ -300,6 +300,7 @@ const matchSchema = new Schema(
       active: { type: Boolean, default: false },
       requestedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
       acceptedUsers: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
+      rejectedUsers: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
     },
   },
   {

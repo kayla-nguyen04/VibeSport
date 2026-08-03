@@ -2001,6 +2001,17 @@ export default function CreateMatchScreen({ navigation, route }) {
     try {
       if (!validateForm()) return;
 
+      if (isEditMode) {
+        if (editMatch?.teamStatus === "ongoing") {
+          Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Sửa.");
+          return;
+        }
+        if (isMatchStartingWithinOneHour(editMatch)) {
+          Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Chỉnh sửa!");
+          return;
+        }
+      }
+
       const payload = buildPayload();
 
       const processSave = async () => {
@@ -2062,24 +2073,65 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
   };
 
+  const isMatchStartingWithinOneHour = (matchObj) => {
+    if (!matchObj || !matchObj.date) return false;
+    try {
+      let year, month, day;
+      if (matchObj.date.includes("/")) {
+        const parts = matchObj.date.split("/").map(Number);
+        day = parts[0];
+        month = parts[1];
+        year = parts[2];
+      } else if (matchObj.date.includes("-")) {
+        const parts = matchObj.date.split("-");
+        if (parts[0].length === 4) {
+          year = Number(parts[0]);
+          month = Number(parts[1]);
+          day = Number(parts[2]);
+        } else {
+          day = Number(parts[0]);
+          month = Number(parts[1]);
+          year = Number(parts[2]);
+        }
+      } else {
+        return false;
+      }
+
+      const startStr = matchObj.startTime || "19:00";
+      const [h, m] = startStr.split(":").map(Number);
+
+      const matchStart = new Date(year, month - 1, day, h || 0, m || 0, 0);
+      const now = new Date();
+
+      const diffMs = matchStart.getTime() - now.getTime();
+      return diffMs <= 60 * 60 * 1000;
+    } catch (e) {
+      return false;
+    }
+  };
+
   const handleDelete = () => {
     if (editMatch?.teamStatus === "ongoing") {
       Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể xóa!");
       return;
     }
+    if (isMatchStartingWithinOneHour(editMatch)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Xóa!");
+      return;
+    }
     Alert.alert(
-      "Xóa trận đấu",
-      "Bạn có chắc muốn xóa trận này?",
+      "Xác nhận xóa trận đấu",
+      "Bạn có chắc chắn muốn xóa trận đấu này không? Thao tác này sẽ hủy trận và không thể hoàn tác.",
       [
         { text: "Hủy", style: "cancel" },
         {
-          text: "Xóa",
+          text: "Xóa trận đấu",
           style: "destructive",
           onPress: async () => {
             try {
               const res = await deleteMatch(editMatch._id, token);
               if (res?.isDeleted) {
-                Alert.alert("Thành công", res.message || "Đã xóa trận đấu");
+                Alert.alert("Thành công", res.message || "Đã xóa trận đấu thành công.");
                 navigation.navigate("Home", { screen: "MatchesTab" });
               } else if (res?.pendingVote) {
                 Alert.alert("Biểu quyết xóa", res.message);

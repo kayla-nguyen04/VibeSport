@@ -193,8 +193,8 @@ export const COURT_DIRECTORY = [
     reviewsCount: 812,
     priceFrom: 400000,
     priceTo: 1000000,
-    phone: "0988123456",
-    zalo: "0988123456",
+    phone: "+84327765806",
+    zalo: "+84327765806",
     openHours: "05:30 - 23:00",
     pitchTypes: ["Sân 5", "Sân 7", "Sân 11"],
     pricesByPitchType: {
@@ -827,7 +827,9 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                         <Text style={{ fontSize: 13, fontWeight: "700", color: "#333" }} numberOfLines={1}>
                           {ownerObj.name}
                         </Text>
-                        <Text style={{ fontSize: 11, color: "#888" }}>Tài khoản chủ sân VibeSport</Text>
+                        <Text style={{ fontSize: 11, color: "#888" }}>
+                          SĐT: {ownerObj.phone || court.phone || "+84327765806"}
+                        </Text>
                       </View>
                     </View>
 
@@ -886,47 +888,53 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                 Các loại sân có sẵn:
               </Text>
               <View style={styles.typesRow}>
-                {(court.pitchTypes || court.fieldTypes || ["5v5 (Sân 5)", "7v7 (Sân 7)"]).map((type) => (
-                  <View key={type} style={styles.typeBadge}>
-                    <Text style={styles.typeBadgeText}>
-                      • {type.includes("5") ? "Sân 5 (5v5)" : type.includes("7") ? "Sân 7 (7v7)" : type.includes("11") ? "Sân 11 (11v11)" : type}
-                    </Text>
-                  </View>
-                ))}
+                {(court.pitchTypes || court.fieldTypes || ["5v5 (Sân 5)", "7v7 (Sân 7)"]).map((type, idx) => {
+                  const typeStr = typeof type === "object" ? (type.label || type.pitchType || String(idx)) : String(type);
+                  return (
+                    <View key={`ptype_${typeStr}_${idx}`} style={styles.typeBadge}>
+                      <Text style={styles.typeBadgeText}>
+                        • {typeStr.includes("5") ? "Sân 5 (5v5)" : typeStr.includes("7") ? "Sân 7 (7v7)" : typeStr.includes("11") ? "Sân 11 (11v11)" : typeStr}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
 
             {/* 5. Bảng giá thuê sân theo Môn thể thao & Loại sân */}
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionHeader}>Bảng giá thuê sân </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                <Ionicons name="pricetag-outline" size={18} color="#000" style={{ marginRight: 6 }} />
+                <Text style={styles.sectionTitle}>Bảng giá thuê sân (theo loại sân)</Text>
+              </View>
 
-              <View style={{ gap: 8, marginTop: 10 }}>
+              <View style={{ gap: 10 }}>
                 {[
                   {
                     sportKey: "football",
-                    title: "Bảng giá Môn Bóng đá",
-                    bg: "#ECFDF5",
-                    borderColor: "#A7F3D0",
+                    title: "⚽ Sân Bóng Đá (VND / giờ)",
+                    bg: "#F0FDF4",
+                    borderColor: "#BBF7D0",
                     fallbackPrices: [
-                      { type: "Sân 5 (5v5)", price: "300.000đ - 450.000đ / giờ" },
-                      { type: "Sân 7 (7v7)", price: "600.000đ - 900.000đ / giờ" },
-                      { type: "Sân 11 (11v11)", price: "1.000.000đ - 1.500.000đ / giờ" },
+                      { type: "Sân 5 (5v5)", price: "250.000đ - 350.000đ / giờ" },
+                      { type: "Sân 7 (7v7)", price: "400.000đ - 550.000đ / giờ" },
+                      { type: "Sân 11 (11v11)", price: "800.000đ - 1.200.000đ / giờ" },
                     ],
                   },
                   {
                     sportKey: "badminton",
-                    title: "Bảng giá Môn Cầu lông",
+                    title: "🏸 Sân Cầu Lông (VND / giờ)",
                     bg: "#EFF6FF",
                     borderColor: "#BFDBFE",
                     fallbackPrices: [
-                      { type: "Sân đơn (1v1)", price: "120.000đ - 180.000đ / giờ" },
-                      { type: "Sân đôi (2v2)", price: "200.000đ - 280.000đ / giờ" },
+                      { type: "Sân đơn (1v1)", price: "80.000đ - 120.000đ / giờ" },
+                      { type: "Sân đôi (2v2)", price: "120.000đ - 160.000đ / giờ" },
                     ],
                   },
                   {
                     sportKey: "pickleball",
-                    title: "Bảng giá Môn Pickleball",
-                    bg: "#F3E8FF",
+                    title: "🏓 Sân Pickleball (VND / giờ)",
+                    bg: "#FAF5FF",
                     borderColor: "#E9D5FF",
                     fallbackPrices: [
                       { type: "Sân đơn (1v1)", price: "150.000đ - 220.000đ / giờ" },
@@ -981,7 +989,7 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                         }}>
                           {hasPriceTableData
                             ? realRows.map((r, idx) => (
-                                <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                                <View key={`rrow_${idx}_${r.fieldType || ''}`} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
                                   <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>• {r.fieldType}:</Text>
                                   <Text style={{ fontSize: 13, fontWeight: "700", color: "#EA580C" }}>
                                     {Number(r.price).toLocaleString("vi-VN")}đ / giờ

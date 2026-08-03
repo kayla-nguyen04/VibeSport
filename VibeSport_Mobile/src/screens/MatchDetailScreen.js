@@ -21,6 +21,7 @@ import {
   getMatchById,
   deleteMatch,
   acceptDeleteMatch,
+  rejectDeleteMatch,
   requestJoinMatch,
   joinMatch,
   cancelJoinRequest,
@@ -210,6 +211,43 @@ const getDayLabel = (dateStr) => {
   const isToday = d.toDateString() === today.toDateString();
   const dayName = days[d.getDay()];
   return isToday ? `${dayName} hôm nay` : dayName;
+};
+
+const isMatchStartingWithinOneHour = (matchObj) => {
+  if (!matchObj || !matchObj.date) return false;
+  try {
+    let year, month, day;
+    if (matchObj.date.includes("/")) {
+      const parts = matchObj.date.split("/").map(Number);
+      day = parts[0];
+      month = parts[1];
+      year = parts[2];
+    } else if (matchObj.date.includes("-")) {
+      const parts = matchObj.date.split("-");
+      if (parts[0].length === 4) {
+        year = Number(parts[0]);
+        month = Number(parts[1]);
+        day = Number(parts[2]);
+      } else {
+        day = Number(parts[0]);
+        month = Number(parts[1]);
+        year = Number(parts[2]);
+      }
+    } else {
+      return false;
+    }
+
+    const startStr = matchObj.startTime || "19:00";
+    const [h, m] = startStr.split(":").map(Number);
+
+    const matchStart = new Date(year, month - 1, day, h || 0, m || 0, 0);
+    const now = new Date();
+
+    const diffMs = matchStart.getTime() - now.getTime();
+    return diffMs <= 60 * 60 * 1000;
+  } catch (e) {
+    return false;
+  }
 };
 
 const normalizeId = (id) => (id == null ? "" : String(id));
@@ -433,6 +471,10 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleStartMatch = () => {
+    if (match?.deletionVote?.active) {
+      Alert.alert("Thông báo", "Trận đấu đang trong quá trình biểu quyết xóa, không thể Bắt đầu!");
+      return;
+    }
     const joinedCount = (match?.participants || []).length;
     const requiredCount = match?.maxPlayers || 10;
     const isNotEnough = joinedCount < requiredCount;
@@ -475,6 +517,10 @@ export default function MatchDetailScreen({ navigation, route }) {
       try {
         setLoading(true);
         await reloadMatch();
+        if (route?.params?.autoOpenPositionModal) {
+          setShowPositionModal(true);
+          navigation.setParams({ autoOpenPositionModal: false });
+        }
       } catch (err) {
         Alert.alert("Lỗi", err.message);
         navigation.goBack();
@@ -482,7 +528,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         setLoading(false);
       }
     })();
-  }, [matchId, navigation]);
+  }, [matchId, navigation, route?.params?.autoOpenPositionModal]);
 
   useEffect(() => {
     if (!socket || !matchId) return;
@@ -615,7 +661,20 @@ export default function MatchDetailScreen({ navigation, route }) {
     if (match?.sport !== "football") return [];
 
     const takenPositionIds = new Set();
-    pendingRequestPositions.forEach((entry) => {
+
+    // 1. Positions already occupied by active participants in match.memberPositions
+    (match?.memberPositions || []).forEach((mp) => {
+      if (!mp || !mp.positionId) return;
+      const mpUserId = String(typeof mp.userId === "object" ? (mp.userId._id || mp.userId.id) : mp.userId);
+      const isPart = (match?.participants || []).some((p) => String(typeof p === "object" ? (p._id || p.id) : p) === mpUserId);
+      if (isPart) {
+        const posIds = Array.isArray(mp.positionId) ? mp.positionId : String(mp.positionId).split(",");
+        posIds.forEach((pId) => takenPositionIds.add(String(pId).trim()));
+      }
+    });
+
+    // 2. Positions taken by pending join requests
+    (pendingRequestPositions || []).forEach((entry) => {
       if (!entry || !Array.isArray(entry.positionIds)) return;
       entry.positionIds.forEach((posId) => {
         if (String(entry.userId) !== String(userId)) {
@@ -651,7 +710,7 @@ export default function MatchDetailScreen({ navigation, route }) {
     }
 
     return options;
-  }, [match?.sport, match?.selectedPositionIds, match?.benchMembersTeam1, match?.benchMembersTeam2, pendingRequestPositions, userId]);
+  }, [match?.sport, match?.selectedPositionIds, match?.memberPositions, match?.participants, match?.benchMembersTeam1, match?.benchMembersTeam2, pendingRequestPositions, userId]);
 
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
@@ -720,8 +779,16 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleRequestJoin = () => {
+    if (match?.deletionVote?.active) {
+      Alert.alert("Thông báo", "Trận đấu đang trong quá trình biểu quyết xóa, không thể xin tham gia!");
+      return;
+    }
     if (isMatchStarted) {
       Alert.alert("Thông báo", "Trận đấu đã bắt đầu hoặc đã kết thúc, không thể tham gia nữa.");
+      return;
+    }
+    if (isMatchStartingWithinOneHour(match)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể xin tham gia!");
       return;
     }
     if (match?.sport === "football" && positionOptions.length > 0) {
@@ -793,19 +860,35 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleConfirmJoinWithPositions = async (forceDirectJoin = false) => {
+    if (match?.deletionVote?.active) {
+      Alert.alert("Thông báo", "Trận đấu đang trong quá trình biểu quyết xóa, không thể tham gia!");
+      return;
+    }
+    if (isMatchStartingWithinOneHour(match)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể tham gia!");
+      return;
+    }
     if (selectedPositions.length !== 1) {
       Alert.alert("Thông báo", "Vui lòng chọn đúng 1 vị trí để tham gia");
       return;
     }
 
-    const shouldJoinDirectly = forceDirectJoin === true;
+    const isInvitedMember = (match?.invitedMembers || []).some(
+      (p) => getUserId(p) === String(userId)
+    );
+    const pendingInviteEntry = (match?.pendingInviteRequests || []).find(
+      (entry) => getUserId(entry?.userId) === String(userId)
+    );
+    const hasDirectInvite = isInvitedMember || (pendingInviteEntry && !pendingInviteEntry.requiresOwnerApproval);
+
+    const shouldJoinDirectly = forceDirectJoin === true || hasDirectInvite;
     try {
       setActionLoading(true);
       setShowPositionModal(false);
       let data;
       if (shouldJoinDirectly) {
         data = await joinMatch(match._id, userId, selectedPositions, token);
-        Alert.alert("Thành công 🎉", "Bạn đã tham gia vị trí thành công qua Link Mời!");
+        Alert.alert("Thành công 🎉", "Bạn đã tham gia vị trí thành công!");
       } else {
         data = await requestJoinMatch(match._id, userId, selectedPositions, token);
         Alert.alert("Thành công 🎉", "Đã gửi yêu cầu tham gia vị trí đã chọn đến chủ trận. Vui lòng chờ chủ trận duyệt!");
@@ -899,6 +982,14 @@ export default function MatchDetailScreen({ navigation, route }) {
   };
 
   const handleLeave = () => {
+    if (match?.teamStatus === "ongoing") {
+      Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể rút khỏi trận.");
+      return;
+    }
+    if (isMatchStartingWithinOneHour(match)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể rút khỏi trận!");
+      return;
+    }
     Alert.alert("Rút khỏi trận", "Bạn có chắc muốn rút khỏi trận này?", [
       { text: "Hủy", style: "cancel" },
       {
@@ -925,7 +1016,23 @@ export default function MatchDetailScreen({ navigation, route }) {
       Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Sửa.");
       return;
     }
-    navigation.navigate("CreateMatch", { editMatch: match });
+    if (isMatchStartingWithinOneHour(match)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Sửa!");
+      return;
+    }
+    Alert.alert(
+      "Xác nhận chỉnh sửa",
+      "Bạn có chắc chắn muốn chỉnh sửa thông tin trận đấu này?",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Chỉnh sửa",
+          onPress: () => {
+            navigation.navigate("CreateMatch", { editMatch: match });
+          },
+        },
+      ]
+    );
   };
 
   const handleDelete = () => {
@@ -933,30 +1040,34 @@ export default function MatchDetailScreen({ navigation, route }) {
       Alert.alert("Thông báo", "Trận đấu đang diễn ra, không thể Xóa.");
       return;
     }
+    if (isMatchStartingWithinOneHour(match)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Xóa!");
+      return;
+    }
     Alert.alert(
-      "Xóa trận đấu",
-      "Bạn có chắc muốn xóa trận này?",
+      "Xác nhận xóa trận đấu",
+      "Bạn có chắc chắn muốn xóa trận đấu này không? Thao tác này sẽ hủy trận và không thể hoàn tác.",
       [
         { text: "Hủy", style: "cancel" },
         {
-          text: "Xóa",
+          text: "Xóa trận đấu",
           style: "destructive",
           onPress: async () => {
             try {
               setActionLoading(true);
               const res = await deleteMatch(match._id, token);
               if (res?.isDeleted) {
-                Alert.alert("Thành công", res.message || "Đã xóa trận đấu");
+                Alert.alert("Thành công", res?.message || "Đã xóa trận đấu thành công.");
                 navigation.navigate("Home", { screen: "MatchesTab" });
               } else if (res?.pendingVote) {
-                Alert.alert("Thông báo biểu quyết", res.message);
-                fetchDetail();
+                Alert.alert("Thông báo biểu quyết", res?.message || "Đã gửi yêu cầu biểu quyết xóa.");
+                reloadMatch();
               } else {
-                Alert.alert("Thông báo", res.message || "Đã xử lý yêu cầu.");
-                fetchDetail();
+                Alert.alert("Thông báo", res?.message || "Đã xử lý yêu cầu.");
+                reloadMatch();
               }
             } catch (err) {
-              Alert.alert("Lỗi", err.message);
+              Alert.alert("Lỗi", err?.message || String(err) || "Không thể thực hiện thao tác xóa.");
             } finally {
               setActionLoading(false);
             }
@@ -971,14 +1082,31 @@ export default function MatchDetailScreen({ navigation, route }) {
       setActionLoading(true);
       const res = await acceptDeleteMatch(match._id, token);
       if (res?.isDeleted) {
-        Alert.alert("Thành công", res.message || "Trận đấu đã được xóa.");
+        Alert.alert("Thành công", res?.message || "Trận đấu đã được xóa.");
         navigation.navigate("Home", { screen: "MatchesTab" });
       } else {
-        Alert.alert("Đã xác nhận", res.message || "Đã ghi nhận biểu quyết của bạn.");
-        fetchDetail();
+        Alert.alert("Đã xác nhận", res?.message || "Đã ghi nhận biểu quyết của bạn.");
+        reloadMatch();
       }
     } catch (err) {
-      Alert.alert("Lỗi", err.message || "Không thể xác nhận biểu quyết");
+      Alert.alert("Lỗi", err?.message || String(err) || "Không thể xác nhận biểu quyết");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectDeleteVote = async () => {
+    try {
+      setActionLoading(true);
+      const res = await rejectDeleteMatch(match._id, token);
+      if (res?.isCanceled) {
+        Alert.alert("Đã hủy yêu cầu xóa", res?.message || "Yêu cầu xóa trận đấu đã bị hủy.");
+      } else {
+        Alert.alert("Đã từ chối", res?.message || "Đã ghi nhận ý kiến từ chối của bạn.");
+      }
+      reloadMatch();
+    } catch (err) {
+      Alert.alert("Lỗi", err?.message || String(err) || "Không thể thực hiện từ chối xóa.");
     } finally {
       setActionLoading(false);
     }
@@ -986,8 +1114,16 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   // ─── Owner: Invite from following list ───────────────────────
   const handleOpenInvite = async () => {
+    if (match?.deletionVote?.active) {
+      Alert.alert("Thông báo", "Trận đấu đang trong quá trình biểu quyết xóa, không thể mời thêm người!");
+      return;
+    }
     if (isMatchStarted) {
       Alert.alert("Thông báo", "Trận đấu đã bắt đầu hoặc đã kết thúc, không thể gửi lời mời tham gia nữa!");
+      return;
+    }
+    if (isMatchStartingWithinOneHour(match)) {
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể mời thêm thành viên!");
       return;
     }
     try {
@@ -1158,40 +1294,91 @@ export default function MatchDetailScreen({ navigation, route }) {
               {(() => {
                 const totalP = Math.max(1, (match.participants || []).length);
                 const acceptedUsersArr = (match.deletionVote.acceptedUsers || []).map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
+                const rejectedUsersArr = (match.deletionVote.rejectedUsers || []).map((u) => String(typeof u === "object" ? (u._id || u.id) : u));
                 const acceptedCount = acceptedUsersArr.length;
+                const rejectedCount = rejectedUsersArr.length;
                 const percentage = Math.round((acceptedCount / totalP) * 100);
                 const hasAccepted = acceptedUsersArr.includes(String(userId));
+                const hasRejected = rejectedUsersArr.includes(String(userId));
 
                 return (
                   <View style={{ marginTop: 6 }}>
                     <Text style={{ color: "#7F1D1D", fontSize: 12.5, lineHeight: 18 }}>
-                      Số thành viên đồng ý: <Text style={{ fontWeight: "700" }}>{acceptedCount}/{totalP} ({percentage}%)</Text> — Cần ≥ 80% để tiến hành xóa.
+                      Đồng ý xóa: <Text style={{ fontWeight: "700" }}>{acceptedCount}/{totalP} ({percentage}%)</Text> · Từ chối: <Text style={{ fontWeight: "700" }}>{rejectedCount}/{totalP}</Text> — Cần trên 50% đồng ý để xóa.
                     </Text>
 
-                    {isParticipant && !hasAccepted && (
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: "#DC2626",
-                          paddingVertical: 9,
-                          paddingHorizontal: 14,
-                          borderRadius: 8,
-                          marginTop: 10,
-                          alignItems: "center",
-                        }}
-                        onPress={handleAcceptDeleteVote}
-                        disabled={actionLoading}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
-                          Đồng ý xóa trận đấu
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+                    {isParticipant && (
+                      <View style={{ marginTop: 10 }}>
+                        {!hasAccepted && !hasRejected && (
+                          <View style={{ flexDirection: "row", gap: 10 }}>
+                            <TouchableOpacity
+                              style={{
+                                flex: 1,
+                                backgroundColor: "#DC2626",
+                                paddingVertical: 9,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                alignItems: "center",
+                              }}
+                              onPress={handleAcceptDeleteVote}
+                              disabled={actionLoading}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
+                                ✓ Đồng ý xóa
+                              </Text>
+                            </TouchableOpacity>
 
-                    {hasAccepted && (
-                      <Text style={{ color: "#059669", fontSize: 12, fontWeight: "700", marginTop: 6 }}>
-                        ✓ Bạn đã biểu quyết ĐỒNG Ý xóa trận đấu này.
-                      </Text>
+                            <TouchableOpacity
+                              style={{
+                                flex: 1,
+                                backgroundColor: "#4B5563",
+                                paddingVertical: 9,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                alignItems: "center",
+                              }}
+                              onPress={handleRejectDeleteVote}
+                              disabled={actionLoading}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
+                                ✕ Từ chối
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {hasAccepted && (
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <Text style={{ color: "#059669", fontSize: 12, fontWeight: "700" }}>
+                              ✓ Bạn đã ĐỒNG Ý xóa trận đấu.
+                            </Text>
+                            <TouchableOpacity
+                              style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
+                              onPress={handleRejectDeleteVote}
+                              disabled={actionLoading}
+                            >
+                              <Text style={{ color: "#4B5563", fontSize: 11, fontWeight: "600" }}>Đổi sang Từ chối</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {hasRejected && (
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <Text style={{ color: "#DC2626", fontSize: 12, fontWeight: "700" }}>
+                              ✕ Bạn đã TỪ CHỐI xóa trận đấu.
+                            </Text>
+                            <TouchableOpacity
+                              style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
+                              onPress={handleAcceptDeleteVote}
+                              disabled={actionLoading}
+                            >
+                              <Text style={{ color: "#059669", fontSize: 11, fontWeight: "600" }}>Đổi sang Đồng ý</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 );
@@ -1454,7 +1641,7 @@ export default function MatchDetailScreen({ navigation, route }) {
 
               return (
                 <UserRow
-                  key={pid || idx}
+                  key={pid ? `p_${pid}_${idx}` : `p_idx_${idx}`}
                   user={typeof p === "object" ? p : { name: "Người chơi" }}
                   badge={getParticipantPositionLabel(pid)}
                   isMe={isMe}
@@ -1802,7 +1989,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                   const requestPositions = getRequestPositions(requestUserId);
                   const posLabels = requestPositions.map((posId) => getPositionDisplayLabel(posId));
                   return (
-                    <View key={requestUserId || idx} style={styles.requestFigmaCard}>
+                    <View key={requestUserId ? `req_${requestUserId}` : `req_idx_${idx}`} style={styles.requestFigmaCard}>
                       <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }} onPress={() => openProfile(p)} activeOpacity={0.7}>
                         <View style={[styles.userAvatar, { backgroundColor: AVATAR_COLORS[idx % AVATAR_COLORS.length] }]}>
                           <Text style={styles.userInitials}>{getInitials(requestName)}</Text>
@@ -1868,11 +2055,8 @@ export default function MatchDetailScreen({ navigation, route }) {
             <ScrollView style={styles.positionModalList}>
               {positionOptions.map((option) => {
                 const isSelected = selectedPositions.includes(option.id);
-                const hasSameRoleInSameTeamSelected = selectedPositions.some((selectedId) => {
-                  const selectedOption = positionOptions.find((item) => item.id === selectedId);
-                  return selectedOption && selectedOption.teamNumber === option.teamNumber && selectedOption.role === option.role && selectedId !== option.id;
-                });
-                const isDisabled = option.disabled || (!isSelected && selectedPositions.length >= 1);
+                const isOccupied = option.disabled;
+                const isDisabled = isOccupied || (!isSelected && selectedPositions.length >= 1);
 
                 return (
                   <TouchableOpacity
@@ -1884,14 +2068,22 @@ export default function MatchDetailScreen({ navigation, route }) {
                     ]}
                     onPress={() => togglePositionSelection(option)}
                     disabled={isDisabled}
+                    activeOpacity={0.7}
                   >
-                    <Text style={[
-                      styles.positionOptionText,
-                      isSelected && styles.positionOptionTextSelected,
-                      isDisabled && styles.positionOptionTextDisabled,
-                    ]}>
-                      {option.label} · {option.isBench ? `Dự bị (Free) · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[
+                        styles.positionOptionText,
+                        isSelected && styles.positionOptionTextSelected,
+                        isDisabled && styles.positionOptionTextDisabled,
+                      ]}>
+                        {option.label} · {option.isBench ? `Dự bị (Free) · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
+                      </Text>
+                      {isOccupied && (
+                        <Text style={{ color: "#9CA3AF", fontSize: 11.5, marginTop: 2, fontStyle: "italic" }}>
+                          🔒 Đã có người chọn
+                        </Text>
+                      )}
+                    </View>
                     {isSelected && (
                       <Text style={styles.positionOptionCheck}>✓</Text>
                     )}

@@ -182,19 +182,18 @@ export default function CourtsPage() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [imageViewer, setImageViewer] = useState(null);
 
-  const menuRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+      if (!e.target.closest('.kebab-menu-container')) {
         setActiveMenuId(null);
       }
       if (ownerSearchRef.current && !ownerSearchRef.current.contains(e.target)) {
         setShowOwnerDropdown(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   // ── Owner search ──────────────────────────────────────
@@ -534,7 +533,7 @@ export default function CourtsPage() {
   // ── Submit form ───────────────────────────────────────
   const handleSubmitForm = async (e) => {
     e.preventDefault();
-    if (imageUploading) {
+    if (imageUploading || serviceMenuImageUploading) {
       showNotification('Vui lòng chờ ảnh tải lên xong!', 'error');
       return;
     }
@@ -571,6 +570,8 @@ export default function CourtsPage() {
         pricePerHour: Number(p.price || 0),
       }));
 
+      const ownerId = formData.owner?._id || formData.owner?.id || (typeof formData.owner === 'string' && formData.owner ? formData.owner : null);
+
       const payload = {
         name: formData.name.trim(),
         sportType: mainSport,
@@ -584,7 +585,7 @@ export default function CourtsPage() {
         priceTo: Number(formData.priceTo || 0),
         courtCount: Number(formData.courtCount || 0),
         status: formData.status,
-        owner: formData.owner?._id || null,
+        owner: ownerId,
         pitchOptions,
         serviceMenuImages: serviceMenuImagePreviews.map((p) => p.url),
         priceTable: (formData.priceTable || []).map((p) => ({
@@ -613,8 +614,9 @@ export default function CourtsPage() {
         images: imagePreviews.map((p) => p.url),
       };
 
-      if (isEditing && selectedCourt) {
-        await api.put(`/courts/${selectedCourt._id}`, payload);
+      const targetId = selectedCourt?._id || selectedCourt?.id;
+      if (isEditing && targetId) {
+        await api.put(`/courts/${targetId}`, payload);
         showNotification('Cập nhật toàn bộ thông tin sân thành công!');
       } else {
         await api.post('/courts', payload);
@@ -655,13 +657,16 @@ export default function CourtsPage() {
 
   const handleConfirmAction = async () => {
     const { actionType, targetCourt } = confirmModal;
+    const courtId = targetCourt?._id || targetCourt?.id;
+    if (!courtId) return;
+
     try {
       if (actionType === 'delete') {
-        await api.delete(`/courts/${targetCourt._id}`);
+        await api.delete(`/courts/${courtId}`);
         showNotification(`Đã xóa sân "${targetCourt.name}" thành công.`);
       } else if (actionType === 'toggle_status') {
         const newStatus = targetCourt.status === 'hidden' ? 'active' : 'hidden';
-        await api.put(`/courts/${targetCourt._id}`, { status: newStatus });
+        await api.put(`/courts/${courtId}`, { status: newStatus });
         showNotification(`Đã đổi trạng thái sân thành công.`);
       }
       setConfirmModal({ visible: false, title: '', message: '', actionType: null, targetCourt: null });
@@ -884,59 +889,76 @@ export default function CourtsPage() {
         </div>
       ) : (
         <div className="courts-grid">
-          {filteredCourts.map((court) => (
-            <div key={court._id} className={`court-card${court.status === 'hidden' ? ' is-hidden-card' : ''}`}>
-              {/* Image */}
-              <div className="court-img-wrap">
-                {court.images?.[0] ? (
-                  <img src={court.images[0]} alt={court.name} className="court-img" onClick={() => setImageViewer({ src: court.images[0], alt: court.name })} style={{ cursor: 'pointer' }} />
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 48 }}>🏟️</div>
-                )}
-                <div className="badge-overlay">{renderSportBadges(court)}</div>
-                <span className={`status-tag-badge ${court.status}`}>
-                  {court.status === 'active' ? '🟢 Hoạt động' : '🔴 Đã ẩn'}
-                </span>
-                {/* Kebab menu */}
-                <div className="kebab-menu-container" ref={menuRef}>
-                  <button
-                    className="kebab-btn"
-                    onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === court._id ? null : court._id); }}
-                  >
-                    ⋮
-                  </button>
-                  {activeMenuId === court._id && (
-                    <div className="kebab-dropdown">
-                      <button className="dropdown-item" onClick={() => handleViewDetail(court)}>👁️ Xem chi tiết</button>
-                      <button className="dropdown-item" onClick={() => handleOpenEdit(court)}>✏️ Chỉnh sửa sân</button>
-                      <button className="dropdown-item" onClick={() => handlePromptToggleStatus(court)}>
-                        {court.status === 'hidden' ? '🟢 Hiển thị lại' : '🙈 Ẩn sân bãi'}
-                      </button>
-                      <button className="dropdown-item danger" onClick={() => handlePromptDelete(court)}>🗑️ Xóa sân bãi</button>
-                    </div>
+          {filteredCourts.map((court) => {
+            const cId = court._id || court.id;
+            const isMenuOpen = activeMenuId === cId;
+            return (
+              <div key={cId} className={`court-card${court.status === 'hidden' ? ' is-hidden-card' : ''}`}>
+                {/* Image */}
+                <div className="court-img-wrap">
+                  {court.images?.[0] ? (
+                    <img src={court.images[0]} alt={court.name} className="court-img" onClick={() => setImageViewer({ src: court.images[0], alt: court.name })} style={{ cursor: 'pointer' }} />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 48 }}>🏟️</div>
                   )}
+                  <div className="badge-overlay">{renderSportBadges(court)}</div>
+                  <span className={`status-tag-badge ${court.status}`}>
+                    {court.status === 'active' ? '🟢 Hoạt động' : '🔴 Đã ẩn'}
+                  </span>
+                  {/* Kebab menu */}
+                  <div className="kebab-menu-container">
+                    <button
+                      type="button"
+                      className="kebab-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuId(isMenuOpen ? null : cId);
+                      }}
+                    >
+                      ⋮
+                    </button>
+                    {isMenuOpen && (
+                      <div className="kebab-dropdown" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); handleViewDetail(court); }}>
+                          👁️ Xem chi tiết
+                        </button>
+                        <button type="button" className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); handleOpenEdit(court); }}>
+                          ✏️ Chỉnh sửa sân
+                        </button>
+                        <button type="button" className="dropdown-item" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); handlePromptToggleStatus(court); }}>
+                          {court.status === 'hidden' ? '🟢 Hiển thị lại' : '🙈 Ẩn sân bãi'}
+                        </button>
+                        <button type="button" className="dropdown-item danger" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); handlePromptDelete(court); }}>
+                          🗑️ Xóa sân bãi
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Body */}
-              <div className="court-body">
-                <h3 className="court-title">{court.name}</h3>
-                <p className="court-address">📍 {court.address}</p>
-                <div className="court-meta-row">
-                  <span>⏰ {court.openTime} – {court.closeTime}</span>
-                </div>
-                <div className="court-price-row">
-                  <span className="price-label">💰 Giá thuê:</span>
-                  <span className="price-val">{getDisplayPrice(court)}</span>
-                </div>
-                <div className="court-bottom-row">
-                  <button className="btn-detail-mobile-style" onClick={() => handleViewDetail(court)}>
-                    Xem chi tiết →
-                  </button>
+                {/* Body */}
+                <div className="court-body">
+                  <h3 className="court-title">{court.name}</h3>
+                  <p className="court-address">📍 {court.address}</p>
+                  <div className="court-meta-row">
+                    <span>⏰ {court.openTime} – {court.closeTime}</span>
+                  </div>
+                  <div className="court-meta-row" style={{ marginTop: 4 }}>
+                    <span style={{ color: '#16A34A', fontWeight: 600 }}>📞 SĐT chủ sân: {court.phone || court.owner?.phone || '+84327765806'}</span>
+                  </div>
+                  <div className="court-price-row">
+                    <span className="price-label">💰 Giá thuê:</span>
+                    <span className="price-val">{getDisplayPrice(court)}</span>
+                  </div>
+                  <div className="court-bottom-row">
+                    <button className="btn-detail-mobile-style" onClick={() => handleViewDetail(court)}>
+                      Xem chi tiết →
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -989,6 +1011,9 @@ export default function CourtsPage() {
                 </div>
                 <p className="meta-label">Địa chỉ</p>
                 <p className="mobile-meta-item">📍 {selectedCourt.address}</p>
+                <p className="mobile-meta-item" style={{ color: '#16A34A', fontWeight: 600, marginTop: 4 }}>
+                  📞 SĐT liên hệ: {selectedCourt.phone || selectedCourt.owner?.phone || '+84327765806'}
+                </p>
                 <div className="mobile-meta-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                   <div className="meta-box">
                     <span className="box-icon">⏰</span>
@@ -1010,28 +1035,26 @@ export default function CourtsPage() {
               </div>
 
               {/* Owner info */}
-              {selectedCourt.owner && (
-                <div className="mobile-section-card">
-                  <h3 className="mobile-sec-title">Thông tin Chủ sân</h3>
-                  <div className="owner-card-content">
-                    {selectedCourt.owner.avatar ? (
-                      <img src={selectedCourt.owner.avatar} alt="" className="owner-card-avatar" />
-                    ) : (
-                      <div className="owner-card-avatar-fallback">
-                        {(selectedCourt.owner.displayName || selectedCourt.owner.name || 'O')[0].toUpperCase()}
-                      </div>
-                    )}
-                    <div className="owner-card-info">
-                      <p className="owner-card-name">{selectedCourt.owner.displayName || selectedCourt.owner.name}</p>
-                      <span className="owner-card-tag">👑 Chủ sân</span>
-                      <div className="owner-card-details">
-                        {selectedCourt.owner.email && <span>📧 {selectedCourt.owner.email}</span>}
-                        {selectedCourt.owner.phone && <span>📞 {selectedCourt.owner.phone}</span>}
-                      </div>
+              <div className="mobile-section-card">
+                <h3 className="mobile-sec-title">Thông tin Chủ sân & Liên hệ</h3>
+                <div className="owner-card-content">
+                  {selectedCourt.owner?.avatar ? (
+                    <img src={selectedCourt.owner.avatar} alt="" className="owner-card-avatar" />
+                  ) : (
+                    <div className="owner-card-avatar-fallback">
+                      {(selectedCourt.owner?.displayName || selectedCourt.owner?.name || selectedCourt.name || 'C')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="owner-card-info">
+                    <p className="owner-card-name">{selectedCourt.owner?.displayName || selectedCourt.owner?.name || `Chủ sân ${selectedCourt.name}`}</p>
+                    <span className="owner-card-tag">👑 Chủ sân</span>
+                    <div className="owner-card-details">
+                      {selectedCourt.owner?.email && <span>📧 {selectedCourt.owner.email}</span>}
+                      <span>📞 {selectedCourt.phone || selectedCourt.owner?.phone || '+84327765806'}</span>
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Price table */}
               <div className="mobile-section-card">
