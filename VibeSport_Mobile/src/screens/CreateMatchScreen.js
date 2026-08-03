@@ -1778,12 +1778,8 @@ export default function CreateMatchScreen({ navigation, route }) {
     const numP = Number(maxP);
     setFootballMaxPlayers(numP);
     setIsCourtPresetsExpanded(true);
-    const limit = (FOOTBALL_FORMATS[numP] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
-    setSelectedPositionIds((prev) => {
-      const t1 = prev.filter((id) => id.startsWith("t1_"));
-      const t2 = prev.filter((id) => id.startsWith("t2_"));
-      return [...t1.slice(0, limit), ...t2.slice(0, limit)];
-    });
+    const fmt = FOOTBALL_FORMATS[numP] || FOOTBALL_FORMATS[22];
+    setSelectedPositionIds([...fmt.team1Ids, ...fmt.team2Ids]);
   };
 
   const handleIncreaseRole = (role) => {
@@ -1924,6 +1920,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       time: `${selectedTimeSlot} - ${endTimeSlot}`,
       totalHours: calculateTotalHours(selectedTimeSlot, endTimeSlot),
       totalCourtCost: Math.round(Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot)),
+      costPerPlayer: Math.round((Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot)) / Math.max(1, (sport === "football" && Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0 ? selectedPositionIds.length : (maxPlayers - (b1 + b2))))),
       maxPlayers,
       positionsNeeded: sport === "football" ? positionsNeeded : [],
       selectedPositionIds: sport === "football" ? selectedPositionIds : [],
@@ -3131,9 +3128,15 @@ export default function CreateMatchScreen({ navigation, route }) {
 
         {/* Tính toán Tổng giờ thuê & Tổng tiền thuê sân */}
         {(() => {
+          const b1 = Number(benchMembersTeam1 || 0);
+          const b2 = Number(benchMembersTeam2 || 0);
           const pricePerHourNum = Number(costPerPerson || 0);
           const totalHours = calculateTotalHours(selectedTimeSlot, endTimeSlot);
           const totalCourtCost = Math.round(pricePerHourNum * totalHours);
+          const mainPlayersCount = sport === "football" && Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0
+            ? selectedPositionIds.length
+            : Math.max(1, (activeTotalPeople || 10) - (b1 + b2));
+          const costPerPlayerVal = Math.round(totalCourtCost / mainPlayersCount);
 
           return (
             <View style={{
@@ -3169,10 +3172,10 @@ export default function CreateMatchScreen({ navigation, route }) {
 
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#059669" }}>
-                  💵 Giá thuê 1 người:
+                  💵 Giá thuê 1 người ({mainPlayersCount} người chính):
                 </Text>
                 <Text style={{ fontSize: 14.5, fontWeight: "800", color: "#059669" }}>
-                  {formatNumberWithDots(String(Math.round(totalCourtCost / Math.max(activeTotalPeople, 1))))} VND 
+                  {formatNumberWithDots(String(costPerPlayerVal))} VND 
                 </Text>
               </View>
             </View>
