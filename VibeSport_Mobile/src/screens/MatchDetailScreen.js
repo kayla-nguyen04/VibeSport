@@ -1440,9 +1440,12 @@ export default function MatchDetailScreen({ navigation, route }) {
 
               {/* Flexible Centered Badges */}
               {(() => {
+                const mainPlayersCount = match.sport === "football" && Array.isArray(match.selectedPositionIds) && match.selectedPositionIds.length > 0
+                  ? match.selectedPositionIds.length
+                  : Math.max(1, (match.maxPlayers || 10) - (match.benchMembers || 0));
                 const totalHoursVal = match.totalHours || 1;
                 const totalCostVal = match.totalCourtCost || (match.costPerPerson * totalHoursVal);
-                const costPerPlayerVal = match.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / (displayTotalNeeded || match.maxPlayers || 10)) : match.costPerPerson);
+                const costPerPlayerVal = match.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / mainPlayersCount) : match.costPerPerson);
 
                 return (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6, marginVertical: 12 }}>

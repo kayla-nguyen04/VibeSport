@@ -602,9 +602,12 @@ export default function TeamsScreen({ navigation }) {
       ? (maxCount === 10 ? "Sân 5 (5v5)" : maxCount === 14 ? "Sân 7 (7v7)" : "Sân 11 (11v11)")
       : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)");
 
+    const mainPlayersCount = item.sport === "football" && Array.isArray(item.selectedPositionIds) && item.selectedPositionIds.length > 0
+      ? item.selectedPositionIds.length
+      : Math.max(1, (item.maxPlayers || 10) - (item.benchMembers || 0));
     const totalHoursVal = item.totalHours || 1;
     const totalCostVal = item.totalCourtCost || (item.costPerPerson * totalHoursVal);
-    const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / (maxCount || 10)) : item.costPerPerson);
+    const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / mainPlayersCount) : item.costPerPerson);
 
     // Position needs (football only)
     const positionNeeds = [];
