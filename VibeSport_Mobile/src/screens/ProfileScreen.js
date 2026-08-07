@@ -218,7 +218,13 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
     try {
       const res = await getMatches({ userId, participantId: userId, limit: 30, page: 1 }, token);
       const matchesList = Array.isArray(res) ? res : (res?.data || res?.matches || []);
-      setHistoryMatches(Array.isArray(matchesList) ? matchesList : []);
+      
+      // Chỉ lọc và giữ lại các trận đã kết thúc
+      const completedMatches = (Array.isArray(matchesList) ? matchesList : []).filter(
+        (match) => match.status === 'completed' || match.teamStatus === 'ended'
+      );
+      
+      setHistoryMatches(completedMatches);
     } catch (err) {
       console.log('Error loading history matches:', err);
     } finally {

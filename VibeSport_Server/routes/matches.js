@@ -226,12 +226,20 @@ router.post("/", authMiddleware, async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { sport, q, area, startTime, createdBy, participantId, userId } = req.query;
+    const { sport, q, area, startTime, createdBy, participantId, userId, status, teamStatus } = req.query;
 
     const filter = {};
 
     if (sport) {
       filter.sport = sport;
+    }
+
+    // Bổ sung lọc trạng thái trận đấu (không đụng đến logic cũ)
+    if (status && status.trim()) {
+      filter.status = status.trim();
+    }
+    if (teamStatus && teamStatus.trim()) {
+      filter.teamStatus = teamStatus.trim();
     }
 
     if (createdBy && createdBy.trim()) {
