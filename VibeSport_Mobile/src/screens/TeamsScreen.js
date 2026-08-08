@@ -26,6 +26,7 @@ import { Screen } from "../components/Screen";
 import { primary } from "../theme";
 import { savePost, unsavePost, deletePost, fetchSavedPosts } from "../redux/postSlice";
 import { ReportModal } from "../components/ReportModal";
+import { VibeAiModal } from "../components/VibeAiModal"; // 🟢 THÊM IMPORT VIBESPORT AI
 
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
 const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
@@ -609,7 +610,6 @@ export default function TeamsScreen({ navigation }) {
     const totalCostVal = item.totalCourtCost || (item.costPerPerson * totalHoursVal);
     const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / mainPlayersCount) : item.costPerPerson);
 
-    // Position needs (football only)
     const positionNeeds = [];
     if (item.sport === "football") {
       const ROLE_ALIASES = {
@@ -715,31 +715,26 @@ export default function TeamsScreen({ navigation }) {
 
           {/* 2, 4, 5, 6, 7: Flexible Responsive Badges */}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 4,marginRight:10 }}>
-            {/* Loại sân */}
             <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight:10}}>
               <MaterialCommunityIcons name="soccer-field" size={14} color="#6B7280" style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>{pitchTypeLabel}</Text>
             </View>
 
-            {/* Trình độ */}
             <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:10 }}>
               <Ionicons name="ribbon-outline" size={14} color="#FF6B3D" style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 12, color: ORANGE, fontWeight: "700" }}>{item.skillLevel || "Người mới"}</Text>
             </View>
 
-            {/* Giá 1 người */}
             <View style={{ backgroundColor: "#ECFDF5", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#A7F3D0", flexDirection: "row", alignItems: "center", marginRight: 10 }}>
               <Ionicons name="cash-outline" size={14} color="#059669" style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 12, color: "#059669", fontWeight: "700" }}>{formatCost(costPerPlayerVal)}</Text>
             </View>
 
-             {/* Số người đã tìm */}
             <View style={{ backgroundColor: "#FFF7ED", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FFD8A8", flexDirection: "row", alignItems: "center",marginRight:10 }}>
               <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 12, color: "#C2410C", fontWeight: "700" }}>Đã tìm: {displayFound}</Text>
             </View>
 
-            {/* Tiền dịch vụ */}
             <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="basket-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>Giá DV: {formatServiceCostDisplay(item.serviceCost)}</Text>
@@ -747,7 +742,6 @@ export default function TeamsScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 8. Vị trí cần tìm (football only) */}
         {positionNeeds.length > 0 && (
           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 8, paddingHorizontal: 2, marginLeft:9 }}>
             <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Vị trí cần tìm:</Text>
@@ -1055,6 +1049,9 @@ export default function TeamsScreen({ navigation }) {
           }
         />
       )}
+
+      {/* 🟢 NHÚNG VIBESPORT AI FAB & MODAL CHAT VÀO ĐÂY */}
+      <VibeAiModal navigation={navigation} />
 
       <Modal
         visible={showCreateModal}
@@ -1691,7 +1688,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: "100%",
-    backgroundColor: "#0066cc", // Blue progress bar fill
+    backgroundColor: "#0066cc",
   },
 
   // Created Actions footer

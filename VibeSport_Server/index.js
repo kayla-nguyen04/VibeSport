@@ -34,6 +34,7 @@ const Session = require('./models/Session');
 const Follow = require('./models/Follow');
 const fcRouter = require('./routes/fc');
 const seedTags = require('./scripts/seedTags');
+const aiRoutes = require('./routes/aiRoutes');
 const { startMatchNotificationCron } = require('./utils/matchNotificationCron');
 const { sendSystemCallMessage } = require('./controllers/chatController');
 
@@ -45,7 +46,6 @@ const io = new Server(server, {
     origin: '*',
   },
 });
-
 // ================================
 // Socket.IO authentication middleware
 // Verify token from handshake auth, set socket.data.userId server-side
@@ -723,8 +723,8 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // ĐÃ SỬA: Đăng ký Router Ratings ĐÚNG VỊ TRÍ (sau app.use(express.json()))
+app.use('/api/ai', aiRoutes);
 app.use('/api/ratings', ratingRoutes);
-
 app.use('/api/agora', agoraRouter);
 app.use("/api/otp", otpRoutes);
 app.use("/api/matches", matchRoutes);
