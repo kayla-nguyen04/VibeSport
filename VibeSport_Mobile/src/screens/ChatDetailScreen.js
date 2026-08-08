@@ -39,6 +39,7 @@ import {
   pinMessage,
   unpinMessage,
   recallMessage,
+  setCallState,
 } from '../redux/chatSlice';
 import { API_BASE_URL } from '../components/constants/api';
 import { getPresenceDisplay } from '../utils/presence';
@@ -183,6 +184,9 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     // Bước 1: Emit sự kiện cuộc gọi tới người nhận (peerId = null → server emit tới tất cả memberIds)
     socketEmitter.emit('start_call', { ...payload, peerId });
+
+    // State machine: caller đã emit start_call, đang chờ callee nhấc máy
+    dispatch(setCallState('OUTGOING_RINGING'));
 
     // Bước 2: Navigate caller vào CallScreen và join channel luôn.
     // Truyền kèm `participants` để CallScreen có thể map agoraUid → tên thật

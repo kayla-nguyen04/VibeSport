@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Alert } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import io from 'socket.io-client';
 import { API_BASE_URL } from '../components/constants/api';
@@ -25,22 +26,16 @@ import {
   clearActiveCallChannel,
   setCallError,
   clearCallError,
+  setCallState,
+  setEndedReason,
 } from '../redux/chatSlice';
 import { safeGoBackFromCall } from '../navigation/navigationRef';
 import { updatePostLikes, updateCommentCount } from '../redux/postSlice';
 
-/**
- * Shared emitter cho phép các component khác gửi socket event
- * mà không cần tự kết nối socket riêng.
- * Cách dùng: import { socketEmitter } from './useSocket'; rồi
- *   socketEmitter.emit('event_name', payload);
- */
+
 export const socketEmitter = {
   _socket: null,
-  /**
-   * Emit socket event, optional acknowledgement callback.
-   * Ví dụ: socketEmitter.emit('join_channel_request', payload, (response) => {...});
-   */
+  
   emit(event, data, ackFn) {
     if (ackFn) {
       this._socket?.emit(event, data, ackFn);
@@ -65,7 +60,6 @@ export function useSocket() {
   const activeCallChannelRef = useRef(activeCallChannel);
   const incomingCallRef = useRef(incomingCall);
 
-  // Luôn giữ ref mới nhất để socket closure luôn đọc được giá trị mới nhất
   useEffect(() => {
     activeCallChannelRef.current = activeCallChannel;
   }, [activeCallChannel]);
@@ -220,37 +214,24 @@ export function useSocket() {
         );
       });
 
-      // ===== Cuộc gọi Agora =====
-
-      // === Helper chung: cleanup toàn bộ khi cuộc gọi kết thúc từ phía peer ===
-      // Dùng cho call_busy / call_rejected / call_cancelled / call_answered_elsewhere
-      // / call_ended. Đảm bảo mọi event dẫn tới "cuộc gọi không tiếp tục" đều:
-      // 1. Clear redux state (incomingCall, activeCallChannel)
-      // 2. Clear refs (activeCallChannelRef, incomingCallRef)
-      // 3. safeGoBackFromCall() — pop CallScreen nếu đang ở đó
-      //    (safe vì safeGoBackFromCall chỉ goBack nếu route.name === 'Call',
-      //     không ảnh hưởng tới các màn hình khác như ChatDetail)
-      // 4. Log rõ ràng để verify luồng khi test
-      //
-      // Khi CallScreen unmount, useEffect cleanup trong CallScreen sẽ tự động:
-      //   - emit leave_channel (qua emitLeaveChannelOnce — server xóa khỏi channel)
-      //   - useAgoraCall cleanup → engine.leaveChannel() + engine.release()
-      // Nên ta KHÔNG cần gọi leaveCall() thủ công ở đây.
+      
       const leaveCallScreen = (reason, payload) => {
-        console.log(`[SOCKET] 🚪 leaveCallScreen(${reason}):`, payload);
         // Clear Redux
         dispatch(clearIncomingCall());
         dispatch(clearActiveCallChannel());
         // Clear refs
         activeCallChannelRef.current = null;
         incomingCallRef.current = null;
-        // Pop CallScreen (an toàn — chỉ pop nếu đang ở route 'Call')
-        const popped = safeGoBackFromCall();
-        console.log(`[SOCKET] 🚪 leaveCallScreen(${reason}) done — safeGoBackFromCall returned:`, popped);
+        
+        const finalReason = payload?.reason && payload.reason !== 'not_following'
+          ? payload.reason
+          : reason;
+        dispatch(setEndedReason(finalReason));
+        dispatch(setCallState('ENDED'));
+        safeGoBackFromCall();
       };
 
       socketInstance.on('incoming_call', (payload) => {
-        console.log('[SOCKET] 📞 incoming_call received:', payload);
         const currentUserId = user?.id || user?._id;
         // Nếu đang có cuộc gọi active HOẶC có cuộc gọi đến đang chờ → từ chối ngay
         if (activeCallChannelRef.current || incomingCallRef.current) {
@@ -270,38 +251,49 @@ export function useSocket() {
           console.log('[SOCKET] incoming_call ignored — caller is self');
           return;
         }
-        console.log('[SOCKET] incoming_call dispatching setIncomingCall:', payload);
         // Cập nhật ref TRƯỚC khi dispatch để chặn ngay các incoming_call kế tiếp
         // trong cùng tick (tránh bug useEffect sync ref trễ → duplicate emit call_busy)
         incomingCallRef.current = payload;
         activeCallChannelRef.current = payload.channelName;
-        // Log riêng groupName để debug dễ — payload được dispatch nguyên vẹn
-        // nên groupName đã đi vào Redux qua setIncomingCall(payload).
-        if (payload?.isGroup) {
-          console.log('[SOCKET] incoming_call GROUP variant — groupName =', payload.groupName ?? '(null/missing)');
-        }
         dispatch(setIncomingCall(payload));
         dispatch(setActiveCallChannel(payload.channelName));
+        // State machine: callee bắt đầu chuông
+        dispatch(setCallState('INCOMING_RINGING'));
       });
 
       // Caller nhận khi người kia đang bận (line/callee đang trong cuộc gọi khác)
       socketInstance.on('call_busy', (payload) => {
-        console.log('[SOCKET] 🛑 call_busy received:', payload);
         leaveCallScreen('call_busy', payload);
       });
 
-      // Caller nhận khi callee chủ động bấm Reject (IncomingCallModal.handleReject)
-      // HOẶC khi server gửi not_following vì 2 bên chưa follow lẫn nhau.
-      // BẤT KỲ reason nào → caller PHẢI thoát CallScreen.
+      
       socketInstance.on('call_rejected', (payload) => {
-        console.log('[SOCKET] 🛑 call_rejected received:', payload);
-        // Nếu server kèm reason đặc biệt (vd not_following), hiển thị message thân thiện
+        // Case 1: not_following → đóng ngay, dùng leaveCallScreen để đảm bảo
+        // đầy đủ cleanup (refs + dispatch + pop).
         if (payload?.reason === 'not_following') {
           dispatch(setCallError(payload?.message || 'Cả hai cần follow lẫn nhau để gọi.'));
-          console.log('[SOCKET] 🛑 call_rejected reason=not_following → set callError');
+          leaveCallScreen('call_rejected', payload);
+          return;
         }
-        // Luôn thoát CallScreen, bất kể reason
-        leaveCallScreen('call_rejected', payload);
+
+        // Case 2: reject/timeout → dispatch state NGAY để CallScreen overlay
+        // hiển thị text theo endedReason, delay 1.8s rồi mới pop.
+        dispatch(clearIncomingCall());
+        dispatch(clearActiveCallChannel());
+        activeCallChannelRef.current = null;
+        incomingCallRef.current = null;
+
+        const finalReason = payload?.reason || 'call_rejected';
+        dispatch(setEndedReason(finalReason));
+        dispatch(setCallState('ENDED'));
+
+        // Delay 1.8s trước khi pop CallScreen — đủ để user đọc
+        // "Cuộc gọi bị từ chối" / "Không có phản hồi" trên overlay.
+        // safeGoBackFromCall tự check route.name nên an toàn nếu user đã navigate
+        // đi chỗ khác trong lúc chờ.
+        setTimeout(() => {
+          safeGoBackFromCall();
+        }, 1800);
       });
 
       // Caller nhận khi mình chủ động hủy trước khi ai nhấc máy
@@ -309,13 +301,11 @@ export function useSocket() {
       // khi remoteUsers.length === 0). Trong trường hợp này chính mình đã navigate
       // goBack() rồi, nhưng để chắc chắn vẫn gọi helper.
       socketInstance.on('call_cancelled', (payload) => {
-        console.log('[SOCKET] 🛑 call_cancelled received:', payload);
         leaveCallScreen('call_cancelled', payload);
       });
 
       // Caller nhận khi có người khác nhấc máy (group call, target khác với mình)
       socketInstance.on('call_answered_elsewhere', (payload) => {
-        console.log('[SOCKET] 🛑 call_answered_elsewhere received:', payload);
         leaveCallScreen('call_answered_elsewhere', payload);
       });
 
@@ -325,7 +315,6 @@ export function useSocket() {
       // - Bỏ qua nếu chính mình là người rời (endedBy === currentUserId) → tránh lặp.
       // - Chỉ xử lý nếu đang thực sự ở trong channel đó (activeCallChannelRef khớp).
       socketInstance.on('call_ended', (payload) => {
-        console.log('[SOCKET] 🛑 call_ended received:', payload);
         const currentUserId = user?.id || user?._id;
         // Bỏ qua nếu chính mình là người end call (đã tự cleanup rồi)
         if (payload?.endedBy && String(payload.endedBy) === String(currentUserId)) {
@@ -337,7 +326,6 @@ export function useSocket() {
           activeCallChannelRef.current &&
           String(activeCallChannelRef.current) === String(payload?.channelName)
         ) {
-          console.log('[SOCKET] call_ended: leaving CallScreen because peer ended the call');
           leaveCallScreen('call_ended', payload);
         } else {
           console.log('[SOCKET] call_ended ignored — not in this channel', {
