@@ -18,15 +18,25 @@ import { useAgoraCall } from '../hooks/useAgoraCall';
 import { generateAgoraTokenRequest } from '../services/agoraApi';
 import { objectIdToUid } from '../utils/objectIdToUid';
 import { socketEmitter } from '../hooks/useSocket';
-import { setActiveCallChannel, clearActiveCallChannel, clearCallError } from '../redux/chatSlice';
+import {
+  setActiveCallChannel,
+  clearActiveCallChannel,
+  clearCallError,
+  setCallState,
+  setConnectedAt,
+  resetCallState,
+  setEndedReason,
+} from '../redux/chatSlice';
 let RtcSurfaceView = View;
+let RtcTextureView = View;
 let RenderModeType = {};
 try {
   const agora = require('react-native-agora');
   if (agora.RtcSurfaceView) RtcSurfaceView = agora.RtcSurfaceView;
+  if (agora.RtcTextureView) RtcTextureView = agora.RtcTextureView;
   if (agora.RenderModeType) RenderModeType = agora.RenderModeType;
 } catch (e) {
-  // Expo Go environment fallback
+  
 }
 import { getAvatarColor } from '../theme/avatarPalette';
 import {
@@ -42,11 +52,7 @@ import {
   status,
 } from '../theme';
 
-// Xin quyền Camera/Microphone.
-// - Android: dùng PermissionsAndroid.requestMultiple
-// - iOS: quyền được hệ điều hành tự hỏi khi Agora truy cập camera/mic lần đầu,
-//   nên ở đây chỉ cần trả về true (miễn là Info.plist đã khai báo
-//   NSCameraUsageDescription / NSMicrophoneUsageDescription).
+
 async function requestPermission(permission) {
   if (Platform.OS === 'ios') {
     return true;
@@ -65,7 +71,7 @@ async function requestPermission(permission) {
 
     return result === PermissionsAndroid.RESULTS.GRANTED;
   } catch (err) {
-    console.warn('[DEBUG] Permission error:', err);
+    console.warn('[CallScreen] Permission error:', err);
     return false;
   }
 }
@@ -86,12 +92,7 @@ export function CallScreen({ route, navigation }) {
   const isVideo = callType === 'video';
   const agoraUid = objectIdToUid(currentUserId);
 
-  // === Map agoraUid → tên thật để hiển thị tile thay vì số uid ===
-  // Vì Agora chỉ trả về uid dạng int, không kèm tên user.
-  // - 1-1: route.params.peer có _id + name → map 1 entry.
-  // - Group: route.params.participants là mảng đầy đủ từ conversationMeta.
-  // - Fallback: nếu không có peer/participants (vd callee chưa navigate kèm
-  //   peer thật), vẫn trả về map rỗng — render sẽ dùng `String(uid)` làm fallback.
+  
   const uidToName = React.useMemo(() => {
     const map = {};
     if (Array.isArray(routeParticipants) && routeParticipants.length > 0) {
@@ -111,13 +112,6 @@ export function CallScreen({ route, navigation }) {
         map[uid] = peer.name || 'Người dùng';
       }
     }
-    console.log('[CallScreen] 🗺️ uidToName map built:', {
-      isGroup,
-      routeParticipantsCount: routeParticipants?.length || 0,
-      hasPeer: !!peer,
-      mapEntries: Object.keys(map).length,
-      map,
-    });
     return map;
   }, [isGroup, routeParticipants, peer]);
 
@@ -126,7 +120,6 @@ export function CallScreen({ route, navigation }) {
     (uid) => {
       const name = uidToName?.[uid];
       if (name) return name;
-      // Fallback: dùng uid dạng số để vẫn có gì đó hiển thị
       return `User ${uid}`;
     },
     [uidToName]
@@ -140,43 +133,47 @@ export function CallScreen({ route, navigation }) {
     isJoined,
     isInitializing,
     isFrontCamera,
+    isSpeakerOn,
     joinCall,
     leaveCall,
     toggleMute,
     toggleVideo,
     switchCamera,
+    toggleSpeaker,
+    setOnConnectedCallback,
   } = useAgoraCall();
+
+  const formatDuration = useCallback((sec) => {
+    const s = Math.max(0, Math.floor(sec || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(r)}` : `${pad(m)}:${pad(r)}`;
+  }, []);
 
   const [isLoading, setIsLoading] = useState(true);
   const [joinError, setJoinError] = useState(null);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
-  // Chờ engine xử lý preview xong rồi mới render RtcSurfaceView
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [durationSec, setDurationSec] = useState(0);
 
-  // === Ref cờ chống emit leave_channel trùng ===
-  // - handleEndCall (chủ động bấm End) emit leave_channel 1 lần.
-  // - useEffect cleanup (khi component unmount) cũng muốn emit để đảm bảo
-  //   server nhận tín hiệu rời channel ngay cả khi leaveCall() bị miss.
-  //   Nhưng nếu đã emit từ handleEndCall rồi thì cleanup phải NO-OP.
-  // - Khi nhận call_ended từ phía kia (useSocket.js), safeGoBackFromCall()
-  //   cũng sẽ unmount → cleanup fires. Trong trường hợp đó, ta VẪN CẦN emit
-  //   leave_channel (để server xóa user khỏi channel + tính duration chính xác).
-  //   Vậy nên cờ chỉ chặn emit trùng, KHÔNG chặn lần đầu.
-  // - Use ref (không state) để thay đổi không gây re-render và luôn đọc được
-  //   giá trị mới nhất trong cleanup (closure issue với state cũ).
+  // ===== State machine + duration timer =====
+  const callState = useSelector((state) => state.chat.callState);
+  const connectedAt = useSelector((state) => state.chat.connectedAt);
+  const endedReason = useSelector((state) => state.chat.endedReason);
+
+  
   const hasLeftRef = useRef(false);
 
-  // Helper: emit leave_channel đúng 1 lần duy nhất trong lifecycle của component.
-  // Trả về true nếu đã emit (lần đầu), false nếu đã emit trước đó (skip).
+  
   const emitLeaveChannelOnce = useCallback(() => {
     if (hasLeftRef.current) {
-      console.log('[LEAVE] ⏭️ leave_channel skipped (already emitted this session)');
       return false;
     }
     const cn = String(channelName || '');
     if (!cn) return false;
     hasLeftRef.current = true;
-    console.log('[LEAVE] 📤 emit leave_channel (first time)', { channelName: cn, callType });
     socketEmitter.emit(
       'leave_channel',
       { channelName: cn, callType },
@@ -185,29 +182,36 @@ export function CallScreen({ route, navigation }) {
     return true;
   }, [channelName, callType]);
 
-  // Log trạng thái render mỗi lần thay đổi để debug video
-  useEffect(() => {
-    console.log('[RENDER] 📊 CallScreen state', {
-      isVideoReady,
-      isJoined,
-      isLoading,
-      isVideoOff,
-      remoteUsersCount: remoteUsers?.length ?? 0,
-      remoteUsers: remoteUsers?.map((u) => ({ uid: u.uid, hasVideo: u.hasVideo, hasAudio: u.hasAudio })),
-    });
-  }, [isVideoReady, isJoined, isLoading, isVideoOff, remoteUsers]);
-
-  // isVideoReady = true KHI engine thực sự join channel thành công
-  // (onJoinChannelSuccess event từ Agora SDK) — thay vì set ngay sau
-  // joinChannel() return (vì đó chỉ là dispatch, chưa chắc join thành công).
+  
   useEffect(() => {
     if (isJoined && !isVideoReady) {
-      console.log('[RENDER] 🎬 Engine joined channel (onJoinChannelSuccess) → set isVideoReady = true');
       setIsVideoReady(true);
     }
   }, [isJoined, isVideoReady]);
 
-  // Hiển thị callError từ Redux (vd not_following) rồi clear ngay
+  
+  useEffect(() => {
+    setOnConnectedCallback((ts) => {
+      dispatch(setConnectedAt(ts));
+      dispatch(setCallState('CONNECTED'));
+    });
+    return () => {
+      setOnConnectedCallback(null);
+    };
+  }, [setOnConnectedCallback, dispatch]);
+
+  useEffect(() => {
+    if (callState !== 'CONNECTED' || !connectedAt) {
+      setDurationSec(0);
+      return undefined;
+    }
+    setDurationSec(Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)));
+    const interval = setInterval(() => {
+      setDurationSec(Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [callState, connectedAt]);
+
   const callError = useSelector((state) => state.chat.callError);
   useEffect(() => {
     if (callError) {
@@ -252,7 +256,7 @@ export function CallScreen({ route, navigation }) {
         }
         if (!cancelled) setPermissionsGranted(true);
       } catch (err) {
-        console.warn('[DEBUG] permission error:', err);
+        console.warn('[CallScreen] permission error:', err);
         if (!cancelled) setPermissionsGranted(true);
       }
     })();
@@ -310,6 +314,11 @@ export function CallScreen({ route, navigation }) {
         if (cancelled) return;
 
         // Bước 3: Server xác nhận → thực sự join Agora
+        // State machine: chuyển sang CONNECTING (chỉ khi state hiện tại không phải CONNECTED —
+        // tránh reset timer nếu caller từng join rồi mà reconnect lại).
+        if (callState !== 'CONNECTED') {
+          dispatch(setCallState('CONNECTING'));
+        }
         dispatch(setActiveCallChannel(channelName));
         await joinCall(String(channelName), callType, res.token, agoraUid);
         // isVideoReady sẽ được set bởi useEffect bên dưới khi isJoined = true
@@ -340,32 +349,64 @@ export function CallScreen({ route, navigation }) {
   const peerId = !isGroup ? String(peer?._id || peer || '') : null;
 
   const handleEndCall = useCallback(() => {
-    // Phân biệt hai trường hợp:
-    // - remoteUsers.length === 0: caller hủy trước khi callee join → call_cancelled
-    // - remoteUsers.length > 0: cuộc gọi đã kết nối → chỉ leave_channel
+   
     if (remoteUsers.length === 0 && peerId) {
-      // Caller hủy giữa chừng, chưa ai nhận máy
       socketEmitter.emit('call_cancelled', { peerId, channelName: String(channelName) });
     } else if (remoteUsers.length === 0 && isGroup) {
-      // Group call: không có peerId cụ thể, server dùng targetIds đã lưu khi start_call
       socketEmitter.emit('call_cancelled', { peerId: null, channelName: String(channelName) });
     }
-    // Emit leave_channel đúng 1 lần (sẽ chặn re-emit từ useEffect cleanup)
     emitLeaveChannelOnce();
+    dispatch(setEndedReason('self_ended'));
+    dispatch(setCallState('ENDED'));
     leaveCall();
     navigation.goBack();
-  }, [remoteUsers.length, peerId, isGroup, channelName, callType, leaveCall, navigation, emitLeaveChannelOnce]);
+  }, [remoteUsers.length, peerId, isGroup, channelName, callType, leaveCall, navigation, emitLeaveChannelOnce, dispatch]);
+
+  const noAnswerTimerRef = useRef(null);
+  const clearNoAnswerTimer = useCallback(() => {
+    if (noAnswerTimerRef.current) {
+      clearTimeout(noAnswerTimerRef.current);
+      noAnswerTimerRef.current = null;
+    }
+  }, []);
+
+  const handleNoAnswerTimeout = useCallback(() => {
+    console.warn('[CallScreen] ⏱️ No-answer timeout fired (35s) — auto cancelling call');
+   
+    if (remoteUsers.length === 0 && peerId) {
+      socketEmitter.emit('call_cancelled', { peerId, channelName: String(channelName) });
+    } else if (remoteUsers.length === 0 && isGroup) {
+      socketEmitter.emit('call_cancelled', { peerId: null, channelName: String(channelName) });
+    }
+    emitLeaveChannelOnce();
+    dispatch(setEndedReason('no_answer'));
+    dispatch(setCallState('ENDED'));
+    leaveCall();
+    navigation.goBack();
+  }, [remoteUsers.length, peerId, isGroup, channelName, emitLeaveChannelOnce, leaveCall, navigation, dispatch]);
+
+  useEffect(() => {
+    if (callState === 'CONNECTED' || callState === 'ENDED' || callState === 'IDLE') {
+      clearNoAnswerTimer();
+      return undefined;
+    }
+    clearNoAnswerTimer(); // defensive: clear timer cũ trước khi set mới
+    noAnswerTimerRef.current = setTimeout(() => {
+      noAnswerTimerRef.current = null;
+      handleNoAnswerTimeout();
+    }, 35000);
+
+    return () => {
+      clearNoAnswerTimer();
+    };
+  }, [callState, clearNoAnswerTimer, handleNoAnswerTimeout]);
 
   useEffect(() => {
     return () => {
-      // Cleanup khi CallScreen unmount. Cũng gọi emitLeaveChannelOnce() để
-      // phát leave_channel nếu chưa có ai phát trước đó (vd bên kia gọi
-      // safeGoBackFromCall() khi nhận call_ended → component unmount mà không
-      // qua handleEndCall). Cờ hasLeftRef sẽ chặn việc emit trùng với
-      // handleEndCall. dispatch(clearActiveCallChannel()) luôn chạy để reset
-      // state Redux.
+     
       emitLeaveChannelOnce();
       dispatch(clearActiveCallChannel());
+      dispatch(resetCallState());
     };
   }, [dispatch, channelName, callType, emitLeaveChannelOnce]);
 
@@ -382,39 +423,21 @@ export function CallScreen({ route, navigation }) {
 
   // ---- Remote video tile ----
   const renderRemoteVideoTile = ({ item }) => {
-    // Lấy tên thật từ uidToName map (đã build từ peer/participants).
-    // Fallback về String(uid) nếu không tìm thấy (vd callee chưa có map).
+    
     const name = getDisplayName(item.uid);
     const hasVideo = item.hasVideo;
     const willRenderVideo = isVideoReady && hasVideo;
-    // Log mỗi lần render để verify logic
-    console.log('[RENDER] 🧩 renderRemoteVideoTile', {
-      uid: item.uid,
-      uidType: typeof item.uid,
-      displayName: name,
-      hasVideo,
-      isVideoReady,
-      willRenderVideo,
-    });
 
     return (
       <View key={`remote-tile-${String(item.uid)}`} style={styles.tile}>
-        {/* Video khi engine sẵn sàng VÀ remote có video; Avatar khi camera off hoặc đang kết nối */}
         {willRenderVideo ? (
-          // KEY ở đây (không chỉ trên View cha) là bắt buộc để React Native không
-          // reuse native SurfaceView giữa 2 user khác nhau khi remoteUsers thay đổi.
-          // Nếu thiếu, khi 1 user rời channel rồi user khác join, RtcSurfaceView có
-          // thể bị reuse → frame buffer cũ bị giữ → màn hình đen.
+          
           <RtcSurfaceView
             key={`remote-surface-${String(item.uid)}`}
             style={styles.videoSurface}
             canvas={{
               uid: item.uid,
               renderMode: RenderModeType.RenderModeFit,
-              // Bước 2 debug: thử NGƯỢC — remote nổi lên trên, local chìm xuống.
-              // Lý do: nếu remote bị đen do local surface đè, đảo ngược sẽ cho
-              // thấy remote ngay. Nếu vẫn đen → vấn đề nằm ngoài zOrder (vd
-              // native view reuse, hoặc texture/buffer chưa sẵn sàng).
               zOrderMediaOverlay: true,
               zOrderOnTop: false,
             }}
@@ -436,39 +459,19 @@ export function CallScreen({ route, navigation }) {
     );
   };
 
-  // ---- Video grid: LOCAL tách riêng (không re-render khi remoteUsers thay đổi) ----
-  // === BƯỚC 3 DEBUG: Tách case 1-1 ra khỏi FlatList ===
-  // Trước đây `if (total === 1)` chỉ check khi CHƯA có remote user nào join
-  // (chỉ mình local), trong khi case 1-1 (1 remote + 1 local) lại rơi vào
-  // nhánh dùng FlatList. FlatList's windowing/virtualization có thể can thiệp
-  // vào native SurfaceView lifecycle:
-  //   - CellRecyclerviewBridge có thể unmount/remount cell mỗi lần data thay đổi
-  //   - Native SurfaceView chỉ được coi là "ready" khi attach vào window tree
-  //     — FlatList đôi khi delay attach cho cells ngoài viewport logic
-  //   - Kết quả: SDK bind buffer thành công (result=0) nhưng native surface
-  //     chưa nhận được frame do view tree chưa ổn định → đen
-  // Fix: case 1-1 (remoteUsers.length === 1) render trực tiếp trong View
-  // thường, giống local. FlatList chỉ dùng cho group call (>=2 remotes).
   const renderVideoGrid = () => {
     const total = remoteUsers.length + 1; // +1 cho local user
-
-    // CASE 1: Chỉ có mình local (chưa ai join hoặc voice call đơn lẻ)
     if (total === 1) {
       return (
         <View style={styles.singleVideoContainer}>
-          <View key="local-tile" style={[styles.tile, styles.localTile]}>
+          <View key="local-tile" style={styles.localTileFullScreen}>
             {!isVideoOff && isVideoReady ? (
-              // KEY ổn định để React Native không re-mount native SurfaceView mỗi
-              // lần isVideoOff / isVideoReady đổi trạng thái.
               <RtcSurfaceView
                 key="local-surface"
                 style={styles.videoSurface}
                 canvas={{
                   uid: 0,
                   renderMode: RenderModeType.RenderModeFit,
-                  // Bước 2 debug: local đẩy xuống dưới (false) để nhường chỗ
-                  // cho remote. Nếu remote hiện ra → xác nhận nguyên nhân là
-                  // local surface đang đè lên remote.
                   zOrderMediaOverlay: false,
                   zOrderOnTop: false,
                 }}
@@ -488,32 +491,19 @@ export function CallScreen({ route, navigation }) {
               </View>
             )}
             <Text style={styles.tileName}>{currentUser?.name || 'Bạn'}</Text>
-            <View style={styles.localBadge}>
-              <Ionicons name="videocam" size={10} color={background.primary} />
-            </View>
           </View>
         </View>
       );
     }
 
-    // CASE 2: 1-1 call (1 remote + 1 local) — render trực tiếp, KHÔNG FlatList
-    // để tránh virtualization can thiệp native SurfaceView lifecycle.
     if (remoteUsers.length === 1) {
       const remote = remoteUsers[0];
       const name = getDisplayName(remote.uid);
       const hasVideo = remote.hasVideo;
       const willRenderVideo = isVideoReady && hasVideo;
-      console.log('[RENDER] 🧩 renderVideoGrid CASE 1-1 (direct render, no FlatList)', {
-        uid: remote.uid,
-        displayName: name,
-        hasVideo,
-        isVideoReady,
-        willRenderVideo,
-      });
 
       return (
         <View style={styles.oneToOneContainer}>
-          {/* Remote tile — direct View, không FlatList */}
           <View key={`remote-tile-${String(remote.uid)}`} style={[styles.tile, styles.remoteTileOneToOne]}>
             {willRenderVideo ? (
               <RtcSurfaceView
@@ -540,18 +530,14 @@ export function CallScreen({ route, navigation }) {
             )}
             <Text style={styles.tileName}>{name}</Text>
           </View>
-
-          {/* Local tile — small overlay (PIP-style) — direct View, không FlatList */}
           <View key="local-tile" style={[styles.tile, styles.localTileOneToOne]}>
             {!isVideoOff && isVideoReady ? (
-              <RtcSurfaceView
+              <RtcTextureView
                 key="local-surface"
                 style={styles.videoSurface}
                 canvas={{
                   uid: 0,
                   renderMode: RenderModeType.RenderModeHidden,
-                  zOrderMediaOverlay: true,
-                  zOrderOnTop: true,
                 }}
               />
             ) : (
@@ -571,32 +557,16 @@ export function CallScreen({ route, navigation }) {
       );
     }
 
-    // CASE 3: Group call (>=2 remotes) — render trực tiếp, KHÔNG FlatList
-    // Bước 3 fix: FlatList virtualization can thiệp SurfaceView lifecycle ở
-    // case 1-1, nên group call gần như chắc chắn cũng bị. Thay bằng View +
-    // flexWrap + .map() trực tiếp.
-    // Grid 2 cột được tái tạo bằng cách: parent flexDirection:'row',
-    // flexWrap:'wrap', mỗi child width: 50%.
-    // Trade-off: không còn virtualization → scroll/performance có thể kém
-    // khi rất nhiều người. Xem comment cuối file để biết chi tiết.
-    console.log('[RENDER] 🧩 renderVideoGrid CASE GROUP (direct map, no FlatList)', {
-      remoteCount: remoteUsers.length,
-      remotes: remoteUsers.map((u) => ({ uid: u.uid, hasVideo: u.hasVideo })),
-    });
-
     return (
       <View style={[styles.gridContainer, { paddingBottom: 160 }]}>
-        {/* Local user: tách riêng ở trên cùng, không nằm trong grid remote */}
         <View key="local-tile" style={[styles.tile, styles.localTile]}>
           {!isVideoOff && isVideoReady ? (
-            <RtcSurfaceView
+            <RtcTextureView
               key="local-surface"
               style={styles.videoSurface}
               canvas={{
                 uid: 0,
                 renderMode: RenderModeType.RenderModeFit,
-                zOrderMediaOverlay: false,
-                zOrderOnTop: false,
               }}
             />
           ) : (
@@ -619,11 +589,6 @@ export function CallScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Remote grid: View + flexWrap + .map() thay cho FlatList.
-            KHÔNG có virtualization, KHÔNG có cell recycling. Mỗi remote user
-            là 1 View thường chứa RtcSurfaceView với key theo uid.
-            React key giúp React Native unmount chính xác khi user rời channel
-            (không bị "ghost tile" do FlatList reuse sai cell). */}
         <View style={styles.gridWrap}>
           {remoteUsers.map((item) => {
             const name = getDisplayName(item.uid);
@@ -642,7 +607,6 @@ export function CallScreen({ route, navigation }) {
                       canvas={{
                         uid: item.uid,
                         renderMode: RenderModeType.RenderModeFit,
-                        // Bước 2: remote nổi lên trên local surface.
                         zOrderMediaOverlay: true,
                         zOrderOnTop: false,
                       }}
@@ -745,6 +709,40 @@ export function CallScreen({ route, navigation }) {
               {isVideo ? renderVideoGrid() : renderVoiceGrid()}
             </View>
 
+            {/* ===== Top overlay: status text (RINGING / CONNECTING) + duration (CONNECTED) + ENDED message ===== */}
+            {/* Hiển thị overlay trên remote view, không che controls bar. */}
+            <View style={styles.topOverlay} pointerEvents="none">
+              {callState !== 'CONNECTED' && callState !== 'ENDED' && (
+                <Text style={styles.statusText}>
+                  {callState === 'OUTGOING_RINGING' && 'Đang gọi…'}
+                  {callState === 'INCOMING_RINGING' && 'Cuộc gọi đến…'}
+                  {callState === 'CONNECTING' && 'Đang kết nối…'}
+                  {/* Fallback nếu state không match enum (vd lỗi thư viện) */}
+                  {!['OUTGOING_RINGING', 'INCOMING_RINGING', 'CONNECTING', 'CONNECTED'].includes(callState) && 'Đang kết nối…'}
+                </Text>
+              )}
+              {callState === 'CONNECTED' && (
+                <Text style={styles.durationText}>{formatDuration(durationSec)}</Text>
+              )}
+              {/* Khi callState === 'ENDED', hiển thị thông báo cuối theo endedReason.
+                  Đây là lý do useSocket.js call_rejected delay 1.8s trước khi pop:
+                  user kịp đọc dòng này trước khi CallScreen đóng. */}
+              {callState === 'ENDED' && (
+                <Text style={styles.statusText}>
+                  {endedReason === 'timeout' && 'Không có phản hồi'}
+                  {endedReason === 'call_rejected' && 'Cuộc gọi bị từ chối'}
+                  {endedReason === 'call_busy' && 'Người nhận đang bận'}
+                  {endedReason === 'call_cancelled' && 'Cuộc gọi đã hủy'}
+                  {endedReason === 'call_answered_elsewhere' && 'Người khác đã nhấc máy'}
+                  {/* Fallback cho các reason khác (no_answer, normal end, v.v.) */}
+                  {endedReason &&
+                    !['timeout', 'call_rejected', 'call_busy', 'call_cancelled', 'call_answered_elsewhere'].includes(endedReason) &&
+                    'Đã kết thúc'}
+                  {!endedReason && 'Đã kết thúc'}
+                </Text>
+              )}
+            </View>
+
             <View style={styles.controlsBar}>
               <TouchableOpacity
                 style={[styles.controlBtn, isMuted && styles.controlBtnActive]}
@@ -755,6 +753,23 @@ export function CallScreen({ route, navigation }) {
                   size={24}
                   color={isMuted ? '#fff' : '#1a202c'}
                 />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.controlBtnWrap}
+                onPress={toggleSpeaker}
+                accessibilityLabel={isSpeakerOn ? 'Chuyển sang loa điện thoại' : 'Chuyển sang loa ngoài'}
+              >
+                <View style={[styles.controlBtn, isSpeakerOn && styles.controlBtnActive]}>
+                  <Ionicons
+                    name={isSpeakerOn ? 'volume-high' : 'phone-portrait'}
+                    size={24}
+                    color={isSpeakerOn ? '#fff' : '#1a202c'}
+                  />
+                </View>
+                <Text style={styles.controlBtnLabel}>
+                  {isSpeakerOn ? 'Loa ngoài' : 'Điện thoại'}
+                </Text>
               </TouchableOpacity>
 
               {isVideo && !isVideoOff && (
@@ -824,14 +839,26 @@ const styles = StyleSheet.create({
   contentArea: {
     flex: 1,
   },
+  
   singleVideoContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'relative',
+    backgroundColor: '#000',
   },
-  // === BƯỚC 3: styles cho layout 1-1 trực tiếp (không qua FlatList) ===
+ 
+  localTileFullScreen: {
+    flex: 1,
+    margin: 0,
+    borderRadius: 0,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    aspectRatio: undefined,
+    maxHeight: undefined,
+  },
+ 
   oneToOneContainer: {
     flex: 1,
+    position: 'relative',
     backgroundColor: '#000',
   },
   remoteTileOneToOne: {
@@ -843,20 +870,20 @@ const styles = StyleSheet.create({
     aspectRatio: undefined,
     maxHeight: undefined,
   },
+ 
   localTileOneToOne: {
     position: 'absolute',
-    top: spacing.lg,
+    flex: 0,
+    bottom: 140,
     right: spacing.lg,
-    width: 120,
-    height: 180,
+    width: 100,
+    height: 150,
     margin: 0,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     backgroundColor: '#1f2937',
     borderWidth: 2,
     borderColor: primary.DEFAULT,
-    aspectRatio: undefined,
-    maxHeight: undefined,
     zIndex: 10,
     elevation: 10,
   },
@@ -868,9 +895,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // === BƯỚC 3 group: grid layout thay cho FlatList ===
-  // gridWrap: container flex-wrap 2 cột
-  // gridCell: mỗi ô 50% width để 2 tile fit mỗi row
+  
   gridWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -893,6 +918,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   localTile: {
+    flex: 0,
     borderWidth: 2,
     borderColor: primary.DEFAULT,
   },
@@ -956,17 +982,47 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     textAlign: 'center',
   },
-  controlsBar: {
+  
+  topOverlay: {
     position: 'absolute',
-    bottom: 50,
+    top: spacing.lg,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: spacing.lg,
-    paddingHorizontal: spacing.xl,
+    zIndex: 5,
   },
+  statusText: {
+    color: background.primary,
+    fontSize: typography.body.fontSize,
+    fontWeight: fontWeight.medium,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    overflow: 'hidden',
+    textAlign: 'center',
+  },
+  durationText: {
+    color: background.primary,
+    fontSize: 18,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    overflow: 'hidden',
+  },
+  controlsBar: {
+  position: 'absolute',
+  bottom: 50,
+  left: 0,
+  right: 0,
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',        
+  gap: spacing.xl,            
+  paddingHorizontal: spacing.xl,
+},
   controlBtn: {
     width: 56,
     height: 56,
@@ -976,6 +1032,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.md,
   },
+  
+controlBtnWrap: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  position: 'relative',        
+},
+controlBtnLabel: {
+  position: 'absolute',       
+  top: 60,                     
+  color: background.primary,
+  fontSize: 11,
+  fontWeight: fontWeight.medium,
+  textShadowColor: 'rgba(0, 0, 0, 0.5)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 2,
+  width: 80,                   
+  textAlign: 'center',
+},
   controlBtnActive: {
     backgroundColor: status.danger,
   },

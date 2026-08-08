@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PermissionsAndroid, Platform } from 'react-native';
 let AgoraModule = null;
 try {
@@ -32,7 +32,6 @@ const AudioProfileType = AgoraModule?.AudioProfileType || {};
 const AudioScenarioType = AgoraModule?.AudioScenarioType || {};
 
 const APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID;
-const DEBUG = true;
 
 async function requestAudioPermission() {
   if (Platform.OS !== 'android') return true;
@@ -48,10 +47,9 @@ async function requestAudioPermission() {
       }
     );
     const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
-    DEBUG && console.log('[DEBUG] RECORD_AUDIO permission:', ok ? 'GRANTED' : 'DENIED');
     return ok;
   } catch (err) {
-    console.warn('[DEBUG] RECORD_AUDIO permission error:', err);
+    console.warn('[useAgoraCall] RECORD_AUDIO permission error:', err);
     return false;
   }
 }
@@ -64,6 +62,18 @@ export function useAgoraCall() {
   const [isJoined, setIsJoined] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
+  // Speaker (loa ngoài / earpiece).
+  // - Voice call: mặc định false → earpiece (đúng UX call thoại).
+  // - Video call Android: mặc định true → loa ngoài (xem video xa màn hình).
+  // - Video call iOS: mặc định false → earpiece (giữ behavior cũ, user bật nếu cần).
+  // Được set đúng giá trị trong joinCall() sau khi biết callType.
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
+  // Callback báo ra ngoài khi onJoinChannelSuccess xảy ra — dùng cho state machine
+  // (dispatch setConnectedAt) và duration timer. Set qua joinCall options.
+  const onConnectedCallbackRef = useRef(null);
+  const setOnConnectedCallback = useCallback((cb) => {
+    onConnectedCallbackRef.current = cb;
+  }, []);
 
   const cleanup = useCallback(() => {
     if (engineRef.current) {
@@ -76,6 +86,8 @@ export function useAgoraCall() {
     setIsVideoOff(false);
     setIsJoined(false);
     setIsFrontCamera(true);
+    setIsSpeakerOn(false);
+    onConnectedCallbackRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -115,7 +127,6 @@ export function useAgoraCall() {
         if (!engineRef.current) {
           const engine = createAgoraRtcEngine();
           const initResult = engine.initialize({ appId: APP_ID });
-          DEBUG && console.log('[DEBUG] initialize result:', initResult);
           if (initResult !== 0 && initResult !== undefined) {
             throw new Error(`Agora initialize failed code: ${initResult}`);
           }
@@ -135,8 +146,12 @@ export function useAgoraCall() {
           // 4. Enable audio module
           engine.enableAudio();
 
-          // 5. Android: chỉ video call mới force loa ngoài; voice call giữ earpiece (mặc định)
-          if (Platform.OS === 'android' && callType === 'video') {
+          // 5. Audio route (loa ngoài vs earpiece):
+          // - Video call + Android: bật loa ngoài sẵn (cầm xa để xem video, áp tai vào loa thoại không hợp lý)
+          // - Voice call (mọi platform) + Video call iOS: giữ earpiece (mặc định), user toggle nếu muốn
+          const defaultSpeakerOn = callType === 'video' && Platform.OS === 'android';
+          setIsSpeakerOn(defaultSpeakerOn);
+          if (defaultSpeakerOn) {
             engine.setDefaultAudioRouteToSpeakerphone(true);
           }
 
@@ -155,27 +170,25 @@ export function useAgoraCall() {
 
           // ---- Event listeners ----
           engine.addListener('onJoinChannelSuccess', (connection, elapsed) => {
-            console.log('[AGORA] ✅ onJoinChannelSuccess', { channel: connection?.channelId, elapsed });
             setIsJoined(true);
+            // Báo ra ngoài (state machine + duration timer).
+            // Dùng ref để tránh stale closure và re-register listener.
+            try {
+              onConnectedCallbackRef.current?.(Date.now());
+            } catch (err) {
+              console.warn('[AGORA] onConnectedCallback error:', err?.message);
+            }
           });
 
           engine.addListener('onUserJoined', (connection, remoteUid, elapsed) => {
-            console.log('[AGORA] 👤 onUserJoined', {
-              remoteUid,
-              uidType: typeof remoteUid,
-              callType,
-              connection: connection?.channelId,
-            });
             // Dùng setupRemoteVideo (single-channel) — không cần RtcConnection
             if (callType === 'video') {
               // Bắt buộc cast remoteUid về number vì SDK yêu cầu uid kiểu số
               const uidNum = Number(remoteUid);
-              console.log('[AGORA] 📺 setupRemoteVideo (lần 1, trong onUserJoined) với uid =', uidNum);
-              const result = engine.setupRemoteVideo({
+              engine.setupRemoteVideo({
                 uid: uidNum,
                 renderMode: RenderModeType.RenderModeFit,
               });
-              console.log('[AGORA] 📺 setupRemoteVideo result =', result);
             }
             // Mặc định hasVideo = false; chỉ set true khi nhận
             // onRemoteVideoStateChanged với state === Decoding.
@@ -189,12 +202,10 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onUserOffline', (connection, remoteUid, reason) => {
-            console.log('[AGORA] 🚪 onUserOffline', { remoteUid, reason });
             setRemoteUsers((prev) => prev.filter((u) => u.uid !== remoteUid));
           });
 
           engine.addListener('onUserMuteVideo', (connection, remoteUid, muted) => {
-            console.log('[AGORA] 🔇 onUserMuteVideo', { remoteUid, muted });
             setRemoteUsers((prev) =>
               prev.map((u) =>
                 u.uid === remoteUid ? { ...u, hasVideo: !muted } : u
@@ -203,7 +214,6 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onUserMuteAudio', (connection, remoteUid, muted) => {
-            console.log('[AGORA] 🔇 onUserMuteAudio', { remoteUid, muted });
             setRemoteUsers((prev) =>
               prev.map((u) =>
                 u.uid === remoteUid ? { ...u, hasAudio: !muted } : u
@@ -212,10 +222,7 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onLocalAudioStateChanged', (connection, state, reason) => {
-            console.log('[AGORA] onLocalAudioStateChanged', {
-              state: LocalAudioStreamState[state],
-              reason: LocalAudioStreamReason[reason],
-            });
+            // (silent — không cần log state change local audio)
           });
 
           // Remote video state — nguồn sự thật DUY NHẤT để biết remote có
@@ -225,13 +232,6 @@ export function useAgoraCall() {
           // RtcSurfaceView render nền đen.
           engine.addListener('onRemoteVideoStateChanged', (connection, remoteUid, state, reason, elapsed) => {
             const stateName = RemoteVideoState[state] ?? `unknown(${state})`;
-            console.log('[AGORA] 🎥 onRemoteVideoStateChanged', {
-              remoteUid,
-              state: stateName,
-              stateRaw: state,
-              reason,
-              elapsed,
-            });
             // state:
             //  0 = Stopped  (remote chưa bật video / đã tắt)
             //  1 = Starting (đang bắt đầu nhận frame đầu tiên)
@@ -270,25 +270,19 @@ export function useAgoraCall() {
                state === RemoteVideoState.RemoteVideoStateDecoding)
             ) {
               const uidNum = Number(remoteUid);
-              console.log('[AGORA] 🔁 setupRemoteVideo RE-CALL (workaround for black screen)', {
-                uid: uidNum,
-                state: stateName,
-              });
               try {
-                const result = engine.setupRemoteVideo({
+                engine.setupRemoteVideo({
                   uid: uidNum,
                   renderMode: RenderModeType.RenderModeFit,
                 });
-                console.log('[AGORA] 🔁 setupRemoteVideo RE-CALL result =', result);
               } catch (err) {
                 console.warn('[AGORA] ⚠️ setupRemoteVideo RE-CALL failed:', err?.message);
               }
             }
           });
 
-          // Debug: remote audio state — xác nhận remote có stream audio hay bị drop
+          // Remote audio state — đánh dấu hasAudio=false khi remote drop audio stream
           engine.addListener('onRemoteAudioStateChanged', (connection, remoteUid, state, reason) => {
-            console.log('[AGORA] onRemoteAudioStateChanged', { remoteUid, state, reason });
             // state: 0=Stopped, 1=Starting, 2=Running, 3=Stopping, 4=Frozen
             if (state === 0) {
               setRemoteUsers((prev) =>
@@ -301,15 +295,9 @@ export function useAgoraCall() {
             }
           });
 
-          // Debug: volume indication — xác nhận audio đang được decode/playback
-          engine.addListener('onAudioVolumeIndication', (connection, speakers, speakerNumber, totalVolume) => {
-            if (speakerNumber > 0) {
-              console.log('[AGORA] onAudioVolumeIndication', {
-                speakers: speakers.map((s) => ({ uid: s.uid, volume: s.volume })),
-                totalVolume,
-              });
-            }
-          });
+          // onAudioVolumeIndication — không log để tránh spam log liên tục
+          // (callback fire mỗi vài trăm ms khi có audio activity)
+          engine.addListener('onAudioVolumeIndication', () => {});
 
           engineRef.current = engine;
         }
@@ -327,7 +315,6 @@ export function useAgoraCall() {
           agoraUid,
           options
         );
-        DEBUG && console.log('[DEBUG] joinChannel result:', joinResult);
       } catch (error) {
         console.error('[Agora] joinCall error:', error);
         cleanup();
@@ -344,16 +331,10 @@ export function useAgoraCall() {
   }, [cleanup]);
 
   const toggleMute = useCallback(() => {
-    DEBUG && console.log('[DEBUG] toggleMute called', {
-      hasEngine: !!engineRef.current,
-      isJoined,
-    });
     if (!engineRef.current || !isJoined) return;
     try {
       const newMuted = !isMuted;
-      DEBUG && console.log('[DEBUG] muteLocalAudioStream', newMuted);
-      const result = engineRef.current.muteLocalAudioStream(newMuted);
-      DEBUG && console.log('[DEBUG] muteLocalAudioStream result:', result);
+      engineRef.current.muteLocalAudioStream(newMuted);
       setIsMuted(newMuted);
     } catch (error) {
       console.error('[Agora] toggleMute error:', error);
@@ -361,16 +342,10 @@ export function useAgoraCall() {
   }, [isJoined, isMuted]);
 
   const toggleVideo = useCallback(() => {
-    DEBUG && console.log('[DEBUG] toggleVideo called', {
-      hasEngine: !!engineRef.current,
-      isJoined,
-    });
     if (!engineRef.current || !isJoined) return;
     try {
       const newVideoOff = !isVideoOff;
-      DEBUG && console.log('[DEBUG] muteLocalVideoStream', newVideoOff);
-      const result = engineRef.current.muteLocalVideoStream(newVideoOff);
-      DEBUG && console.log('[DEBUG] muteLocalVideoStream result:', result);
+      engineRef.current.muteLocalVideoStream(newVideoOff);
       setIsVideoOff(newVideoOff);
     } catch (error) {
       console.error('[Agora] toggleVideo error:', error);
@@ -378,14 +353,9 @@ export function useAgoraCall() {
   }, [isJoined, isVideoOff]);
 
   const switchCamera = useCallback(() => {
-    DEBUG && console.log('[DEBUG] switchCamera called', {
-      hasEngine: !!engineRef.current,
-      isJoined,
-    });
     if (!engineRef.current || !isJoined) return;
     try {
       const result = engineRef.current.switchCamera();
-      DEBUG && console.log('[DEBUG] switchCamera result:', result);
       if (result === 0) {
         setIsFrontCamera((prev) => !prev);
       }
@@ -393,6 +363,24 @@ export function useAgoraCall() {
       console.error('[Agora] switchCamera error:', error);
     }
   }, [isJoined]);
+
+  // Bật / tắt loa ngoài.
+  // - Gọi setEnableSpeakerphone (Agora API đúng chuẩn để route audio ra loa ngoài).
+  // - State local isSpeakerOn phản ánh engine state.
+  // - Không yêu cầu isJoined (vẫn có thể set khi chưa join — engine sẽ apply cho
+  //   lần join sau, hoặc áp dụng ngay nếu đang trong channel).
+  const toggleSpeaker = useCallback(() => {
+    if (!engineRef.current) return;
+    try {
+      const newOn = !isSpeakerOn;
+      // setEnableSpeakerphone(false) = earpiece (loa thoại sát tai)
+      // setEnableSpeakerphone(true)  = speakerphone (loa ngoài)
+      engineRef.current.setEnableSpeakerphone(newOn);
+      setIsSpeakerOn(newOn);
+    } catch (error) {
+      console.error('[Agora] toggleSpeaker error:', error);
+    }
+  }, [isJoined, isSpeakerOn]);
 
   return {
     engineRef,
@@ -402,10 +390,13 @@ export function useAgoraCall() {
     isJoined,
     isInitializing,
     isFrontCamera,
+    isSpeakerOn,
     joinCall,
     leaveCall,
     toggleMute,
     toggleVideo,
     switchCamera,
+    toggleSpeaker,
+    setOnConnectedCallback,
   };
 }
