@@ -20,6 +20,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   SafeAreaView,
+  BackHandler,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { WebView } from "react-native-webview";
@@ -1040,10 +1041,11 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const handlePhoneBlur = () => {
-    if (!contactPhone || contactPhone.trim() === "") {
+    const trimmed = contactPhone ? contactPhone.trim() : "";
+    if (!trimmed) {
       setContactPhoneError("Số điện thoại không được để trống");
-    } else if (contactPhone.length > 11) {
-      setContactPhoneError("Số điện thoại tối đa 11 chữ số");
+    } else if (!/^0\d{9}$/.test(trimmed)) {
+      setContactPhoneError("Số điện thoại phải bắt đầu bằng số 0 và có đúng 10 chữ số");
     } else {
       setContactPhoneError("");
     }
@@ -1372,6 +1374,39 @@ export default function CreateMatchScreen({ navigation, route }) {
       setSelectedPositionIds([]);
     }
   }, [editMatch]);
+
+  const handleConfirmBack = useCallback(() => {
+    Alert.alert(
+      "Xác nhận hủy",
+      isEditMode
+        ? "Bạn có chắc chắn muốn thoát? Các thay đổi chưa lưu sẽ bị hủy."
+        : "Bạn có chắc chắn muốn thoát? Thông tin trận đấu đang tạo sẽ không được lưu.",
+      [
+        { text: "Ở lại", style: "cancel" },
+        {
+          text: "Rời khỏi",
+          style: "destructive",
+          onPress: () => {
+            if (navigation) navigation.goBack();
+          },
+        },
+      ]
+    );
+  }, [isEditMode, navigation]);
+
+  useEffect(() => {
+    const backAction = () => {
+      handleConfirmBack();
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [handleConfirmBack]);
 
   const handleOpenCreateGroupModal = () => {
     setShowGroupPickerModal(false);
@@ -2031,13 +2066,33 @@ export default function CreateMatchScreen({ navigation, route }) {
         return false;
       }
     }
-    if (!contactPhone || contactPhone.trim() === "") {
+    const trimmedPhone = contactPhone ? contactPhone.trim() : "";
+    if (!trimmedPhone) {
+      setContactPhoneError("Số điện thoại không được để trống");
       Alert.alert("Thiếu thông tin", "Vui lòng nhập số điện thoại liên hệ");
       return false;
     }
-    if (!/^\d{1,11}$/.test(contactPhone)) {
-      Alert.alert("Dữ liệu không hợp lệ", "Số điện thoại chỉ được chứa chữ số và tối đa 11 ký tự");
+    if (!/^0\d{9}$/.test(trimmedPhone)) {
+      setContactPhoneError("Số điện thoại phải bắt đầu bằng số 0 và có đúng 10 chữ số");
+      Alert.alert("Dữ liệu không hợp lệ", "Số điện thoại liên hệ phải bắt đầu bằng số 0 và có đúng 10 chữ số (Ví dụ: 0987654321).");
       return false;
+    }
+    if (pitchStatus === "Đã cọc") {
+      const depNum = Number(depositAmount || 0);
+      if (!depositAmount || depNum <= 0) {
+        Alert.alert("Dữ liệu không hợp lệ", "Khi chọn trạng thái 'Đã cọc', vui lòng nhập số tiền cọc hợp lệ (lớn hơn 0 VND).");
+        return false;
+      }
+      const pricePerHourNum = Number(costPerPerson || 0);
+      const totalHours = calculateTotalHours(selectedTimeSlot, endTimeSlot);
+      const totalCourtCost = Math.round(pricePerHourNum * totalHours);
+      if (totalCourtCost > 0 && depNum > totalCourtCost) {
+        Alert.alert(
+          "Dữ liệu không hợp lệ",
+          `Số tiền cọc (${formatNumberWithDots(String(depNum))} VND) không thể lớn hơn Tổng tiền thuê sân (${formatNumberWithDots(String(totalCourtCost))} VND)!`
+        );
+        return false;
+      }
     }
     return true;
   };
@@ -2372,7 +2427,7 @@ export default function CreateMatchScreen({ navigation, route }) {
 
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation && navigation.goBack()}
+          onPress={handleConfirmBack}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={styles.backButton}
         >
@@ -3339,7 +3394,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                 const maxFmt = serviceCostMax ? formatNumberWithDots(serviceCostMax) : "";
                 if (minFmt && maxFmt) return `${minFmt} – ${maxFmt} VND`;
                 if (minFmt) return `${minFmt} VND`;
-                return serviceCost ? `${formatNumberWithDots(serviceCost)} VND` : "Liên hệ sân";
+                return serviceCost ? `${formatNumberWithDots(serviceCost)} VND` : "10.000 – 50.000 VND";
               })()}
             </Text>
             <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
