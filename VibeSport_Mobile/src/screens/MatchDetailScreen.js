@@ -35,10 +35,12 @@ import {
   acceptTeamInvite,
   rejectTeamInvite,
   updateTeamStatus,
+  updateMemberPosition,
 } from "../services/matchService";
 import { getFollowingListRequest } from "../services/userApi";
 import { getSocket } from "../hooks/useSocket";
 import { CourtDetailModal, COURT_DIRECTORY } from "../components/CourtDetailModal";
+import { VirtualAccountModal } from "../components/VirtualAccountModal";
 import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { BackButton } from "../components/BackButton";
@@ -244,7 +246,7 @@ const isMatchStartingWithinOneHour = (matchObj) => {
     const now = new Date();
 
     const diffMs = matchStart.getTime() - now.getTime();
-    return diffMs <= 60 * 60 * 1000;
+    return diffMs <= 3 * 60 * 60 * 1000;
   } catch (e) {
     return false;
   }
@@ -253,22 +255,39 @@ const isMatchStartingWithinOneHour = (matchObj) => {
 const normalizeId = (id) => (id == null ? "" : String(id));
 const getUserId = (user) => normalizeId(typeof user === "object" ? user?._id || user?.id : user);
 
+const isVirtualUser = (p) => {
+  if (!p) return false;
+  if (typeof p === 'boolean') return p;
+  if (typeof p !== 'object') return false;
+  if (p.isVirtual === true || p.isVirtual === 'true') return true;
+  if (p.createdByUser != null) return true;
+  if (typeof p.email === 'string' && (p.email.startsWith('virtual_') || p.email.includes('@virtual.vibesport.com'))) return true;
+  if (typeof p.name === 'string' && (p.name.includes('(Ảo)') || p.name.includes('[Ảo]'))) return true;
+  return false;
+};
+
 function UserRow({ user, label, badge, onPress, rightAction, isMe, showTeammatesIcon }) {
   if (!user || typeof user !== "object") return null;
   const name = user.name || "Người dùng";
+  const isVirtual = isVirtualUser(user);
 
   return (
     <View style={styles.userRowCard}>
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
         <TouchableOpacity style={styles.userRow} onPress={onPress} activeOpacity={0.7} disabled={!onPress}>
-          <View style={[styles.userAvatar, { backgroundColor: '#ef4444' }]}>
+          <View style={[styles.userAvatar, { backgroundColor: isVirtual ? '#8E24AA' : '#ef4444' }]}>
             <Text style={styles.userInitials}>{getInitials(name)}</Text>
           </View>
           <View style={styles.userInfo}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.userName}>{name}</Text>
+              {isVirtual && (
+                <View style={{ backgroundColor: '#F3E8FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: '#7E22CE', fontSize: 10, fontWeight: '700' }}>Ảo</Text>
+                </View>
+              )}
               {isMe && <Text style={{ fontSize: 13, color: '#888' }}>• bạn</Text>}
-              {showTeammatesIcon && (
+              {showTeammatesIcon && !isVirtual && (
                 <Ionicons name="people-outline" size={14} color={ORANGE} style={{ marginLeft: 2 }} />
               )}
             </View>
@@ -361,7 +380,10 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [showJoinRequests, setShowJoinRequests] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
-  const [showDetailsCollapsed, setShowDetailsCollapsed] = useState(false);
+  const [showDetailsCollapsed, setShowDetailsCollapsed] = useState(true);
+  const [showVirtualModal, setShowVirtualModal] = useState(false);
+  const [virtualPositionTarget, setVirtualPositionTarget] = useState(null);
+  const [selectedVirtualPosId, setSelectedVirtualPosId] = useState("");
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
   const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
@@ -441,11 +463,11 @@ export default function MatchDetailScreen({ navigation, route }) {
 
       if (newStatus === "ended") {
         Alert.alert(
-          "Trận đấu đã KẾT THÚC! 🏆",
+          "Trận đấu đã kết thúc",
           "Hãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi trong trận đấu này nhé!",
           [
             {
-              text: "Đánh giá ngay ⭐",
+              text: "Đánh giá ngay",
               onPress: () => {
                 const otherParticipants = (match?.participants || []).filter(
                   (p) => getUserId(p) !== userId
@@ -461,7 +483,7 @@ export default function MatchDetailScreen({ navigation, route }) {
           ]
         );
       } else {
-        Alert.alert("Thành công 🎉", "Trận đấu đã BẮT ĐẦU!");
+        Alert.alert("Thành công", "Trận đấu đã bắt đầu!");
       }
     } catch (err) {
       Alert.alert("Thông báo", err.message || "Không thể cập nhật trạng thái trận đấu");
@@ -531,6 +553,28 @@ export default function MatchDetailScreen({ navigation, route }) {
   }, [matchId, navigation, route?.params?.autoOpenPositionModal]);
 
   useEffect(() => {
+    if (route?.params?.autoOpenRating && !loading && match) {
+      setShowDetailsCollapsed(true);
+      const isMatchEnded = match?.teamStatus === "ended" || match?.status === "completed";
+      const otherParticipants = (match?.participants || []).filter(
+        (p) => getUserId(p) !== String(userId)
+      );
+      const unratedUser = otherParticipants.find(
+        (p) => !myRatedUserIds.includes(getUserId(p))
+      );
+
+      if (isMatchEnded && unratedUser) {
+        const targetId = getUserId(unratedUser);
+        const targetName = (typeof unratedUser === "object" ? unratedUser.name : "Người chơi") || "Người chơi";
+        setSingleRatingTarget({ id: targetId, name: targetName });
+        setSingleStars(5);
+        setSingleComment("");
+      }
+      navigation.setParams({ autoOpenRating: false });
+    }
+  }, [route?.params?.autoOpenRating, loading, match, userId, myRatedUserIds, navigation]);
+
+  useEffect(() => {
     if (!socket || !matchId) return;
 
     const handleMatchUpdated = (data) => {
@@ -592,7 +636,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const participants = match?.participants || [];
   const currentCount = participants.filter((participant) => {
     const participantId = getUserId(participant);
-    return Boolean(participantId) && participantId !== ownerId;
+    return Boolean(participantId) && participantId !== ownerId && !isVirtualUser(participant);
   }).length;
   const pendingRequests = match?.pendingJoinRequests || [];
 
@@ -603,7 +647,7 @@ export default function MatchDetailScreen({ navigation, route }) {
     return [creator, ...participants];
   }, [creator, creatorId, participants]);
 
-  const getParticipantPositionLabel = (pid) => {
+  const getParticipantPositionLabel = (pid, participantObj) => {
     const pStr = String(pid);
     if (pStr === String(creatorId) || pStr === String(ownerId)) {
       return "Người tạo trận";
@@ -615,6 +659,11 @@ export default function MatchDetailScreen({ navigation, route }) {
     if (memberPosEntry && memberPosEntry.positionId && memberPosEntry.positionId.trim() !== "") {
       const label = getPositionDisplayLabel(memberPosEntry.positionId);
       if (label) return label;
+    }
+
+    const isVirtual = isVirtualUser(participantObj) || (match?.participants || []).some((p) => getUserId(p) === pStr && isVirtualUser(p));
+    if (isVirtual) {
+      return "Chưa xếp vị trí";
     }
 
     const pendingPosEntry = (match?.pendingJoinRequestPositions || []).find(
@@ -712,6 +761,90 @@ export default function MatchDetailScreen({ navigation, route }) {
     return options;
   }, [match?.sport, match?.selectedPositionIds, match?.memberPositions, match?.participants, match?.benchMembersTeam1, match?.benchMembersTeam2, pendingRequestPositions, userId]);
 
+  const virtualPositionOptions = useMemo(() => {
+    if (match?.sport !== "football") return [];
+
+    const neededPositionIds = new Set(match?.selectedPositionIds || []);
+
+    const takenPositionIds = new Set();
+    (match?.memberPositions || []).forEach((mp) => {
+      if (!mp || !mp.positionId) return;
+      const mpUserId = getUserId(mp.userId);
+      const targetUserId = getUserId(virtualPositionTarget);
+      if (mpUserId === targetUserId) return;
+
+      const isPart = (match?.participants || []).some((p) => getUserId(p) === mpUserId);
+      if (isPart) {
+        const posIds = Array.isArray(mp.positionId) ? mp.positionId : String(mp.positionId).split(",");
+        posIds.forEach((pId) => takenPositionIds.add(String(pId).trim()));
+      }
+    });
+
+    // All available football field position IDs for Team 1 and Team 2
+    const allowedIds = [
+      ...TEAM1_POSITIONS.map((p) => p.id),
+      ...TEAM2_POSITIONS.map((p) => p.id),
+    ];
+
+    const b1 = Number(match?.benchMembersTeam1 || 0);
+    const b2 = Number(match?.benchMembersTeam2 || 0);
+    for (let i = 1; i <= b1; i += 1) allowedIds.push(`t1_bench_${i}`);
+    for (let i = 1; i <= b2; i += 1) allowedIds.push(`t2_bench_${i}`);
+
+    const options = [
+      {
+        id: "",
+        label: "Chưa xếp vị trí",
+        role: "none",
+        teamNumber: 0,
+        isBench: false,
+        isDisabled: false,
+        disabledReason: "",
+      },
+    ];
+
+    allowedIds.forEach((posId) => {
+      const pos = ALL_POSITIONS.find((item) => item.id === posId);
+      const teamNumber = posId.startsWith("t1_") ? 1 : 2;
+      const isBench = posId.includes("bench");
+      let label = "";
+      let role = "bench";
+
+      if (pos) {
+        label = `${pos.label} (${pos.id.replace(/^t[12]_/, "").toUpperCase()})`;
+        role = pos.role;
+      } else if (isBench) {
+        label = `Dự bị (Đội ${teamNumber})`;
+        role = "bench";
+      } else {
+        label = posId;
+      }
+
+      const isNeededByMatch = neededPositionIds.has(posId);
+      const isTaken = takenPositionIds.has(posId);
+      const isDisabled = isNeededByMatch || isTaken;
+
+      let disabledReason = "";
+      if (isNeededByMatch) {
+        disabledReason = "Vị trí cần tìm của trận";
+      } else if (isTaken) {
+        disabledReason = "Đã có người";
+      }
+
+      options.push({
+        id: posId,
+        label,
+        role,
+        teamNumber,
+        isBench,
+        isDisabled,
+        disabledReason,
+      });
+    });
+
+    return options;
+  }, [match, virtualPositionTarget]);
+
   const isParticipant = participants.some((p) => getUserId(p) === userId);
   const hasPendingRequest = pendingRequests.some((p) => getUserId(p) === userId);
   const isInvited = invitedMembers.some((p) => getUserId(p) === userId);
@@ -788,7 +921,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(match)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể xin tham gia!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể xin tham gia!");
       return;
     }
     if (match?.sport === "football" && positionOptions.length > 0) {
@@ -865,7 +998,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(match)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể tham gia!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể tham gia!");
       return;
     }
     if (selectedPositions.length !== 1) {
@@ -987,7 +1120,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(match)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể rút khỏi trận!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể rút khỏi trận!");
       return;
     }
     Alert.alert("Rút khỏi trận", "Bạn có chắc muốn rút khỏi trận này?", [
@@ -1017,7 +1150,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(match)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Sửa!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể Sửa!");
       return;
     }
     Alert.alert(
@@ -1041,7 +1174,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(match)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Xóa!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể Hủy / Xóa!");
       return;
     }
     Alert.alert(
@@ -1123,7 +1256,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(match)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể mời thêm thành viên!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể mời thêm thành viên!");
       return;
     }
     try {
@@ -1630,9 +1763,29 @@ export default function MatchDetailScreen({ navigation, route }) {
         </View>
 
         {/* Danh sách tham gia & Nút Đánh giá ⭐ nằm ngang hàng ở bên phải cho từng người chơi */}
-        <View style={styles.sectionCard}>
+        <View style={styles.participantSectionContainer}>
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
+            {isOwner && !isEnded && (
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: '#F3E8FF',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 16,
+                }}
+                onPress={() => setShowVirtualModal(true)}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="person-add-outline" size={14} color="#7E22CE" />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#7E22CE' }}>
+                  + Tài khoản ảo
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
           {allParticipants.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
@@ -1646,13 +1799,14 @@ export default function MatchDetailScreen({ navigation, route }) {
                 <UserRow
                   key={pid ? `p_${pid}_${idx}` : `p_idx_${idx}`}
                   user={typeof p === "object" ? p : { name: "Người chơi" }}
-                  badge={getParticipantPositionLabel(pid)}
+                  label={getParticipantPositionLabel(pid, p)}
+                  badge={null}
                   isMe={isMe}
                   showTeammatesIcon={!isCreatorParticipant}
                   onPress={() => openProfile(p)}
                   rightAction={
-                    // CHUẨN THIẾT KẾ: Nút Đánh giá ⭐ nằm ngang hàng ở góc phải khi trận đấu đã kết thúc
-                    isEnded && !isMe ? (
+                    // CHUẨN THIẾT KẾ: Nút Đánh giá ⭐ nằm ngang hàng ở góc phải khi trận đấu đã kết thúc & viewer là người tham gia trận
+                    isEnded && !isMe && isUserParticipant(match) ? (
                       <TouchableOpacity
                         style={{
                           backgroundColor: "#FFF7ED",
@@ -1675,13 +1829,38 @@ export default function MatchDetailScreen({ navigation, route }) {
                         </Text>
                       </TouchableOpacity>
                     ) : isOwner && !isCreatorParticipant && !isEnded ? (
-                      <TouchableOpacity
-                        style={styles.kickSmallBtn}
-                        onPress={() => handleOpenKick(p)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.kickSmallBtnText}>Kích</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {Boolean(p.isVirtual) && (
+                          <TouchableOpacity
+                            style={{
+                              backgroundColor: '#F3E8FF',
+                              borderWidth: 1,
+                              borderColor: '#E9D5FF',
+                              paddingHorizontal: 9,
+                              paddingVertical: 5,
+                              borderRadius: 14,
+                            }}
+                            onPress={() => {
+                              setVirtualPositionTarget(p);
+                              const currentPosEntry = (match?.memberPositions || []).find((m) => getUserId(m.userId) === pid);
+                              setSelectedVirtualPosId(currentPosEntry?.positionId || "");
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#7E22CE' }}>
+                              Vị trí
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+
+                        <TouchableOpacity
+                          style={styles.kickSmallBtn}
+                          onPress={() => handleOpenKick(p)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.kickSmallBtnText}>Kích</Text>
+                        </TouchableOpacity>
+                      </View>
                     ) : null
                   }
                 />
@@ -1691,7 +1870,7 @@ export default function MatchDetailScreen({ navigation, route }) {
 
           {/* Nút Mời thêm bạn bè */}
           {isOwner && (
-            isMatchStarted ? (
+            isEnded ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -1710,7 +1889,29 @@ export default function MatchDetailScreen({ navigation, route }) {
               >
                 <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
                 <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
-                  Trận đấu đã bắt đầu (Không thể mời)
+                  Trận đấu đã kết thúc (Không thể mời)
+                </Text>
+              </View>
+            ) : match?.teamStatus === "ongoing" ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "#F3F4F6",
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  paddingVertical: 10,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  marginTop: 10,
+                  marginBottom: 8,
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
+                <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
+                  Trận đấu đang diễn ra (Không thể mời)
                 </Text>
               </View>
             ) : (
@@ -2056,14 +2257,14 @@ export default function MatchDetailScreen({ navigation, route }) {
             </View>
 
             <ScrollView style={styles.positionModalList}>
-              {positionOptions.map((option) => {
+              {positionOptions.map((option, idx) => {
                 const isSelected = selectedPositions.includes(option.id);
                 const isOccupied = option.disabled;
                 const isDisabled = isOccupied || (!isSelected && selectedPositions.length >= 1);
 
                 return (
                   <TouchableOpacity
-                    key={option.id}
+                    key={option.id ? `pos_opt_${option.id}_${idx}` : `pos_opt_idx_${idx}`}
                     style={[
                       styles.positionOption,
                       isSelected && styles.positionOptionSelected,
@@ -2256,6 +2457,159 @@ export default function MatchDetailScreen({ navigation, route }) {
         }
         onClose={() => setShowCourtDetailModal(false)}
       />
+
+      {/* Virtual Account Modal */}
+      <VirtualAccountModal
+        visible={showVirtualModal}
+        onClose={() => setShowVirtualModal(false)}
+        matchId={matchId}
+        matchParticipants={allParticipants}
+        onMatchUpdated={async (updated) => {
+          setMatch(updated);
+          await reloadMatch();
+        }}
+        token={token}
+      />
+
+      {/* Position Assigning Modal for Owner */}
+      <Modal visible={!!virtualPositionTarget} transparent animationType="slide">
+        <View style={styles.positionModalOverlay}>
+          <View style={styles.positionModalCard}>
+            {/* Header with Virtual Account Preview */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#8E24AA', justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>
+                  {getInitials(virtualPositionTarget?.name)}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }} numberOfLines={1}>
+                    {virtualPositionTarget?.name || "Tài khoản ảo"}
+                  </Text>
+                  <View style={{ backgroundColor: '#F3E8FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ color: '#7E22CE', fontSize: 10, fontWeight: '700' }}>Ảo</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                  Chọn 1 vị trí thi đấu khả dụng:
+                </Text>
+              </View>
+            </View>
+
+            <ScrollView style={{ maxHeight: 320, marginVertical: 8 }} showsVerticalScrollIndicator={false}>
+              {virtualPositionOptions.map((option, idx) => {
+                const isSelected = selectedVirtualPosId === option.id;
+                const isDisabled = option.isDisabled;
+
+                return (
+                  <TouchableOpacity
+                    key={option.id ? `vpos_opt_${option.id}_${idx}` : `vpos_opt_empty_${idx}`}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isSelected ? '#FFF7ED' : (isDisabled ? '#F9FAFB' : '#FFFFFF'),
+                      borderWidth: 1.5,
+                      borderColor: isSelected ? ORANGE : (isDisabled ? '#E5E7EB' : '#E5E7EB'),
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      marginBottom: 8,
+                      opacity: isDisabled ? 0.55 : 1,
+                    }}
+                    onPress={() => {
+                      if (!isDisabled) {
+                        setSelectedVirtualPosId(option.id);
+                      }
+                    }}
+                    disabled={isDisabled}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {option.teamNumber > 0 ? (
+                          <View style={{
+                            backgroundColor: option.teamNumber === 1 ? '#DBEAFE' : '#FEE2E2',
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                          }}>
+                            <Text style={{
+                              color: option.teamNumber === 1 ? '#1D4ED8' : '#DC2626',
+                              fontSize: 11,
+                              fontWeight: '700',
+                            }}>
+                              Đội {option.teamNumber}
+                            </Text>
+                          </View>
+                        ) : null}
+
+                        <Text style={{
+                          fontSize: 14,
+                          fontWeight: '700',
+                          color: isDisabled ? '#9CA3AF' : (isSelected ? '#C2410C' : '#111827'),
+                        }}>
+                          {option.label}
+                        </Text>
+                      </View>
+
+                      {option.disabledReason ? (
+                        <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '600', marginTop: 4 }}>
+                          • {option.disabledReason}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {isSelected && (
+                      <Ionicons name="checkmark-circle" size={20} color={ORANGE} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center' }}
+                onPress={() => setVirtualPositionTarget(null)}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#4B5563' }}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: ORANGE,
+                  alignItems: 'center',
+                }}
+                onPress={async () => {
+                  if (!virtualPositionTarget) return;
+                  try {
+                    setActionLoading(true);
+                    const targetId = getUserId(virtualPositionTarget);
+                    await updateMemberPosition(matchId, userId, targetId, selectedVirtualPosId);
+                    Alert.alert("Thành công", `Đã cập nhật vị trí cho ${virtualPositionTarget.name || "thành viên"}!`);
+                    setVirtualPositionTarget(null);
+                    setSelectedVirtualPosId("");
+                    await reloadMatch();
+                  } catch (err) {
+                    Alert.alert("Lỗi", err?.message || "Không thể cập nhật vị trí");
+                  } finally {
+                    setActionLoading(false);
+                  }
+                }}
+                disabled={actionLoading}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>
+                  {actionLoading ? "Đang lưu..." : "Lưu vị trí"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       </ScrollView>
     </Screen>
   );
@@ -2419,14 +2773,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   outlineRoleTagText: { fontSize: 12, fontWeight: "700", color: "#333" },
-  sectionCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#333", marginBottom: 12 },
+  sectionCard: { backgroundColor: "#fff", borderRadius: 16, padding: 14, marginBottom: 14 },
+  sectionTitle: { fontSize: 17, fontWeight: "800", color: "#333", marginBottom: 12 },
   sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
-    marginTop: 8,
+    marginTop: 4,
   },
   emptyText: { fontSize: 13, color: "#999" },
   userRowCard: {
@@ -2434,8 +2788,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "#f0f0f0",
-    padding: 10,
-    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.02,
@@ -2448,7 +2803,8 @@ const styles = StyleSheet.create({
   userInitials: { color: "#fff", fontSize: 13, fontWeight: "800" },
   userInfo: { marginLeft: 12, flex: 1 },
   userName: { fontSize: 15, fontWeight: "700", color: "#111" },
-  userSub: { fontSize: 12, color: "#888", marginTop: 2 },
+  userSub: { fontSize: 12, color: "#4B5563", marginTop: 2, fontWeight: "500" },
+  participantSectionContainer: { marginBottom: 14, paddingHorizontal: 0 },
   figmaBadge: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
@@ -2497,7 +2853,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   requestAcceptText: { fontSize: 15, fontWeight: "700", color: "#fff" },
-  actionStack: { gap: 8, marginTop: 12 },
+  positionModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  positionModalCard: {
+    width: "100%",
+    maxHeight: "82%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
   positionModalContent: {
     flex: 1,
     backgroundColor: "#fff",

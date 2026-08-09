@@ -23,6 +23,7 @@ import {
   ProfileTabBar,
 } from '../components/ProfileScreenComponents';
 import { ReportModal } from '../components/ReportModal';
+import { RatingsListModal } from '../components/RatingsListModal';
 import { Screen } from '../components/Screen';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { openConversation } from '../redux/chatSlice';
@@ -152,6 +153,7 @@ export function UserProfileScreen({ route, navigation }) {
   const [optionsPost, setOptionsPost] = useState(null);
   const [postToReport, setPostToReport] = useState(null);
   const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [ratingsModalVisible, setRatingsModalVisible] = useState(false);
 
   const mergedPosts = useMemo(() => {
     const livePostsById = new Map(
@@ -444,43 +446,70 @@ export function UserProfileScreen({ route, navigation }) {
             profile={profile}
             isSelf={false}
             onOpenFollowList={openFollowList}
+            onOpenRatings={() => setRatingsModalVisible(true)}
           />
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.actionButton, profile?.isFollowing && styles.followingButton]}
-              onPress={handleFollow}
-              disabled={followLoading}
-            >
-              <Text
-                style={[
-                  styles.actionButtonText,
-                  profile?.isFollowing && styles.followingButtonText,
-                ]}
-              >
-                {followLabel}
-              </Text>
-            </TouchableOpacity>
+          {profile?.isVirtual ? (
+            <View style={{ marginTop: 10 }}>
+              <View style={{ backgroundColor: '#F3E8FF', padding: 10, borderRadius: 10, marginBottom: 12, alignItems: 'center' }}>
+                <Text style={{ color: '#7E22CE', fontWeight: '700', fontSize: 12.5 }}>
+                  Tài khoản ảo (Không có quyền đăng nhập)
+                </Text>
+                <Text style={{ color: '#6B21A8', fontSize: 11, marginTop: 2, textAlign: 'center' }}>
+                  Tài khoản này được chủ trận thêm vào để các thành viên nhận xét và chấm điểm sau trận đấu.
+                </Text>
+              </View>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.actionButton, styles.messageButton]}
-              onPress={handleMessage}
-              disabled={messageLoading}
-            >
-              {messageLoading ? (
-                <ActivityIndicator size="small" color="#0B74FF" />
-              ) : (
-                <>
-                  <Ionicons name="chatbubble-outline" size={18} color="#0B74FF" />
-                  <Text style={[styles.actionButtonText, styles.messageButtonText]}>
-                    Nhắn tin
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[styles.actionButton, { backgroundColor: '#FFF7ED', borderColor: '#FFD8A8', borderWidth: 1, flex: 1 }]}
+                  onPress={() => setRatingsModalVisible(true)}
+                >
+                  <Ionicons name="star-outline" size={16} color="#F59E0B" />
+                  <Text style={[styles.actionButtonText, { color: '#C2410C' }]}>
+                    Xem lịch sử đánh giá
                   </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.actionButton, profile?.isFollowing && styles.followingButton]}
+                onPress={handleFollow}
+                disabled={followLoading}
+              >
+                <Text
+                  style={[
+                    styles.actionButtonText,
+                    profile?.isFollowing && styles.followingButtonText,
+                  ]}
+                >
+                  {followLabel}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.actionButton, styles.messageButton]}
+                onPress={handleMessage}
+                disabled={messageLoading}
+              >
+                {messageLoading ? (
+                  <ActivityIndicator size="small" color="#0B74FF" />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble-outline" size={18} color="#0B74FF" />
+                    <Text style={[styles.actionButtonText, styles.messageButtonText]}>
+                      Nhắn tin
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={profileStyles.stickyTabBarWrap}>
@@ -661,6 +690,12 @@ export function UserProfileScreen({ route, navigation }) {
           setPostToReport(null);
         }}
         onSelectReason={handleReportPost}
+      />
+      <RatingsListModal
+        visible={ratingsModalVisible}
+        onClose={() => setRatingsModalVisible(false)}
+        userId={userId}
+        token={token}
       />
     </Screen>
   );

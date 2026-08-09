@@ -1,5 +1,6 @@
 const Rating = require('../models/Rating');
 const User = require('../models/User');
+const VirtualUser = require('../models/VirtualUser');
 const Notification = require('../models/Notification');
 const Match = require('../models/Match');
 
@@ -76,10 +77,17 @@ exports.rateParticipants = async (req, res) => {
       // Kiểm tra điều kiện khóa tài khoản (< 2.0 sao)
       const shouldLockAccount = avgRating < 2.0;
 
-      await User.findByIdAndUpdate(toUserId, {
+      const updatedUser = await User.findByIdAndUpdate(toUserId, {
         rating: avgRating,
         ...(shouldLockAccount ? { isLocked: true } : {}),
       });
+
+      if (!updatedUser) {
+        await VirtualUser.findByIdAndUpdate(toUserId, {
+          rating: avgRating,
+          totalReviews: userRatings.length,
+        });
+      }
 
       // 3. Tự động tạo thông báo cho người nhận
       try {
@@ -153,7 +161,10 @@ exports.getUserRatings = async (req, res) => {
       .populate('matchId', 'title date sport locationName specificAddress')
       .sort({ createdAt: -1 });
 
-    const user = await User.findById(userId).select('rating name picture isLocked');
+    let user = await User.findById(userId).select('rating name picture isLocked');
+    if (!user) {
+      user = await VirtualUser.findById(userId).select('rating name picture');
+    }
     const recent100 = ratings.slice(0, 100);
     const avgRating = recent100.length > 0
       ? Number((recent100.reduce((sum, r) => sum + r.stars, 0) / recent100.length).toFixed(1))

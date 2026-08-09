@@ -1349,6 +1349,8 @@ export default function CreateMatchScreen({ navigation, route }) {
       if ((editMatch.sport === "badminton" || editMatch.sport === "pickleball") && editMatch.maxPlayers) {
         setRacketMaxPlayers(editMatch.maxPlayers);
       }
+    } else {
+      setSelectedPositionIds([]);
     }
   }, [editMatch]);
 
@@ -1777,9 +1779,10 @@ export default function CreateMatchScreen({ navigation, route }) {
   const handleSelectFootballMaxPlayers = (maxP) => {
     const numP = Number(maxP);
     setFootballMaxPlayers(numP);
-    setIsCourtPresetsExpanded(true);
-    const fmt = FOOTBALL_FORMATS[numP] || FOOTBALL_FORMATS[22];
-    setSelectedPositionIds([...fmt.team1Ids, ...fmt.team2Ids]);
+    if (!isEditMode) {
+      setIsCourtPresetsExpanded(true);
+    }
+    setSelectedPositionIds([]);
   };
 
   const handleIncreaseRole = (role) => {
@@ -1920,7 +1923,15 @@ export default function CreateMatchScreen({ navigation, route }) {
       time: `${selectedTimeSlot} - ${endTimeSlot}`,
       totalHours: calculateTotalHours(selectedTimeSlot, endTimeSlot),
       totalCourtCost: Math.round(Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot)),
-      costPerPlayer: Math.round((Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot)) / Math.max(1, (sport === "football" && Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0 ? selectedPositionIds.length : (maxPlayers - (b1 + b2))))),
+      costPerPlayer: (() => {
+        const totalBench = b1 + b2;
+        const courtTypePlayers = sport === "football"
+          ? Number(footballMaxPlayers || 10)
+          : ((sport === "badminton" || sport === "pickleball") ? Number(racketMaxPlayers || 4) : Number(maxPlayersOther || 2));
+        const totalPeopleOnCourt = courtTypePlayers + totalBench;
+        const totalCourtCostVal = Math.round(Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot));
+        return Math.round(totalCourtCostVal / Math.max(1, totalPeopleOnCourt));
+      })(),
       maxPlayers,
       positionsNeeded: sport === "football" ? positionsNeeded : [],
       selectedPositionIds: sport === "football" ? selectedPositionIds : [],
@@ -1941,7 +1952,11 @@ export default function CreateMatchScreen({ navigation, route }) {
       courtDescription: courtDescription.trim(),
       specificAddress: specificAddress.trim(),
       skillLevel,
-      serviceCost: serviceCost ? String(serviceCost) : "",
+      serviceCost: (() => {
+        if (serviceCostMin && serviceCostMax) return `${serviceCostMin}-${serviceCostMax}`;
+        if (serviceCostMin) return String(serviceCostMin);
+        return serviceCost ? String(serviceCost) : "10000-50000";
+      })(),
       chatGroupId: selectedChatGroupId || (editMatch?.chatGroupId?._id || editMatch?.chatGroupId) || null,
       contactAppUser: selectedContactUser ? (selectedContactUser._id || selectedContactUser.id) : null,
       ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
@@ -1967,6 +1982,17 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
     if (sport === "football" && totalNeeded === 0) {
       Alert.alert("Thiếu thông tin", "Vui lòng chọn ít nhất 1 vị trí cần tìm trên sơ đồ");
+      return false;
+    }
+    const maxCourtPlayers = sport === "football"
+      ? (footballMaxPlayers || 10)
+      : (sport === "badminton" || sport === "pickleball" ? (racketMaxPlayers || 4) : Number(maxPlayersOther || 2));
+
+    if (totalNeeded > maxCourtPlayers) {
+      Alert.alert(
+        "Giới hạn người tham gia",
+        `Số người cần tìm (${totalNeeded} người) không được lớn hơn tổng số người tối đa của loại sân đã chọn (${maxCourtPlayers} người)!`
+      );
       return false;
     }
     if (sport !== "football" && (!maxPlayersOther || Number(maxPlayersOther) <= 0)) {
@@ -2004,7 +2030,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           return;
         }
         if (isMatchStartingWithinOneHour(editMatch)) {
-          Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Chỉnh sửa!");
+          Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể Chỉnh sửa!");
           return;
         }
       }
@@ -2101,7 +2127,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       const now = new Date();
 
       const diffMs = matchStart.getTime() - now.getTime();
-      return diffMs <= 60 * 60 * 1000;
+      return diffMs <= 3 * 60 * 60 * 1000;
     } catch (e) {
       return false;
     }
@@ -2113,7 +2139,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       return;
     }
     if (isMatchStartingWithinOneHour(editMatch)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Xóa!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể Hủy / Xóa!");
       return;
     }
     Alert.alert(
@@ -2405,7 +2431,9 @@ export default function CreateMatchScreen({ navigation, route }) {
                   isSelected={racketMaxPlayers === item.maxPlayers}
                   onPress={() => {
                     setRacketMaxPlayers(item.maxPlayers);
-                    setIsCourtPresetsExpanded(true);
+                    if (!isEditMode) {
+                      setIsCourtPresetsExpanded(true);
+                    }
                   }}
                 />
               ))}
@@ -2861,16 +2889,44 @@ export default function CreateMatchScreen({ navigation, route }) {
                         setSpecificAddress(court.address);
                         setCourtDescription(court.intro || court.description);
                         setCostPerPerson(String(priceForActiveType));
-                        // Tính giá DV range từ serviceDetails
-                        const dMin = court.serviceDetails?.drinkService?.minPrice || 10000;
-                        const dMax = court.serviceDetails?.drinkService?.maxPrice || 25000;
-                        const eMin = court.serviceDetails?.equipmentService?.minPrice || 30000;
-                        const eMax = court.serviceDetails?.equipmentService?.maxPrice || 60000;
-                        const overallMin = Math.min(dMin, eMin);
-                        const overallMax = Math.max(dMax, eMax);
-                        setServiceCost(`${overallMin}-${overallMax}`);
-                        setServiceCostMin(String(overallMin));
-                        setServiceCostMax(String(overallMax));
+                        // Tính giá DV chuẩn từ thông tin mẫu sân (court.serviceCost / serviceCostMin / serviceDetails)
+                        let sCostStr = "";
+                        let sMinStr = "";
+                        let sMaxStr = "";
+
+                        if (court.serviceCost) {
+                          sCostStr = String(court.serviceCost);
+                          if (sCostStr.includes("-")) {
+                            const parts = sCostStr.split("-");
+                            sMinStr = parts[0] || "";
+                            sMaxStr = parts[1] || "";
+                          } else {
+                            sMinStr = sCostStr;
+                            sMaxStr = "";
+                          }
+                        } else if (court.serviceCostMin || court.serviceCostMax) {
+                          sMinStr = court.serviceCostMin ? String(court.serviceCostMin) : "";
+                          sMaxStr = court.serviceCostMax ? String(court.serviceCostMax) : "";
+                          sCostStr = sMinStr && sMaxStr ? `${sMinStr}-${sMaxStr}` : (sMinStr || sMaxStr);
+                        } else if (court.serviceDetails) {
+                          const dMin = court.serviceDetails?.drinkService?.minPrice || 10000;
+                          const dMax = court.serviceDetails?.drinkService?.maxPrice || 25000;
+                          const eMin = court.serviceDetails?.equipmentService?.minPrice || 30000;
+                          const eMax = court.serviceDetails?.equipmentService?.maxPrice || 60000;
+                          const overallMin = Math.min(dMin, eMin);
+                          const overallMax = Math.max(dMax, eMax);
+                          sCostStr = `${overallMin}-${overallMax}`;
+                          sMinStr = String(overallMin);
+                          sMaxStr = String(overallMax);
+                        } else {
+                          sCostStr = "30000";
+                          sMinStr = "30000";
+                          sMaxStr = "";
+                        }
+
+                        setServiceCost(sCostStr);
+                        setServiceCostMin(sMinStr);
+                        setServiceCostMax(sMaxStr);
                         setLocationCoords(court.locationCoords || court.coords);
                         const targetOwner = (typeof court.owner === "object" && court.owner !== null)
                           ? court.owner
@@ -3130,13 +3186,17 @@ export default function CreateMatchScreen({ navigation, route }) {
         {(() => {
           const b1 = Number(benchMembersTeam1 || 0);
           const b2 = Number(benchMembersTeam2 || 0);
+          const totalBench = b1 + b2;
+
+          const courtTypePlayers = sport === "football"
+            ? Number(footballMaxPlayers || 10)
+            : ((sport === "badminton" || sport === "pickleball") ? Number(racketMaxPlayers || 4) : Number(maxPlayersOther || 2));
+
+          const totalPeopleOnCourt = courtTypePlayers + totalBench;
           const pricePerHourNum = Number(costPerPerson || 0);
           const totalHours = calculateTotalHours(selectedTimeSlot, endTimeSlot);
           const totalCourtCost = Math.round(pricePerHourNum * totalHours);
-          const mainPlayersCount = sport === "football" && Array.isArray(selectedPositionIds) && selectedPositionIds.length > 0
-            ? selectedPositionIds.length
-            : Math.max(1, (activeTotalPeople || 10) - (b1 + b2));
-          const costPerPlayerVal = Math.round(totalCourtCost / mainPlayersCount);
+          const costPerPlayerVal = Math.round(totalCourtCost / Math.max(1, totalPeopleOnCourt));
 
           return (
             <View style={{
@@ -3170,13 +3230,15 @@ export default function CreateMatchScreen({ navigation, route }) {
 
               <View style={{ height: 1, backgroundColor: "#FFE8D6" }} />
 
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={{ gap: 4, marginTop: 2 }}>
                 <Text style={{ fontSize: 13.5, fontWeight: "700", color: "#059669" }}>
-                  💵 Giá thuê 1 người ({mainPlayersCount} người chính):
+                  Giá thuê 1 người ({totalPeopleOnCourt} người trong sân):
                 </Text>
-                <Text style={{ fontSize: 14.5, fontWeight: "800", color: "#059669" }}>
-                  {formatNumberWithDots(String(costPerPlayerVal))} VND 
-                </Text>
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center" }}>
+                  <Text style={{ fontSize: 16, fontWeight: "800", color: "#059669" }}>
+                    {formatNumberWithDots(String(costPerPlayerVal))} VND
+                  </Text>
+                </View>
               </View>
             </View>
           );
@@ -3192,7 +3254,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                 const minFmt = serviceCostMin ? formatNumberWithDots(serviceCostMin) : "";
                 const maxFmt = serviceCostMax ? formatNumberWithDots(serviceCostMax) : "";
                 if (minFmt && maxFmt) return `${minFmt} – ${maxFmt} VND`;
-                if (minFmt) return `Từ ${minFmt} VND`;
+                if (minFmt) return `${minFmt} VND`;
                 return serviceCost ? `${formatNumberWithDots(serviceCost)} VND` : "Liên hệ sân";
               })()}
             </Text>

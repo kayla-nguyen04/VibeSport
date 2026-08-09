@@ -3,19 +3,59 @@ const mongoose = require("mongoose");
 const Match = require("../models/Match");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
+const VirtualUser = require("../models/VirtualUser");
 const Conversation = require("../models/Conversation");
 const authMiddleware = require("../middleware/auth");
 
 const router = express.Router();
 
 const populateFields = [
-  { path: "createdBy", select: "name email picture area favoriteSport position" },
-  { path: "contactAppUser", select: "name email picture area favoriteSport position" },
-  { path: "participants", select: "name email picture area favoriteSport" },
-  { path: "pendingJoinRequests", select: "name email picture area favoriteSport" },
-  { path: "invitedMembers", select: "name email picture area favoriteSport" },
+  { path: "createdBy", select: "name email picture area favoriteSport position isVirtual" },
+  { path: "contactAppUser", select: "name email picture area favoriteSport position isVirtual" },
+  { path: "participants", select: "name email picture area favoriteSport isVirtual rating stats" },
+  { path: "pendingJoinRequests", select: "name email picture area favoriteSport isVirtual" },
+  { path: "invitedMembers", select: "name email picture area favoriteSport isVirtual" },
   { path: "chatGroupId", select: "name isGroup avatar groupAvatar participants" },
 ];
+
+const populateMatchVirtualUsers = async (matchDoc) => {
+  if (!matchDoc) return matchDoc;
+  const matchObj = typeof matchDoc.toObject === 'function' ? matchDoc.toObject() : matchDoc;
+  if (!Array.isArray(matchObj.participants)) return matchObj;
+
+  const participantIds = matchObj.participants
+    .map(p => typeof p === 'object' ? String(p._id || p.id) : String(p))
+    .filter(Boolean);
+
+  if (participantIds.length > 0) {
+    const [vUsers, userVirtuals] = await Promise.all([
+      VirtualUser.find({ _id: { $in: participantIds } }).lean(),
+      User.find({ _id: { $in: participantIds }, isVirtual: true }).lean(),
+    ]);
+
+    const vMap = new Map();
+    vUsers.forEach(v => vMap.set(String(v._id), { ...v, isVirtual: true }));
+    userVirtuals.forEach(v => vMap.set(String(v._id), { ...v, isVirtual: true }));
+
+    matchObj.participants = matchObj.participants.map(p => {
+      const pid = typeof p === 'object' ? String(p._id || p.id) : String(p);
+      const v = vMap.get(pid);
+      if (v) {
+        return {
+          ...(typeof p === 'object' ? p : {}),
+          ...v,
+          _id: v._id,
+          id: v._id,
+          name: v.name,
+          picture: v.picture || v.avatar || null,
+          isVirtual: true,
+        };
+      }
+      return p;
+    });
+  }
+  return matchObj;
+};
 
 const autoAddParticipantToChatGroup = async (chatGroupId, userId) => {
   if (!chatGroupId || !userId) return;
@@ -28,6 +68,34 @@ const autoAddParticipantToChatGroup = async (chatGroupId, userId) => {
     }
   } catch (err) {
     console.error("Auto add to chat group error:", err.message);
+  }
+};
+
+const autoRemoveParticipantFromChatGroup = async (chatGroupId, userId) => {
+  if (!chatGroupId || !userId) return;
+  try {
+    const rawGroupId = typeof chatGroupId === "object" ? (chatGroupId._id || chatGroupId.id) : chatGroupId;
+    if (rawGroupId) {
+      await Conversation.findByIdAndUpdate(rawGroupId, {
+        $pull: { participants: userId }
+      });
+    }
+  } catch (err) {
+    console.error("Auto remove from chat group error:", err.message);
+  }
+};
+
+const autoClearChatGroupExceptOwner = async (chatGroupId, ownerId) => {
+  if (!chatGroupId || !ownerId) return;
+  try {
+    const rawGroupId = typeof chatGroupId === "object" ? (chatGroupId._id || chatGroupId.id) : chatGroupId;
+    if (rawGroupId) {
+      await Conversation.findByIdAndUpdate(rawGroupId, {
+        $set: { participants: [ownerId] }
+      });
+    }
+  } catch (err) {
+    console.error("Auto clear chat group error:", err.message);
   }
 };
 
@@ -103,7 +171,7 @@ const isMatchWithinOneHour = (match) => {
     const now = new Date();
 
     const diffMs = matchStart.getTime() - now.getTime();
-    return diffMs <= 60 * 60 * 1000;
+    return diffMs <= 3 * 60 * 60 * 1000;
   } catch (e) {
     return false;
   }
@@ -192,7 +260,7 @@ router.post("/", authMiddleware, async (req, res) => {
       courtDescription: req.body.courtDescription || "",
       specificAddress: req.body.specificAddress || "",
       skillLevel: req.body.skillLevel || "Người mới",
-      serviceCost: Number(req.body.serviceCost || 31250),
+      serviceCost: req.body.serviceCost != null ? String(req.body.serviceCost) : "",
       chatGroupId: req.body.chatGroupId || null,
       createdBy: userId,
       participants: [userId],
@@ -308,6 +376,8 @@ router.get("/:id", async (req, res) => {
     }
 
 
+    match = await populateMatchVirtualUsers(match);
+
     return res.json({
       success: true,
       data: match,
@@ -337,7 +407,7 @@ router.post("/:id/join", authMiddleware, async (req, res) => {
     }
 
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
-      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể tham gia!" });
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể tham gia!" });
     }
 
     if (match.deletionVote && match.deletionVote.active) {
@@ -420,7 +490,7 @@ router.post("/:id/leave", async (req, res) => {
     }
 
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
-      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể rút khỏi trận!" });
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể rút khỏi trận!" });
     }
 
     const index = match.participants.indexOf(userId);
@@ -439,6 +509,9 @@ router.post("/:id/leave", async (req, res) => {
     }
     if (match.memberRoles) {
       match.memberRoles = match.memberRoles.filter((mr) => String(mr.userId) !== String(userId));
+    }
+    if (match.chatGroupId) {
+      await autoRemoveParticipantFromChatGroup(match.chatGroupId, userId);
     }
     await match.save();
 
@@ -484,9 +557,9 @@ router.put("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
-    // Quy tắc: Khi trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 1 tiếng, không cho phép Sửa
+    // Quy tắc: Khi trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 3 tiếng, không cho phép Sửa
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
-      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể chỉnh sửa!" });
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể chỉnh sửa!" });
     }
 
     const creatorId = match.createdBy ? (typeof match.createdBy === "object" ? (match.createdBy._id || match.createdBy.id) : match.createdBy) : null;
@@ -549,7 +622,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
       match.contactAppUser = (contactAppUser && contactAppUser !== "" && contactAppUser !== "null") ? contactAppUser : null;
     }
     if (skillLevel !== undefined) match.skillLevel = skillLevel;
-    if (serviceCost !== undefined) match.serviceCost = serviceCost;
+    if (serviceCost !== undefined) match.serviceCost = String(serviceCost);
     if (req.body.chatGroupId) {
       match.chatGroupId = req.body.chatGroupId;
     }
@@ -604,9 +677,9 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
-    // 1. Khi Trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 1 tiếng: KHÔNG cho phép Xóa hay Sửa
+    // 1. Khi Trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 3 tiếng: KHÔNG cho phép Xóa hay Hủy
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
-      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể xóa!" });
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể hủy / xóa!" });
     }
 
     // 2. Khi Trận đấu Kết thúc (ended / completed): cho phép user xóa thoải mái mà ko cần accept
@@ -866,7 +939,7 @@ router.post("/:id/request-join", async (req, res) => {
     }
 
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
-      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể xin tham gia!" });
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể xin tham gia!" });
     }
 
     if (match.deletionVote && match.deletionVote.active) {
@@ -1181,6 +1254,15 @@ router.post("/:id/team-status", async (req, res) => {
     if (status === "ended") {
       match.status = "completed";
     }
+    if (status === "ended" || status === "cancelled") {
+      const ownerEntry = Array.isArray(match.memberRoles)
+        ? match.memberRoles.find((entry) => entry?.role === "owner")
+        : null;
+      const actualOwnerId = ownerEntry?.userId || match.createdBy;
+      if (match.chatGroupId) {
+        await autoClearChatGroupExceptOwner(match.chatGroupId, actualOwnerId);
+      }
+    }
     await match.save();
     const updated = await Match.findById(match._id).populate(populateFields);
     return res.json({ success: true, message: "Cập nhật trạng thái thành công", data: updated });
@@ -1220,6 +1302,9 @@ router.post("/:id/kick-member", async (req, res) => {
     if (match.memberPositions) {
       match.memberPositions = match.memberPositions.filter((p) => String(p.userId) !== String(userId));
     }
+    if (match.chatGroupId) {
+      await autoRemoveParticipantFromChatGroup(match.chatGroupId, userId);
+    }
     await match.save();
 
     // Create notification for kicked user
@@ -1255,7 +1340,7 @@ router.post("/:id/invite-member", async (req, res) => {
     }
 
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
-      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đang diễn ra), không thể mời thêm thành viên!" });
+      return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể mời thêm thành viên!" });
     }
 
     if (match.deletionVote && match.deletionVote.active) {
@@ -1538,7 +1623,7 @@ router.post("/:id/update-member-role", async (req, res) => {
   }
 });
 
-// Update member position
+// Update member position (Virtual accounts only)
 router.post("/:id/update-member-position", async (req, res) => {
   try {
     const { ownerId, userId, positionId } = req.body;
@@ -1549,6 +1634,11 @@ router.post("/:id/update-member-position", async (req, res) => {
     // Kiểm tra quyền chủ đội
     if (!ownerId || String(ownerId) !== String(match.createdBy)) {
       return res.status(403).json({ success: false, message: "Chỉ chủ đội mới có quyền thực hiện" });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser || !targetUser.isVirtual) {
+      return res.status(400).json({ success: false, message: "Chỉ có thể chỉnh sửa vị trí thi đấu của tài khoản ảo" });
     }
 
     if (!match.memberPositions) match.memberPositions = [];
