@@ -180,9 +180,11 @@ export function VirtualAccountModal({
               contentContainerStyle={{ paddingBottom: 30 }}
               renderItem={({ item }) => {
                 const vId = String(item._id || item.id);
-                const isInMatch = matchParticipants.some(
-                  (p) => String(typeof p === 'object' ? p._id || p.id : p) === vId
-                );
+                const isInMatch = (matchParticipants || []).some((p) => {
+                  if (!p) return false;
+                  const pid = typeof p === 'object' ? (p._id || p.id) : p;
+                  return pid != null && String(pid) === vId;
+                });
                 const isProcessing = addingId === vId;
 
                 return (

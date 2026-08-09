@@ -35,6 +35,7 @@ const Session = require('./models/Session');
 const Follow = require('./models/Follow');
 const fcRouter = require('./routes/fc');
 const seedTags = require('./scripts/seedTags');
+const aiRoutes = require('./routes/aiRoutes');
 const { startMatchNotificationCron } = require('./utils/matchNotificationCron');
 const { sendSystemCallMessage } = require('./controllers/chatController');
 
@@ -46,7 +47,6 @@ const io = new Server(server, {
     origin: '*',
   },
 });
-
 // ================================
 // Socket.IO authentication middleware
 // Verify token from handshake auth, set socket.data.userId server-side
@@ -169,7 +169,6 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
   const agoraUid = socket.data?.agoraUid;
   const userId = socket.data?.userId;
   if (!agoraUid) return;
-  console.log('[SOCKET] handleLeaveChannel:', { channelName, agoraUid, userId });
 
   // Kiểm tra user có trong channel không (an toàn cho disconnect race condition)
   const participants = channelParticipants.get(channelName);
@@ -207,11 +206,9 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
   // Xóa busyUsers khi rời cuộc gọi active
   if (userId && busyUsers.get(userId) === 'active') {
     busyUsers.delete(userId);
-    console.log(`[SOCKET] busyUsers.delete(${userId}) — left active call`);
   }
 
   const countAfterRemove = channelParticipants.get(channelName)?.size ?? 0;
-  console.log(`[SOCKET] handleLeaveChannel: ${countAfterRemove} remaining in ${channelName} after ${userId} left (peak=${peak}, duration=${durationSeconds}s, callerId=${callerId})`);
 
   // === Issue 2: Phát tín hiệu "cuộc gọi đã kết thúc" tới TẤT CẢ thành viên
   // còn lại trong channel để họ thoát CallScreen. ===
@@ -227,10 +224,6 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
       endedBy: userId,
       conversationId: convId,
     });
-    console.log(
-      `[SOCKET] 📡 call_ended emitted to ${countAfterRemove} remaining in ${channelName} ` +
-      `(duration=${durationSeconds}s, endedBy=${userId})`
-    );
   }
 
   // === Issue 3: Gửi tin nhắn hệ thống "cuộc gọi kết thúc" ===
@@ -244,13 +237,10 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
     if (startTime && convId && callType) {
       try {
         await sendSystemCallMessage(convId, callType, durationSeconds, false, callerId);
-        console.log(`[SOCKET] Call ended message sent for ${channelName} (${durationSeconds}s, callerId=${callerId})`);
       } catch (err) {
         console.error('[SOCKET] sendSystemCallMessage error:', err);
       }
     }
-  } else if (countAfterRemove === 0 && peak <= 1) {
-    console.log(`[SOCKET] handleLeaveChannel: peak<=1, skipping system message (handled by call_cancelled/busy/etc.)`);
   }
 }
 
@@ -274,9 +264,6 @@ function clearBusyForChannel(channelName, reason = 'cleared') {
       busyUsers.delete(key);
       cleared += 1;
     }
-  }
-  if (cleared > 0) {
-    console.log(`[SOCKET] clearBusyForChannel(${channelName}, ${reason}) — cleared ${cleared} user(s)`);
   }
   return cleared;
 }
@@ -320,8 +307,6 @@ io.on('connection', (socket) => {
       memberIds = [],
     } = payload;
 
-    console.log('[SOCKET] start_call:', payload);
-
     const conversationId = channelName?.match(/^call_(.+)$/)?.[1];
     if (conversationId) {
       const existing = pendingCalls.get(channelName);
@@ -334,9 +319,18 @@ io.on('connection', (socket) => {
         if (!pending) return;
 
         clearBusyForChannel(channelName, 'timeout (30s)');
+
+        // Server là nguồn timeout chính thức — emit thẳng cho caller, không phụ thuộc
+        // vào việc callee's client có kịp emit call_rejected trước khi bị getAuthGuard
+        // chặn (race condition: server set pendingCalls.delete() TRƯỚC khi client kịp
+        // emit → getAuthGuard thấy pending=null → return → caller đứng mãi ở 35s
+        // no-answer timeout thay vì 30s).
+        if (pending.callerId) {
+          io.to(pending.callerId.toString()).emit('call_rejected', { channelName, reason: 'timeout' });
+        }
+
         try {
           await sendSystemCallMessage(pending.conversationId, pending.callType, 0, true, pending.callerId);
-          console.log(`[SOCKET] Missed call (timeout) message sent for ${channelName} (callerId=${pending.callerId})`);
         } catch (err) {
           console.error('[SOCKET] sendSystemCallMessage (missed/timeout) error:', err);
         }
@@ -346,12 +340,10 @@ io.on('connection', (socket) => {
         : peerId ? [String(peerId)] : [];
       pendingCalls.set(channelName, { conversationId, callType, callerId, timerId, targetIds });
       callCallerIds.set(channelName, String(callerId));
-      console.log(`[SOCKET] pendingCalls.set + callCallerIds.set for ${channelName} (timeout=30s, callerId=${callerId}, targetIds=${targetIds.length})`);
     }
 
     if (isGroup) {
       const targets = memberIds.filter((id) => String(id) !== String(callerId));
-      console.log(`[SOCKET] Group call to ${targets.length} members in channel ${channelName}`);
 
       let groupName = null;
       if (conversationId) {
@@ -366,8 +358,6 @@ io.on('connection', (socket) => {
           console.warn('[SOCKET] start_call: failed to fetch conversation name for groupName:', err?.message);
         }
       }
-      console.log(`[SOCKET] Group call groupName resolved: "${groupName}"`);
-
       for (const targetId of targets) {
         const key = targetId.toString();
         const busyState = busyUsers.get(key);
@@ -397,7 +387,6 @@ io.on('connection', (socket) => {
           clearTimeout(pendingEntry.timerId);
           try {
             await sendSystemCallMessage(pendingEntry.conversationId, pendingEntry.callType, 0, true, pendingEntry.callerId);
-            console.log(`[SOCKET] Missed call (peer busy) message sent for ${channelName} (callerId=${pendingEntry.callerId})`);
           } catch (err) {
             console.error('[SOCKET] sendSystemCallMessage (missed/peer-busy) error:', err);
           }
@@ -427,8 +416,6 @@ io.on('connection', (socket) => {
       }
 
       busyUsers.set(peerId.toString(), 'pending');
-      console.log(`[SOCKET] busyUsers.set(${peerId}) = pending`);
-      console.log(`[SOCKET] 📞 EMIT incoming_call → peer=${peerId}, channel=${channelName}, callType=${callType}`);
       io.to(peerId.toString()).emit('incoming_call', {
         channelName,
         callType,
@@ -494,7 +481,6 @@ io.on('connection', (socket) => {
 
         if (isFirstJoinInChannel) {
           callStartTimes.set(channelName, Date.now());
-          console.log(`[SOCKET] callStartTimes.set for ${channelName} (FIRST join)`);
         }
 
         const pending = pendingCalls.get(channelName);
@@ -505,48 +491,30 @@ io.on('connection', (socket) => {
           String(pending.callerId) === String(userId);
 
         if (isCallerSelfJoin) {
-          console.log(
-            `[SOCKET] join_channel_request: caller (userId=${userId}, agoraUid=${agoraUid}) ` +
-            `joined own channel ${channelName} — NOT treating as call answered (still waiting for callee)`
-          );
           ackFn({ ok: true });
-          console.log(
-            `[SOCKET] User ${agoraUid} (caller) joined channel ${channelName}` +
-            ` (${getChannelParticipantCount(channelName)}/${MAX_PARTICIPANTS_PER_CHANNEL})`
-          );
           io.to(channelName).emit('user_joined_channel', { channelName, agoraUid });
           return;
         }
 
         if (busyUsers.get(userId) === 'pending') {
           busyUsers.set(userId, 'active');
-          console.log(`[SOCKET] busyUsers(${userId}): pending → active`);
         }
 
         if (pending) {
           clearTimeout(pending.timerId);
           pendingCalls.delete(channelName);
           activeCallTypes.set(channelName, pending.callType);
-          console.log(
-            `[SOCKET] pendingCalls cleared + activeCallTypes.set for ${channelName} ` +
-            `(call answered by userId=${userId}, agoraUid=${agoraUid})`
-          );
 
           for (const tid of pending.targetIds ?? []) {
             if (String(tid) === String(userId)) continue;
             if (busyUsers.get(tid) === 'pending') {
               busyUsers.delete(tid);
-              console.log(`[SOCKET] busyUsers.delete(${tid}) — call_answered_elsewhere (another member answered)`);
             }
             io.to(tid).emit('call_answered_elsewhere', { channelName });
           }
         }
 
         ackFn({ ok: true });
-        console.log(
-          `[SOCKET] User ${agoraUid} joined channel ${channelName}` +
-          ` (${getChannelParticipantCount(channelName)}/${MAX_PARTICIPANTS_PER_CHANNEL})`
-        );
         io.to(channelName).emit('user_joined_channel', { channelName, agoraUid });
       })
       .catch((err) => {
@@ -556,7 +524,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leave_channel', async ({ channelName, callType }, ackFn) => {
-    console.log('[SOCKET] leave_channel:', { channelName, callType });
     await handleLeaveChannel(socket, channelName, callType);
     if (typeof ackFn === 'function') ackFn({ ok: true });
   });
@@ -586,7 +553,6 @@ io.on('connection', (socket) => {
 
   socket.on('call_busy', async ({ callerId: callerIdPayload, channelName, calleeId }) => {
     if (!getAuthGuard(channelName, calleeId, 'call_busy')) return;
-    console.log('[SOCKET] call_busy:', { callerId: callerIdPayload, channelName, calleeId });
     const pending = pendingCalls.get(channelName);
 
     const callerId = callerIdPayload || pending?.callerId;
@@ -600,7 +566,6 @@ io.on('connection', (socket) => {
       const key = calleeId.toString();
       if (busyUsers.get(key) === 'pending') {
         busyUsers.delete(key);
-        console.log(`[SOCKET] busyUsers.delete(${calleeId}) — callee busy`);
       }
       io.to(key).emit('call_busy', { channelName });
     }
@@ -615,16 +580,14 @@ io.on('connection', (socket) => {
       clearTimeout(pendingToSend.timerId);
       try {
         await sendSystemCallMessage(pendingToSend.conversationId, pendingToSend.callType, 0, true, pendingToSend.callerId);
-        console.log(`[SOCKET] Missed call (busy) message sent for ${channelName} (callerId=${pendingToSend.callerId})`);
       } catch (err) {
         console.error('[SOCKET] sendSystemCallMessage (missed/busy) error:', err);
       }
     }
   });
 
-  socket.on('call_rejected', async ({ callerId: callerIdPayload, channelName, calleeId }) => {
+  socket.on('call_rejected', async ({ callerId: callerIdPayload, channelName, calleeId, reason }) => {
     if (!getAuthGuard(channelName, calleeId, 'call_rejected')) return;
-    console.log('[SOCKET] call_rejected:', { callerId: callerIdPayload, channelName, calleeId });
     const pending = pendingCalls.get(channelName);
 
     const callerId = callerIdPayload || pending?.callerId;
@@ -632,19 +595,18 @@ io.on('connection', (socket) => {
     if (pending?.targetIds?.length) {
       clearBusyForChannel(channelName, 'call_rejected (group)');
       for (const tid of pending.targetIds) {
-        io.to(tid).emit('call_rejected', { channelName });
+        io.to(tid).emit('call_rejected', { channelName, reason });
       }
     } else if (calleeId) {
       const key = calleeId.toString();
       if (busyUsers.get(key) === 'pending') {
         busyUsers.delete(key);
-        console.log(`[SOCKET] busyUsers.delete(${calleeId}) — callee rejected`);
       }
-      io.to(key).emit('call_rejected', { channelName });
+      io.to(key).emit('call_rejected', { channelName, reason });
     }
 
     if (callerId) {
-      io.to(callerId.toString()).emit('call_rejected', { channelName });
+      io.to(callerId.toString()).emit('call_rejected', { channelName, reason });
     }
 
     const pendingToSend = pendingCalls.get(channelName);
@@ -653,7 +615,6 @@ io.on('connection', (socket) => {
       clearTimeout(pendingToSend.timerId);
       try {
         await sendSystemCallMessage(pendingToSend.conversationId, pendingToSend.callType, 0, true, pendingToSend.callerId);
-        console.log(`[SOCKET] Missed call (rejected) message sent for ${channelName} (callerId=${pendingToSend.callerId})`);
       } catch (err) {
         console.error('[SOCKET] sendSystemCallMessage (missed/rejected) error:', err);
       }
@@ -661,7 +622,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('call_cancelled', ({ peerId, channelName }) => {
-    console.log('[SOCKET] call_cancelled:', { peerId, channelName });
     const pending = pendingCalls.get(channelName);
 
     if (pending?.targetIds?.length) {
@@ -684,7 +644,6 @@ io.on('connection', (socket) => {
       clearTimeout(pending.timerId);
       pendingCalls.delete(channelName);
       sendSystemCallMessage(convId, callType, 0, true, callerId)
-        .then(() => console.log(`[SOCKET] Missed call (cancelled) message sent for ${channelName} (callerId=${callerId})`))
         .catch((err) => console.error('[SOCKET] sendSystemCallMessage (missed/cancelled) error:', err));
     }
   });
@@ -724,8 +683,8 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // ĐÃ SỬA: Đăng ký Router Ratings ĐÚNG VỊ TRÍ (sau app.use(express.json()))
+app.use('/api/ai', aiRoutes);
 app.use('/api/ratings', ratingRoutes);
-
 app.use('/api/agora', agoraRouter);
 app.use("/api/otp", otpRoutes);
 app.use("/api/matches", matchRoutes);

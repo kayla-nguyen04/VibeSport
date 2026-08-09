@@ -1318,9 +1318,22 @@ export default function CreateMatchScreen({ navigation, route }) {
     return 4; // default is 2 vs 2
   });
 
+  const [pitchStatus, setPitchStatus] = useState(editMatch?.pitchStatus || "Chưa cọc");
+  const [depositAmount, setDepositAmount] = useState(
+    editMatch?.depositAmount ? String(editMatch.depositAmount) : ""
+  );
+  const [customPitchTypeNumber, setCustomPitchTypeNumber] = useState(() => {
+    if (editMatch?.sport === "football" && editMatch?.customPitchType) {
+      const match = editMatch.customPitchType.match(/\d+/);
+      return match ? match[0] : "5";
+    }
+    return "5";
+  });
+
   // ── Effect to update form fields when editMatch changes ──
   useEffect(() => {
     if (editMatch) {
+      setIsCourtPresetsExpanded(false);
       setSport(editMatch.sport || "football");
       setTitle(editMatch.title || "");
       setSelectedDate(editMatch.date ? parseDateString(editMatch.date) : new Date());
@@ -1348,6 +1361,12 @@ export default function CreateMatchScreen({ navigation, route }) {
       }
       if ((editMatch.sport === "badminton" || editMatch.sport === "pickleball") && editMatch.maxPlayers) {
         setRacketMaxPlayers(editMatch.maxPlayers);
+      }
+      if (editMatch.pitchStatus) setPitchStatus(editMatch.pitchStatus);
+      if (editMatch.depositAmount) setDepositAmount(String(editMatch.depositAmount));
+      if (editMatch.sport === "football" && editMatch.customPitchType) {
+        const matchStr = editMatch.customPitchType.match(/\d+/);
+        if (matchStr) setCustomPitchTypeNumber(matchStr[0]);
       }
     } else {
       setSelectedPositionIds([]);
@@ -1959,6 +1978,9 @@ export default function CreateMatchScreen({ navigation, route }) {
       })(),
       chatGroupId: selectedChatGroupId || (editMatch?.chatGroupId?._id || editMatch?.chatGroupId) || null,
       contactAppUser: selectedContactUser ? (selectedContactUser._id || selectedContactUser.id) : null,
+      customPitchType: sport === "football" ? (customPitchTypeNumber ? `${customPitchTypeNumber}v${customPitchTypeNumber}` : "5v5") : "",
+      pitchStatus: pitchStatus,
+      depositAmount: pitchStatus === "Đã cọc" && depositAmount ? Number(depositAmount) : 0,
       ...(isEditMode ? {} : { createdBy: user?.id || user?._id || null }),
     };
   };
@@ -2403,21 +2425,34 @@ export default function CreateMatchScreen({ navigation, route }) {
         <Text style={styles.sectionLabel}>Chọn loại sân</Text>
         <View style={styles.footballMaxPlayersRow}>
           {sport === "football" ? (
-            <>
-              {[
-                { maxPlayers: 10, label: "5 vs 5", count: "10 người" },
-                { maxPlayers: 14, label: "7 vs 7", count: "14 người" },
-                { maxPlayers: 22, label: "11 vs 11", count: "22 người" },
-              ].map((item) => (
-                <CourtTypeButton
-                  key={item.maxPlayers}
-                  label={item.label}
-                  subLabel={item.count}
-                  isSelected={footballMaxPlayers === item.maxPlayers}
-                  onPress={() => handleSelectFootballMaxPlayers(item.maxPlayers)}
-                />
-              ))}
-            </>
+            <View style={[styles.inputWrapper, { flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
+              <TextInput
+                style={[styles.input, { flex: 1, textAlign: 'center', fontSize: 16 }]}
+                keyboardType="numeric"
+                maxLength={2}
+                value={customPitchTypeNumber}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^0-9]/g, '');
+                  let num = parseInt(cleaned, 10);
+                  if (num > 15) num = 15;
+                  if (num < 1) num = 1;
+                  const strVal = isNaN(num) ? '' : String(num);
+                  setCustomPitchTypeNumber(strVal);
+                  if (strVal) {
+                    setFootballMaxPlayers(num * 2);
+                    if (!isEditMode) {
+                      setIsCourtPresetsExpanded(true);
+                    }
+                  }
+                }}
+              />
+              <Text style={{ marginHorizontal: 12, fontSize: 16, fontWeight: 'bold', color: '#555' }}>vs</Text>
+              <TextInput
+                style={[styles.input, { flex: 1, textAlign: 'center', fontSize: 16 }]}
+                editable={false}
+                value={customPitchTypeNumber}
+              />
+            </View>
           ) : (
             <>
               {[
@@ -3167,6 +3202,55 @@ export default function CreateMatchScreen({ navigation, route }) {
         ) : null}
 
         
+
+        {/* Trạng thái sân (cọc) */}
+        <Text style={styles.sectionLabel}>Trạng thái sân</Text>
+        <View style={{ flexDirection: "row", gap: 10, marginVertical: 8 }}>
+          {["Chưa cọc", "Đã cọc"].map((status) => (
+            <TouchableOpacity
+              key={status}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: pitchStatus === status ? ORANGE : "#E5E7EB",
+                backgroundColor: pitchStatus === status ? "#FFF7ED" : "#FFFFFF",
+                alignItems: "center",
+              }}
+              onPress={() => {
+                setPitchStatus(status);
+                if (status === "Chưa cọc") setDepositAmount("");
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{
+                color: pitchStatus === status ? ORANGE : "#4B5563",
+                fontWeight: pitchStatus === status ? "700" : "500",
+                fontSize: 14
+              }}>
+                {status}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        
+        {pitchStatus === "Đã cọc" && (
+          <View style={[styles.inputWrapper, { marginBottom: 16 }]}>
+            <TextInput
+              style={[styles.input, styles.costInput]}
+              value={formatNumberWithDots(depositAmount)}
+              onChangeText={(text) => {
+                const raw = text.replace(/[^0-9]/g, "");
+                setDepositAmount(raw);
+              }}
+              keyboardType="numeric"
+              placeholder="Nhập số tiền đã cọc (VD: 200.000)"
+              placeholderTextColor="#bbb"
+            />
+            <Text style={styles.currencySuffix}>VND</Text>
+          </View>
+        )}
 
         {/* Giá thuê 1 giờ */}
         <Text style={styles.sectionLabel}>Giá thuê 1 giờ</Text>

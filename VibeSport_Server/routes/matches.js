@@ -196,6 +196,9 @@ router.post("/", authMiddleware, async (req, res) => {
       benchMembersTeam1,
       benchMembersTeam2,
       footballFormation,
+      customPitchType,
+      pitchStatus,
+      depositAmount,
     } = req.body;
 
     if (!sport || !title || !date || !startTime || !maxPlayers || !locationName) {
@@ -249,6 +252,9 @@ router.post("/", authMiddleware, async (req, res) => {
       benchMembersTeam1: sport === "football" ? Number(benchMembersTeam1 || 0) : 0,
       benchMembersTeam2: sport === "football" ? Number(benchMembersTeam2 || 0) : 0,
       footballFormation: sport === "football" ? footballFormation || "" : "",
+      customPitchType: customPitchType || "",
+      pitchStatus: pitchStatus || "Chưa cọc",
+      depositAmount: Number(depositAmount || 0),
       costPerPerson: Number(costPerPerson || 0),
       locationName,
       location: location || {},
@@ -294,12 +300,20 @@ router.post("/", authMiddleware, async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { sport, q, area, startTime, createdBy, participantId, userId } = req.query;
+    const { sport, q, area, startTime, createdBy, participantId, userId, status, teamStatus } = req.query;
 
     const filter = {};
 
     if (sport) {
       filter.sport = sport;
+    }
+
+    // Bổ sung lọc trạng thái trận đấu (không đụng đến logic cũ)
+    if (status && status.trim()) {
+      filter.status = status.trim();
+    }
+    if (teamStatus && teamStatus.trim()) {
+      filter.teamStatus = teamStatus.trim();
     }
 
     if (createdBy && createdBy.trim()) {
@@ -544,6 +558,9 @@ router.put("/:id", authMiddleware, async (req, res) => {
       benchMembersTeam2,
       footballFormation,
       formation,
+      customPitchType,
+      pitchStatus,
+      depositAmount,
       contactPhone,
       contactZalo,
       contactFacebook,
@@ -598,6 +615,9 @@ router.put("/:id", authMiddleware, async (req, res) => {
     if (totalHours !== undefined) match.totalHours = Number(totalHours || 1.5);
     if (totalCourtCost !== undefined) match.totalCourtCost = Number(totalCourtCost || 0);
     if (costPerPlayer !== undefined) match.costPerPlayer = Number(costPerPlayer || 0);
+    if (customPitchType !== undefined) match.customPitchType = customPitchType;
+    if (pitchStatus !== undefined) match.pitchStatus = pitchStatus;
+    if (depositAmount !== undefined) match.depositAmount = Number(depositAmount || 0);
     if (positionsNeeded !== undefined) {
       match.positionsNeeded = match.sport === "football" ? positionsNeeded || [] : [];
     }

@@ -4,7 +4,7 @@ node_modules/
 # Env files
 .env
 .env.*
-
+.expo/devices.json
 # IDE config
 .vscode/
 .idea/

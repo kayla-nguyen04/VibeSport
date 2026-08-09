@@ -83,7 +83,7 @@ export default function MatchHistoryScreen({ navigation }) {
         if (match && match._id) uniqueMap.set(String(match._id), match);
       });
 
-      // Chỉ giữ lại các trận đấu ĐÃ KẾT THÚC / HOÀN THÀNH
+      // CHỈ GIỮ LẠI CÁC TRẬN ĐẤU ĐÃ KẾT THÚC / HOÀN THÀNH
       const completedList = Array.from(uniqueMap.values())
         .filter((item) => item.status === 'completed' || item.teamStatus === 'ended')
         .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));

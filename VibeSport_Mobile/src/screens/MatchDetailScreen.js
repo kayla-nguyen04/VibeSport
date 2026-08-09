@@ -148,6 +148,13 @@ const formatCost = (c) => {
   return `${formatted} vnd/ người`;
 };
 
+const formatNumberWithDots = (val) => {
+  if (val == null || val === "") return "";
+  const cleaned = String(val).replace(/\D/g, "");
+  if (!cleaned) return String(val);
+  return cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
 const formatServiceCostDisplay = (cost) => {
   if (cost == null || cost === "" || cost === 0 || cost === "0") return "Liên hệ sân";
   const costStr = String(cost).trim();
@@ -253,7 +260,13 @@ const isMatchStartingWithinOneHour = (matchObj) => {
 };
 
 const normalizeId = (id) => (id == null ? "" : String(id));
-const getUserId = (user) => normalizeId(typeof user === "object" ? user?._id || user?.id : user);
+const getUserId = (user) => {
+  if (!user) return "";
+  if (typeof user === "object") {
+    return normalizeId(user._id || user.id);
+  }
+  return normalizeId(user);
+};
 
 const isVirtualUser = (p) => {
   if (!p) return false;
@@ -747,14 +760,14 @@ export default function MatchDetailScreen({ navigation, route }) {
     if ((match?.benchMembersTeam1 || 0) > 0) {
       for (let index = 0; index < match.benchMembersTeam1; index += 1) {
         const benchId = `t1_bench_${index + 1}`;
-        addOption(benchId, "Dự bị (Free)", "bench", 1, true, takenPositionIds.has(benchId));
+        addOption(benchId, "Dự bị", "bench", 1, true, takenPositionIds.has(benchId));
       }
     }
 
     if ((match?.benchMembersTeam2 || 0) > 0) {
       for (let index = 0; index < match.benchMembersTeam2; index += 1) {
         const benchId = `t2_bench_${index + 1}`;
-        addOption(benchId, "Dự bị (Free)", "bench", 2, true, takenPositionIds.has(benchId));
+        addOption(benchId, "Dự bị", "bench", 2, true, takenPositionIds.has(benchId));
       }
     }
 
@@ -1553,8 +1566,20 @@ export default function MatchDetailScreen({ navigation, route }) {
 
                 <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}> 
                   <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
-                  <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+                  <Text style={styles.infoText}>Loại sân: {match.customPitchType ? match.customPitchType : (getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`)}</Text>
                 </View>
+
+                {/* Pitch Status & Deposit */}
+                <View style={[styles.infoRow, { paddingTop: 10, paddingBottom: 5 }]}>
+                  <View style={styles.infoIcon}><Ionicons name="card-outline" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>Trạng thái sân: <Text style={{ fontWeight: "700", color: match.pitchStatus === "Đã cọc" ? ORANGE : "#4B5563" }}>{match.pitchStatus || "Chưa cọc"}</Text></Text>
+                </View>
+                {match.pitchStatus === "Đã cọc" && match.depositAmount ? (
+                  <View style={[styles.infoRow, { paddingBottom: 10 }]}>
+                    <View style={styles.infoIcon}><Ionicons name="cash-outline" size={16} color="#333" /></View>
+                    <Text style={styles.infoText}>Tiền đã cọc: <Text style={{ fontWeight: "700", color: "#059669" }}>{formatNumberWithDots(match.depositAmount)} VND</Text></Text>
+                  </View>
+                ) : null}
 
                 {/* Skill Level */}
                 <View style={[styles.infoRow, { paddingTop: 5, paddingBottom: 5 }]}>
@@ -2280,7 +2305,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                         isSelected && styles.positionOptionTextSelected,
                         isDisabled && styles.positionOptionTextDisabled,
                       ]}>
-                        {option.label} · {option.isBench ? `Dự bị (Free) · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
+                        {option.label} · {option.isBench ? `Dự bị · Đội ${option.teamNumber}` : `Đội ${option.teamNumber}`}
                       </Text>
                       {isOccupied && (
                         <Text style={{ color: "#9CA3AF", fontSize: 11.5, marginTop: 2, fontStyle: "italic" }}>

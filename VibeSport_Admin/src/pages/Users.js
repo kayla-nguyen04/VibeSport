@@ -56,6 +56,11 @@ export default function Users() {
   };
 
   const handleRoleChange = async (userId, newRole) => {
+    if (newRole === 'Admin') {
+      showNotification('Không được phép cấp quyền Admin!', 'error');
+      // Reload lại data hoặc bỏ qua, dropdown sẽ tự reset về state cũ từ Redux
+      return;
+    }
     const resultAction = await dispatch(updateUserRole({ id: userId, role: newRole }));
     if (updateUserRole.fulfilled.match(resultAction)) {
       showNotification('Cập nhật quyền thành công!');
@@ -148,15 +153,16 @@ export default function Users() {
                 </td>
                 <td>{new Date(user.createdAt).toLocaleDateString('vi-VN')}</td>
                 <td>
-                  <select 
-                    className="table-select"
-                    value={user.role}
-                    onChange={(e) => handleRoleChange(user._id, e.target.value)}
-                  >
-                    {ROLES.map(role => (
-                      <option key={role.value} value={role.value}>{role.label}</option>
-                    ))}
-                  </select>
+                  <span style={{ 
+                    fontWeight: '600', 
+                    padding: '6px 12px', 
+                    borderRadius: '20px',
+                    backgroundColor: user.role === 'Admin' ? '#FEE2E2' : '#F3F4F6',
+                    color: user.role === 'Admin' ? '#DC2626' : '#4B5563',
+                    fontSize: '13px'
+                  }}>
+                    {user.role === 'Admin' ? 'Admin' : 'User'}
+                  </span>
                 </td>
                 <td>
                   <span className={`status-badge ${user.isLocked ? 'status-locked' : 'status-active'}`}>

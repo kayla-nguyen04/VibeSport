@@ -465,6 +465,20 @@ const chatSlice = createSlice({
     callError: null,
     // Tên channel cuộc gọi đang active (để socket emit leave khi cần)
     activeCallChannel: null,
+    // ===== State machine cho cuộc gọi =====
+    // Single source of truth cho cả 2 phía, suy ra từ các socket event hiện có.
+    // IDLE: không có cuộc gọi nào
+    // OUTGOING_RINGING: mình là caller, đã emit start_call, chờ callee
+    // INCOMING_RINGING: mình là callee, đã nhận incoming_call, modal đang hiện
+    // CONNECTING: cả 2 bên đang vào CallScreen, đang xin quyền / join Agora channel
+    // CONNECTED: onJoinChannelSuccess đã fire (Agora SDK callback) → bắt đầu đếm duration
+    // ENDED: cuộc gọi kết thúc (call_ended / call_rejected / call_busy / call_cancelled / call_answered_elsewhere / mình bấm End)
+    callState: 'IDLE',
+    // Thời điểm chuyển sang CONNECTED (timestamp ms) — dùng cho duration timer
+    // và fallback nếu Agora callback bị miss.
+    connectedAt: null,
+    // Lý do kết thúc (nếu có) — để UI có thể hiển thị message phù hợp
+    endedReason: null,
   },
   reducers: {
     setActiveConversation(state, action) {
@@ -723,6 +737,29 @@ const chatSlice = createSlice({
     },
     clearActiveCallChannel(state) {
       state.activeCallChannel = null;
+    },
+    // ===== State machine cho cuộc gọi =====
+    // Cập nhật callState + clear connectedAt khi sang state khác CONNECTED.
+    setCallState(state, action) {
+      const next = action.payload;
+      state.callState = next;
+      if (next !== 'CONNECTED') {
+        state.connectedAt = null;
+      }
+      if (next === 'IDLE') {
+        state.endedReason = null;
+      }
+    },
+    setConnectedAt(state, action) {
+      state.connectedAt = action.payload;
+    },
+    setEndedReason(state, action) {
+      state.endedReason = action.payload || null;
+    },
+    resetCallState(state) {
+      state.callState = 'IDLE';
+      state.connectedAt = null;
+      state.endedReason = null;
     },
   },
   extraReducers: (builder) => {
@@ -1020,6 +1057,9 @@ const chatSlice = createSlice({
       state.incomingCall = null;
       state.callError = null;
       state.activeCallChannel = null;
+      state.callState = 'IDLE';
+      state.connectedAt = null;
+      state.endedReason = null;
     });
   },
 });
@@ -1048,5 +1088,9 @@ export const {
   clearCallError,
   setActiveCallChannel,
   clearActiveCallChannel,
+  setCallState,
+  setConnectedAt,
+  setEndedReason,
+  resetCallState,
 } = chatSlice.actions;
 export default chatSlice.reducer;

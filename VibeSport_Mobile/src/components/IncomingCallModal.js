@@ -9,7 +9,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
-import { clearIncomingCall, clearActiveCallChannel } from '../redux/chatSlice';
+import {
+  clearIncomingCall,
+  clearActiveCallChannel,
+  setCallState,
+  setEndedReason,
+} from '../redux/chatSlice';
 import { socketEmitter } from '../hooks/useSocket';
 import { getUserProfileRequest } from '../services/userApi';
 
@@ -42,38 +47,45 @@ export function IncomingCallModal() {
   const userToken = useSelector((state) => state.auth.token);
   const incomingCall = useSelector((state) => state.chat.incomingCall);
 
-  useEffect(() => {
-    console.log('[IncomingCallModal] Redux incomingCall changed:', incomingCall);
-  }, [incomingCall]);
+  // (Đã bỏ 2 useEffect debug log — Redux incomingCall + currentUser debug)
 
-  // Debug: log userId ngay khi component render để dễ verify field nào đang có giá trị
-  useEffect(() => {
-    console.log('[IncomingCallModal] 🆔 currentUser debug:', {
-      hasUser: !!currentUser,
-      'user.id': currentUser?.id,
-      'user._id': currentUser?._id,
-      resolvedUserId: userId,
-    });
-  }, [currentUser, userId]);
 
   // Phần A: auto-dismiss sau 30s nếu không có tương tác
   useEffect(() => {
     if (!incomingCall?.channelName) return;
 
-    console.log('[IncomingCallModal] ⏱️ Mount/render with channel=', incomingCall.channelName, '— auto-dismiss timer 30s bắt đầu');
     const timer = setTimeout(() => {
-      console.log('[IncomingCallModal] ⏱️ Auto-dismiss: 30s elapsed without response');
+      // BUG FIX: phải báo cho caller biết cuộc gọi kết thúc do timeout, không thì
+      // caller đứng mãi ở OUTGOING_RINGING/CONNECTING không ai pickup.
+      // Emit call_rejected với reason='timeout' (giống cấu trúc handleReject).
+      // Lưu ý: server hiện KHÔNG forward field reason cho caller (chỉ forward
+      // { channelName }) → caller vẫn nhận event call_rejected và thoát CallScreen,
+      // nhưng endedReason phía caller sẽ là 'call_rejected' chứ không phải 'timeout'.
+      // Vẫn emit để server cleanup busy state + gửi system message "Cuộc gọi nhỡ".
+      if (incomingCall?.channelName && callerId && userId) {
+        socketEmitter.emit('call_rejected', {
+          callerId,
+          channelName: incomingCall.channelName,
+          calleeId: userId,
+          reason: 'timeout',
+        });
+      } else {
+        console.warn('[IncomingCallModal] ⏱️ timeout: missing fields, cannot emit call_rejected', {
+          channelName: incomingCall?.channelName,
+          callerId,
+          userId,
+        });
+      }
+      dispatch(setEndedReason('timeout'));
+      dispatch(setCallState('ENDED'));
       dispatch(clearIncomingCall());
       dispatch(clearActiveCallChannel());
     }, 30000);
 
     return () => {
-      console.log('[IncomingCallModal] ⏱️ Cleanup timer for channel=', incomingCall.channelName);
       clearTimeout(timer);
     };
   }, [incomingCall?.channelName, dispatch]);
-
-  console.log('[IncomingCallModal] render, incomingCall=', incomingCall);
 
   if (!incomingCall) return null;
 
@@ -87,10 +99,10 @@ export function IncomingCallModal() {
   const initials = getInitials(callerName || 'User');
 
   const handleAccept = async () => {
-    console.log('[IncomingCallModal] ✅ Accept call, channel=', channelName, {
-      isGroup,
-      groupName,
-    });
+    // State machine: chuyển sang CONNECTING trước khi navigate (để CallScreen
+    // biết là đã accept, không phải incoming nữa). CallScreen sẽ chuyển sang
+    // CONNECTED khi onJoinChannelSuccess fire.
+    dispatch(setCallState('CONNECTING'));
     dispatch(clearIncomingCall());
     dispatch(clearActiveCallChannel());
     // Fetch profile của caller để truyền vào CallScreen làm `peer`,
@@ -129,13 +141,7 @@ export function IncomingCallModal() {
   };
 
   const handleReject = () => {
-    console.log('[IncomingCallModal] ❌ Reject call, channel=', channelName, {
-      callerId,
-      userId,
-      hasAllRequiredFields: !!(channelName && callerId && userId),
-    });
     if (channelName && callerId && userId) {
-      console.log('[IncomingCallModal] 📤 emitting call_rejected', { callerId, channelName, calleeId: userId });
       socketEmitter.emit('call_rejected', { callerId, channelName, calleeId: userId });
     } else {
       // Trước đây lỗi này bị bỏ qua trong im lặng — giờ log rõ để không tái diễn bug tương tự
@@ -145,6 +151,9 @@ export function IncomingCallModal() {
         userId,
       });
     }
+    // State machine: callee chủ động từ chối → ENDED
+    dispatch(setEndedReason('call_rejected'));
+    dispatch(setCallState('ENDED'));
     dispatch(clearIncomingCall());
     dispatch(clearActiveCallChannel());
   };
@@ -171,9 +180,6 @@ export function IncomingCallModal() {
           </View>
 
           {showGroupLabel ? (
-            // === Layout cho group call có groupName ===
-            // Dòng 1: tên nhóm (to, đậm) — để người nhận biết cuộc gọi từ nhóm nào
-            // Dòng 2: "{callerName} đang gọi..." — ngữ cảnh ai là người bấm gọi
             <>
               <Text style={styles.groupName} numberOfLines={1}>
                 {groupName}
