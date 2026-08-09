@@ -104,12 +104,6 @@ const navGroups = [
       { key: '/deleted-content', icon: icons.deleted, label: 'Nội dung đã xóa' },
     ],
   },
-  {
-    label: 'Khác',
-    items: [
-      { key: '/support', icon: icons.support, label: 'Chat hỗ trợ' },
-    ],
-  },
 ];
 
 export default function MainLayout() {

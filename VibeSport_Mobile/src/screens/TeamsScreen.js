@@ -102,6 +102,17 @@ const formatServiceCostDisplay = (cost) => {
   return costStr;
 };
 
+const isVirtualUser = (p) => {
+  if (!p) return false;
+  if (typeof p === 'boolean') return p;
+  if (typeof p !== 'object') return false;
+  if (p.isVirtual === true || p.isVirtual === 'true') return true;
+  if (p.createdByUser != null) return true;
+  if (typeof p.email === 'string' && (p.email.startsWith('virtual_') || p.email.includes('@virtual.vibesport.com'))) return true;
+  if (typeof p.name === 'string' && (p.name.includes('(Ảo)') || p.name.includes('[Ảo]'))) return true;
+  return false;
+};
+
 const getInitials = (name) => {
   if (!name) return "?";
   const p = name.trim().split(" ");
@@ -315,7 +326,7 @@ export default function TeamsScreen({ navigation }) {
       const now = new Date();
 
       const diffMs = matchStart.getTime() - now.getTime();
-      return diffMs <= 60 * 60 * 1000;
+      return diffMs <= 3 * 60 * 60 * 1000;
     } catch (e) {
       return false;
     }
@@ -331,7 +342,7 @@ export default function TeamsScreen({ navigation }) {
       return;
     }
     if (isMatchStartingWithinOneHour(item)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Sửa!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể Sửa!");
       return;
     }
     Alert.alert(
@@ -355,7 +366,7 @@ export default function TeamsScreen({ navigation }) {
       return;
     }
     if (isMatchStartingWithinOneHour(item)) {
-      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 1 tiếng (hoặc đã diễn ra), không thể Xóa!");
+      Alert.alert("Thông báo", "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đã diễn ra), không thể Hủy / Xóa!");
       return;
     }
     Alert.alert(
@@ -577,7 +588,7 @@ export default function TeamsScreen({ navigation }) {
     const participantList = Array.isArray(item.participants) ? item.participants : [];
     const participantsCount = participantList.filter((participant) => {
       const participantId = getUserIdValue(participant);
-      return Boolean(participantId) && participantId !== creatorId;
+      return Boolean(participantId) && participantId !== creatorId && !isVirtualUser(participant);
     }).length;
     const positionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
     const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
@@ -610,44 +621,62 @@ export default function TeamsScreen({ navigation }) {
     const totalCostVal = item.totalCourtCost || (item.costPerPerson * totalHoursVal);
     const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / mainPlayersCount) : item.costPerPerson);
 
+    // Position needs with Team indicator
     const positionNeeds = [];
     if (item.sport === "football") {
-      const ROLE_ALIASES = {
-        gk: "goalkeeper",
-        lb: "defender",
-        cb: "defender",
-        rb: "defender",
-        dm: "midfielder",
-        cm: "midfielder",
-        am: "midfielder",
-        lm: "midfielder",
-        rm: "midfielder",
-        lw: "forward",
-        rw: "forward",
-        st: "forward",
-        cf: "forward",
+      const POSITION_LABEL_MAP = {
+        gk: "Thủ môn",
+        lb: "Hậu vệ",
+        cb: "Hậu vệ",
+        cb1: "Hậu vệ",
+        cb2: "Hậu vệ",
+        rb: "Hậu vệ",
+        dm: "Tiền vệ",
+        dm1: "Tiền vệ",
+        dm2: "Tiền vệ",
+        cm: "Tiền vệ",
+        am: "Tiền vệ",
+        lm: "Tiền vệ",
+        rm: "Tiền vệ",
+        st: "Tiền đạo",
+        st1: "Tiền đạo",
+        st2: "Tiền đạo",
       };
-      const roleCounts = {};
+
+      const teamRoleCounts = {};
+
       if (Array.isArray(item.selectedPositionIds)) {
         item.selectedPositionIds.forEach((id) => {
           if (typeof id !== "string") return;
-          const mappedRole = getFootballRole(id);
-          if (mappedRole) {
-            roleCounts[mappedRole] = (roleCounts[mappedRole] || 0) + 1;
-            return;
-          }
+          const teamNumber = id.startsWith("t1_") ? 1 : (id.startsWith("t2_") ? 2 : 0);
           const rawRole = id.replace(/^t[12]_/, "").replace(/_\d+$/, "").toLowerCase();
-          const key = rawRole.replace(/\d+$/, "");
-          const fallbackRole = ROLE_ALIASES[key] || key;
-          roleCounts[fallbackRole] = (roleCounts[fallbackRole] || 0) + 1;
+          const baseKey = rawRole.replace(/\d+$/, "");
+          const roleLabel = POSITION_LABEL_MAP[rawRole] || POSITION_LABEL_MAP[baseKey] || "Cầu thủ";
+          const teamLabel = teamNumber > 0 ? `Đội ${teamNumber}` : "";
+
+          const key = teamLabel ? `${roleLabel} · ${teamLabel}` : roleLabel;
+          if (!teamRoleCounts[key]) {
+            teamRoleCounts[key] = { label: key, count: 0, teamNumber };
+          }
+          teamRoleCounts[key].count += 1;
         });
       }
-      const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
-      if (benchCount > 0) {
-        roleCounts.bench = (roleCounts.bench || 0) + benchCount;
+
+      const b1 = Number(item.benchMembersTeam1 || 0);
+      const b2 = Number(item.benchMembersTeam2 || 0);
+      if (b1 > 0) {
+        const key = "Dự bị · Đội 1";
+        if (!teamRoleCounts[key]) teamRoleCounts[key] = { label: key, count: 0, teamNumber: 1 };
+        teamRoleCounts[key].count += b1;
       }
-      Object.entries(roleCounts).forEach(([role, count]) => {
-        positionNeeds.push({ label: ROLE_LABELS[role] || role, count });
+      if (b2 > 0) {
+        const key = "Dự bị · Đội 2";
+        if (!teamRoleCounts[key]) teamRoleCounts[key] = { label: key, count: 0, teamNumber: 2 };
+        teamRoleCounts[key].count += b2;
+      }
+
+      Object.values(teamRoleCounts).forEach((entry) => {
+        positionNeeds.push(entry);
       });
     }
 
@@ -750,13 +779,32 @@ export default function TeamsScreen({ navigation }) {
         </View>
 
         {positionNeeds.length > 0 && (
-          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 8, paddingHorizontal: 2, marginLeft:9 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 8, paddingHorizontal: 2, marginLeft: 9 }}>
             <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Vị trí cần tìm:</Text>
-            {positionNeeds.map((p, i) => (
-              <View key={i} style={{ backgroundColor: "#F3F4F6", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#1F2937" }}>{p.label} x{p.count}</Text>
-              </View>
-            ))}
+            {positionNeeds.map((p, i) => {
+              const isTeam1 = p.teamNumber === 1;
+              const isTeam2 = p.teamNumber === 2;
+
+              return (
+                <View
+                  key={`pos_need_${i}`}
+                  style={{
+                    backgroundColor: isTeam1 ? "#DBEAFE" : (isTeam2 ? "#FEE2E2" : "#F3F4F6"),
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 11.5,
+                    fontWeight: "700",
+                    color: isTeam1 ? "#1D4ED8" : (isTeam2 ? "#DC2626" : "#1F2937"),
+                  }}>
+                    {p.label}{p.count > 1 ? ` x${p.count}` : ""}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
 

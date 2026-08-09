@@ -1431,7 +1431,7 @@ export default function ChatListScreen({ navigation }) {
                   style={[styles.menuItem, styles.menuItemBorder]}
                   onPress={() => {
                     setShowHeaderMenu(false);
-                    handleOpenCreateGroup();
+                    `handleOpenCreateGroup`();
                   }}
                 >
                   <Ionicons name="people-outline" size={22} color="#374151" />

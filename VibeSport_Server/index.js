@@ -21,6 +21,7 @@ const authRouter = require('./routes/auth');
 const agoraRouter = require('./routes/agora');
 const otpRoutes = require("./routes/otp");
 const matchRoutes = require("./routes/matches");
+const virtualUserRoutes = require("./routes/virtualUserRoutes");
 const postsRouter = require('./routes/posts');
 const savedPostsRouter = require('./routes/savedPosts');
 const tagsRouter = require('./routes/tags');
@@ -687,6 +688,7 @@ app.use('/api/ratings', ratingRoutes);
 app.use('/api/agora', agoraRouter);
 app.use("/api/otp", otpRoutes);
 app.use("/api/matches", matchRoutes);
+app.use("/api/virtual-users", virtualUserRoutes);
 
 // Đảm bảo thư mục uploads tồn tại trên startup
 const uploadsDir = path.join(__dirname, 'uploads', 'posts');

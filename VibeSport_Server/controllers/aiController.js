@@ -1,8 +1,18 @@
 const Groq = require('groq-sdk');
 const Match = require('../models/Match');
 
-// Khởi tạo SDK Groq
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Khởi tạo SDK Groq an toàn (tránh crash server khi thiếu GROQ_API_KEY)
+const getGroqClient = () => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey || !apiKey.trim()) {
+    return null;
+  }
+  try {
+    return new Groq({ apiKey });
+  } catch (err) {
+    return null;
+  }
+};
 
 // Ưu tiên model 70B cho chất lượng tốt, model 8B nhẹ hơn làm dự phòng
 const PREFERRED_MODELS = [
@@ -18,6 +28,15 @@ exports.chatWithAi = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Vui lòng nhập nội dung tin nhắn.',
+      });
+    }
+
+    const groq = getGroqClient();
+    if (!groq) {
+      return res.status(200).json({
+        success: true,
+        replyText: 'Tính năng trợ lý AI hiện chưa được cấu hình GROQ_API_KEY trên Server.',
+        suggestedMatches: [],
       });
     }
 

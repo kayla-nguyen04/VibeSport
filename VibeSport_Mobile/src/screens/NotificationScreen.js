@@ -165,15 +165,22 @@ export function NotificationScreen({ navigation }) {
       return;
     }
 
-    const postId = item.postId?._id || item.postId;
-    if (postId) {
-      navigation.navigate('PostDetail', { postId });
+    // Check match or rating notification redirect
+    const rawMatchId = item.matchId?._id || item.matchId || item.relatedId?._id || item.relatedId;
+    if (rawMatchId) {
+      const targetMatchId = String(rawMatchId);
+      const msg = `${item.title || ''} ${item.message || ''}`.toLowerCase();
+      const isRatingNotif = item.type === 'rating' || item.type === 'match_ended' || msg.includes('kết thúc') || msg.includes('đánh giá');
+      navigation.navigate('MatchDetail', {
+        matchId: targetMatchId,
+        autoOpenRating: isRatingNotif,
+      });
       return;
     }
 
-    const matchId = item.matchId?._id || item.matchId;
-    if (item.type === 'match' && matchId) {
-      navigation.navigate('MatchDetail', { matchId });
+    const postId = item.postId?._id || item.postId;
+    if (postId) {
+      navigation.navigate('PostDetail', { postId });
       return;
     }
 

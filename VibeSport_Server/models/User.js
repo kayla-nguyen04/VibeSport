@@ -72,6 +72,15 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    isVirtual: {
+      type: Boolean,
+      default: false,
+    },
+    createdByUser: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     role: {
       type: String,
       enum: ['Admin', 'User'],

@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const VirtualUser = require('../models/VirtualUser');
 const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
 const Team = require('../models/Team');
@@ -40,6 +41,27 @@ exports.getUserProfile = async (req, res) => {
 
     const user = await User.findById(id).select('-passwordHash');
     if (!user) {
+      const virtualUser = await VirtualUser.findById(id);
+      if (virtualUser) {
+        const vObj = virtualUser.toObject();
+        return res.json({
+          success: true,
+          data: {
+            id: vObj._id,
+            _id: vObj._id,
+            name: vObj.name,
+            picture: vObj.picture,
+            isVirtual: true,
+            rating: vObj.rating || 5.0,
+            stats: vObj.stats || { matchesPlayed: 0 },
+            followerCount: 0,
+            followingCount: 0,
+            isFollowing: false,
+            isFollowedBy: false,
+            isSelf: false,
+          },
+        });
+      }
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }
 
