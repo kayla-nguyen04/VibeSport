@@ -55,6 +55,23 @@ const matchSchema = new Schema(
       min: 1,
     },
 
+    customPitchType: {
+      type: String,
+      default: "",
+    },
+
+    pitchStatus: {
+      type: String,
+      enum: ["Chưa cọc", "Đã cọc"],
+      default: "Chưa cọc",
+    },
+
+    depositAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     currentPlayers: {
       type: Number,
       default: 1,

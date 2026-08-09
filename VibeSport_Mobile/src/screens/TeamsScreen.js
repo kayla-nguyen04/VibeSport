@@ -599,9 +599,9 @@ export default function TeamsScreen({ navigation }) {
     }
     const isEnded = item.status === "completed" || item.status === "cancelled";
 
-    const pitchTypeLabel = item.sport === "football"
+    const pitchTypeLabel = item.customPitchType ? `Sân ${item.customPitchType}` : (item.sport === "football"
       ? (maxCount === 10 ? "Sân 5 (5v5)" : maxCount === 14 ? "Sân 7 (7v7)" : "Sân 11 (11v11)")
-      : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)");
+      : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)"));
 
     const mainPlayersCount = item.sport === "football" && Array.isArray(item.selectedPositionIds) && item.selectedPositionIds.length > 0
       ? item.selectedPositionIds.length
@@ -718,6 +718,13 @@ export default function TeamsScreen({ navigation }) {
             <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight:10}}>
               <MaterialCommunityIcons name="soccer-field" size={14} color="#6B7280" style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 12, color: "#374151", fontWeight: "600" }}>{pitchTypeLabel}</Text>
+            </View>
+
+            <View style={{ backgroundColor: item.pitchStatus === "Đã cọc" ? "#FFF7ED" : "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: item.pitchStatus === "Đã cọc" ? "#FFD8A8" : "#E5E7EB", flexDirection: "row", alignItems: "center", marginRight:10}}>
+              <Ionicons name="card-outline" size={14} color={item.pitchStatus === "Đã cọc" ? ORANGE : "#6B7280"} style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 12, color: item.pitchStatus === "Đã cọc" ? ORANGE : "#374151", fontWeight: "600" }}>
+                {item.pitchStatus === "Đã cọc" && item.depositAmount ? `Đã cọc ${formatCost(item.depositAmount)}` : (item.pitchStatus || "Chưa cọc")}
+              </Text>
             </View>
 
             <View style={{ backgroundColor: "#FFFFFF", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", flexDirection: "row", alignItems: "center",marginRight:10 }}>
