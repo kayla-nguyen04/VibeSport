@@ -1420,8 +1420,20 @@ export default function MatchDetailScreen({ navigation, route }) {
 
                 <View style={[styles.infoRow, { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" }]}> 
                   <View style={styles.infoIcon}><MaterialCommunityIcons name="soccer-field" size={16} color="#333" /></View>
-                  <Text style={styles.infoText}>Loại sân: {getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`}</Text>
+                  <Text style={styles.infoText}>Loại sân: {match.customPitchType ? match.customPitchType : (getFormatLabel(match.sport, match.maxPlayers) || `${Math.floor(maxCount / 2)} vs ${Math.floor(maxCount / 2)}`)}</Text>
                 </View>
+
+                {/* Pitch Status & Deposit */}
+                <View style={[styles.infoRow, { paddingTop: 10, paddingBottom: 5 }]}>
+                  <View style={styles.infoIcon}><Ionicons name="card-outline" size={16} color="#333" /></View>
+                  <Text style={styles.infoText}>Trạng thái sân: <Text style={{ fontWeight: "700", color: match.pitchStatus === "Đã cọc" ? ORANGE : "#4B5563" }}>{match.pitchStatus || "Chưa cọc"}</Text></Text>
+                </View>
+                {match.pitchStatus === "Đã cọc" && match.depositAmount ? (
+                  <View style={[styles.infoRow, { paddingBottom: 10 }]}>
+                    <View style={styles.infoIcon}><Ionicons name="cash-outline" size={16} color="#333" /></View>
+                    <Text style={styles.infoText}>Tiền đã cọc: <Text style={{ fontWeight: "700", color: "#059669" }}>{formatNumberWithDots(match.depositAmount)} VND</Text></Text>
+                  </View>
+                ) : null}
 
                 {/* Skill Level */}
                 <View style={[styles.infoRow, { paddingTop: 5, paddingBottom: 5 }]}>
