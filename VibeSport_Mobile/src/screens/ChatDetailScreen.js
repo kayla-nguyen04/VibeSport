@@ -920,22 +920,106 @@ export default function ChatDetailScreen({ route, navigation }) {
     );
   };
 
-  const renderMessage = ({ item }) => {
+  const getSenderInfo = (senderRaw) => {
+    const sId = String(senderRaw?._id || senderRaw || '');
+    if (!isGroup && peer && String(peer._id || peer) === sId) {
+      return {
+        id: sId,
+        name: peer.name || 'Thành viên',
+        picture: peer.picture || null,
+        raw: peer,
+      };
+    }
+    if (senderRaw && typeof senderRaw === 'object' && (senderRaw.name || senderRaw.picture)) {
+      return {
+        id: sId,
+        name: senderRaw.name || 'Thành viên',
+        picture: senderRaw.picture || null,
+        raw: senderRaw,
+      };
+    }
+    const found = (conversationMeta?.participants || []).find((p) => String(p._id || p) === sId);
+    if (found && typeof found === 'object') {
+      return {
+        id: sId,
+        name: found.name || 'Thành viên',
+        picture: found.picture || null,
+        raw: found,
+      };
+    }
+    return { id: sId, name: 'Thành viên', picture: null, raw: null };
+  };
+
+  const checkSequence = (index, currentSenderId) => {
+    const prevMsg = index > 0 ? groupedMessages[index - 1] : null;
+    const nextMsg = index < groupedMessages.length - 1 ? groupedMessages[index + 1] : null;
+
+    const prevSenderId = prevMsg ? String(prevMsg.senderId?._id || prevMsg.senderId) : null;
+    const nextSenderId = nextMsg ? String(nextMsg.senderId?._id || nextMsg.senderId) : null;
+
+    const isFirstInSequence = !prevMsg || prevSenderId !== String(currentSenderId);
+    const isLastInSequence = !nextMsg || nextSenderId !== String(currentSenderId);
+
+    return { isFirstInSequence, isLastInSequence };
+  };
+
+  const renderMessage = ({ item, index }) => {
     // Grouped images path
     if (item.isGroupedImages) {
-      const isMine = String(item.senderId) === String(currentUserId);
+      const senderId = item.senderId?._id || item.senderId;
+      const isMine = String(senderId) === String(currentUserId);
       const rowStyle = isMine ? styles.messageRowMine : styles.messageRowPeer;
+      const senderInfo = getSenderInfo(item.senderIdRaw || item.senderId);
+      const { isFirstInSequence, isLastInSequence } = checkSequence(index, senderId);
+
       const getSenderName = () => {
-        const sId = String(item.senderId);
+        const sId = String(senderId);
         const nickname = conversationMeta?.nicknames?.[sId];
         if (nickname) return nickname;
-        return item.senderIdRaw?.name || 'Thành viên';
+        return senderInfo.name || 'Thành viên';
       };
 
       return (
         <View style={[styles.messageRow, rowStyle]}>
+          {!isMine && (
+            <View style={styles.peerAvatarContainer}>
+              {isLastInSequence ? (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (senderInfo.id) {
+                      navigation.navigate('UserProfile', {
+                        userId: senderInfo.id,
+                        initialProfile: senderInfo.raw,
+                      });
+                    }
+                  }}
+                >
+                  {senderInfo.picture ? (
+                    <Image
+                      source={{ uri: fixMediaUrl(senderInfo.picture) }}
+                      style={styles.peerAvatarImg}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.peerAvatarFallback,
+                        { backgroundColor: getAvatarColor(senderInfo.name) },
+                      ]}
+                    >
+                      <Text style={styles.peerAvatarText}>
+                        {getInitials(senderInfo.name)}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.peerAvatarPlaceholder} />
+              )}
+            </View>
+          )}
           <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
-            {!isMine && isGroup && (
+            {!isMine && isGroup && isFirstInSequence && (
               <Text style={styles.senderName}>{getSenderName()}</Text>
             )}
             {renderGroupedImages(item, isMine)}
@@ -949,6 +1033,8 @@ export default function ChatDetailScreen({ route, navigation }) {
     const isMine = String(senderId) === String(currentUserId);
     const isPending = !!item.isPending;
     const isRecalled = !!item.isRecalled;
+    const senderInfo = getSenderInfo(item.senderId);
+    const { isFirstInSequence, isLastInSequence } = checkSequence(index, senderId);
 
     const rowStyle = isMine
       ? styles.messageRowMine
@@ -963,7 +1049,7 @@ export default function ChatDetailScreen({ route, navigation }) {
       const sId = String(senderId);
       const nickname = conversationMeta?.nicknames?.[sId];
       if (nickname) return nickname;
-      return item.senderId?.name || 'Thành viên';
+      return senderInfo.name || 'Thành viên';
     };
 
     const isHighlightedMsg = String(item._id) === String(highlightedMessageId);
@@ -979,8 +1065,45 @@ export default function ChatDetailScreen({ route, navigation }) {
         delayLongPress={500}
       >
         <View style={[styles.messageRow, rowStyle]}>
+          {!isMine && (
+            <View style={styles.peerAvatarContainer}>
+              {isLastInSequence ? (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (senderInfo.id) {
+                      navigation.navigate('UserProfile', {
+                        userId: senderInfo.id,
+                        initialProfile: senderInfo.raw,
+                      });
+                    }
+                  }}
+                >
+                  {senderInfo.picture ? (
+                    <Image
+                      source={{ uri: fixMediaUrl(senderInfo.picture) }}
+                      style={styles.peerAvatarImg}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.peerAvatarFallback,
+                        { backgroundColor: getAvatarColor(senderInfo.name) },
+                      ]}
+                    >
+                      <Text style={styles.peerAvatarText}>
+                        {getInitials(senderInfo.name)}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.peerAvatarPlaceholder} />
+              )}
+            </View>
+          )}
           <View style={[styles.messageContainer, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
-            {!isMine && isGroup && (
+            {!isMine && isGroup && isFirstInSequence && (
               <Text style={styles.senderName}>{getSenderName()}</Text>
             )}
             <View
@@ -2134,8 +2257,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   messageRow: {
-    marginBottom: 6,
+    marginBottom: 4,
     flexDirection: 'row',
+    alignItems: 'flex-end',
   },
   messageRowMine: {
     justifyContent: 'flex-end',
@@ -2143,9 +2267,39 @@ const styles = StyleSheet.create({
   messageRowPeer: {
     justifyContent: 'flex-start',
   },
+  peerAvatarContainer: {
+    width: 32,
+    height: 32,
+    marginRight: 8,
+    marginBottom: 2,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  peerAvatarPlaceholder: {
+    width: 32,
+    height: 32,
+  },
+  peerAvatarImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+  },
+  peerAvatarFallback: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  peerAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   messageBubble: {
     maxWidth: SCREEN_WIDTH * 0.7,
-    borderRadius: 32,
+    borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
     minWidth: 60,
