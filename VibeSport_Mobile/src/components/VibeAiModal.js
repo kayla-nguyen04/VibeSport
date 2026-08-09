@@ -12,7 +12,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { sendAiChatRequest } from '../services/aiService';
@@ -27,6 +27,7 @@ const QUICK_CHIPS = [
 ];
 
 export function VibeAiModal({ navigation }) {
+  const insets = useSafeAreaInsets();
   const token = useSelector((state) => state.auth?.token);
   const [modalVisible, setModalVisible] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -131,10 +132,12 @@ export function VibeAiModal({ navigation }) {
         onRequestClose={() => setModalVisible(false)}
         statusBarTranslucent
       >
-        <SafeAreaView style={styles.modalSafeArea} edges={['top', 'bottom']}>
-          {/* Header Cố Định Ở Đỉnh — đo chiều cao thực tế để bù trừ cho KeyboardAvoidingView trên iOS */}
+        <View style={[styles.modalSafeArea, { paddingBottom: insets.bottom }]}>
+          {/* Header Cố Định Ở Đỉnh — tự cộng insets.top (mức tối thiểu 24) vì SafeAreaView
+              bên trong Modal đôi khi không nhận đúng safe-area (đặc biệt khi test qua Chrome/web).
+              Đo thêm chiều cao thực tế để bù trừ cho KeyboardAvoidingView trên iOS */}
           <View
-            style={styles.modalHeader}
+            style={[styles.modalHeader, { paddingTop: Math.max(insets.top, 24) + 12 }]}
             onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
           >
             <View style={styles.headerLeft}>
@@ -147,7 +150,7 @@ export function VibeAiModal({ navigation }) {
               </View>
               <View>
                 <Text style={styles.headerTitle}>VibeSport AI</Text>
-                <Text style={styles.headerSub}>Trợ lý thể thao thông minh </Text>
+                <Text style={styles.headerSub}>Trợ lý thể thao thông minh ⚡</Text>
               </View>
             </View>
             <View style={styles.headerRight}>
@@ -215,17 +218,17 @@ export function VibeAiModal({ navigation }) {
                           <View key={match.matchId || idx} style={styles.matchCard}>
                             <View style={styles.matchCardHeader}>
                               <Text style={styles.matchCardTitle} numberOfLines={1}>
-                                 {match.title || match.sport}
+                                {match.title || match.sport}
                               </Text>
                               <Text style={styles.matchCardCost}>
                                 {match.costPerPerson ? `${match.costPerPerson.toLocaleString('vi-VN')}đ` : 'Miễn phí'}
                               </Text>
                             </View>
                             <Text style={styles.matchCardSub} numberOfLines={1}>
-                               {match.location || 'Sân thi đấu'}
+                              {match.location || 'Sân thi đấu'}
                             </Text>
                             <Text style={styles.matchCardSub}>
-                               {match.startTime || ''} - {match.date || ''} • 👥 {match.players || ''}
+                              {match.startTime || ''} - {match.date || ''} • 👥 {match.players || ''}
                             </Text>
 
                             <TouchableOpacity
@@ -233,7 +236,7 @@ export function VibeAiModal({ navigation }) {
                               activeOpacity={0.8}
                               onPress={() => handleNavigateToMatch(match.matchId)}
                             >
-                              <Text style={styles.matchCardNavBtnText}>Xem chi tiết trận </Text>
+                              <Text style={styles.matchCardNavBtnText}>Xem chi tiết trận ⚽</Text>
                               <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
                             </TouchableOpacity>
                           </View>
@@ -298,7 +301,7 @@ export function VibeAiModal({ navigation }) {
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
       </Modal>
     </>
   );
