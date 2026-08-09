@@ -85,7 +85,7 @@ const formatCost = (c) => {
 };
 
 const formatServiceCostDisplay = (cost) => {
-  if (cost == null || cost === "" || cost === 0 || cost === "0") return "Liên hệ sân";
+  if (cost == null || cost === "" || cost === 0 || cost === "0") return "10.000 – 50.000 VND";
   const costStr = String(cost).trim();
   if (costStr.includes("-")) {
     const parts = costStr.split("-");

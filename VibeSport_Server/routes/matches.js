@@ -235,6 +235,30 @@ router.post("/", authMiddleware, async (req, res) => {
       .filter((v) => v)
       .map((v) => String(v));
 
+    const phone = req.body.contactPhone ? String(req.body.contactPhone).trim() : "";
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Số điện thoại liên hệ không được để trống",
+      });
+    }
+    if (!/^0\d{9}$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Số điện thoại liên hệ phải bắt đầu bằng số 0 và có đúng 10 chữ số (VD: 0987654321)",
+      });
+    }
+
+    if (pitchStatus === "Đã cọc") {
+      const depAmt = Number(depositAmount || 0);
+      if (depAmt <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Số tiền cọc phải lớn hơn 0 VND khi chọn trạng thái 'Đã cọc'",
+        });
+      }
+    }
+
     const match = await Match.create({
       sport,
       formation: formation || defaultFormation[sport],
@@ -259,14 +283,14 @@ router.post("/", authMiddleware, async (req, res) => {
       locationName,
       location: location || {},
       note: note || "",
-      contactPhone: req.body.contactPhone || "",
+      contactPhone: phone,
       contactZalo: req.body.contactZalo || "",
       contactFacebook: req.body.contactFacebook || "",
       contactAppUser: req.body.contactAppUser || null,
       courtDescription: req.body.courtDescription || "",
       specificAddress: req.body.specificAddress || "",
       skillLevel: req.body.skillLevel || "Người mới",
-      serviceCost: req.body.serviceCost != null ? String(req.body.serviceCost) : "",
+      serviceCost: (req.body.serviceCost != null && String(req.body.serviceCost).trim() !== "") ? String(req.body.serviceCost) : "10000-50000",
       chatGroupId: req.body.chatGroupId || null,
       createdBy: userId,
       participants: [userId],
@@ -635,14 +659,25 @@ router.put("/:id", authMiddleware, async (req, res) => {
     }
     if (costPerPerson !== undefined) match.costPerPerson = Number(costPerPerson || 0);
     if (note !== undefined) match.note = note;
-    if (contactPhone !== undefined) match.contactPhone = contactPhone;
+    if (contactPhone !== undefined) {
+      const phone = String(contactPhone).trim();
+      if (!phone) {
+        return res.status(400).json({ success: false, message: "Số điện thoại liên hệ không được để trống" });
+      }
+      if (!/^0\d{9}$/.test(phone)) {
+        return res.status(400).json({ success: false, message: "Số điện thoại liên hệ phải bắt đầu bằng số 0 và có đúng 10 chữ số (VD: 0987654321)" });
+      }
+      match.contactPhone = phone;
+    }
     if (contactZalo !== undefined) match.contactZalo = contactZalo;
     if (contactFacebook !== undefined) match.contactFacebook = contactFacebook;
     if (contactAppUser !== undefined) {
       match.contactAppUser = (contactAppUser && contactAppUser !== "" && contactAppUser !== "null") ? contactAppUser : null;
     }
     if (skillLevel !== undefined) match.skillLevel = skillLevel;
-    if (serviceCost !== undefined) match.serviceCost = String(serviceCost);
+    if (serviceCost !== undefined) {
+      match.serviceCost = (serviceCost != null && String(serviceCost).trim() !== "") ? String(serviceCost) : "10000-50000";
+    }
     if (req.body.chatGroupId) {
       match.chatGroupId = req.body.chatGroupId;
     }
