@@ -2488,36 +2488,18 @@ export default function CreateMatchScreen({ navigation, route }) {
           {sport === "football" ? (
             <>
               {[
-                { maxPlayers: 10, label: "Sân 5", count: "5 vs 5" },
-                { maxPlayers: 14, label: "Sân 7", count: "7 vs 7" },
-                { maxPlayers: 22, label: "Sân 11", count: "11 vs 11" },
+                { maxPlayers: 10, label: "5 vs 5", count: "10 người" },
+                { maxPlayers: 14, label: "7 vs 7", count: "14 người" },
+                { maxPlayers: 22, label: "11 vs 11", count: "22 người" },
               ].map((item) => (
                 <CourtTypeButton
                   key={item.maxPlayers}
                   label={item.label}
                   subLabel={item.count}
-                  isSelected={!isCustomPitch && footballMaxPlayers === item.maxPlayers}
-                  onPress={() => {
-                    setIsCustomPitch(false);
-                    handleSelectFootballMaxPlayers(item.maxPlayers);
-                  }}
+                  isSelected={footballMaxPlayers === item.maxPlayers}
+                  onPress={() => handleSelectFootballMaxPlayers(item.maxPlayers)}
                 />
               ))}
-              <CourtTypeButton
-                key="custom_pitch"
-                label="Tùy chọn"
-                subLabel="Tùy chỉnh"
-                isSelected={isCustomPitch || ![10, 14, 22].includes(footballMaxPlayers)}
-                onPress={() => {
-                  setIsCustomPitch(true);
-                  const num = parseInt(customPitchTypeNumber || "5", 10);
-                  const validNum = isNaN(num) ? 5 : Math.min(11, Math.max(1, num));
-                  setFootballMaxPlayers(validNum * 2);
-                  if (!isEditMode) {
-                    setIsCourtPresetsExpanded(true);
-                  }
-                }}
-              />
             </>
           ) : (
             <>
@@ -2541,44 +2523,6 @@ export default function CreateMatchScreen({ navigation, route }) {
             </>
           )}
         </View>
-
-        {/* Ô nhập Tùy chọn quy mô sân bóng đá */}
-        {sport === "football" && (isCustomPitch || ![10, 14, 22].includes(footballMaxPlayers)) && (
-          <View style={{ marginTop: 10, marginBottom: 4 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: '#6B7280', marginBottom: 6 }}>
-              Nhập quy mô tùy chọn (tối đa 11 vs 11):
-            </Text>
-            <View style={[styles.inputWrapper, { flexDirection: 'row', alignItems: 'center' }]}>
-              <TextInput
-                style={[styles.input, { flex: 1, textAlign: 'center', fontSize: 16 }]}
-                keyboardType="numeric"
-                maxLength={2}
-                placeholder="VD: 9"
-                value={customPitchTypeNumber}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/[^0-9]/g, '');
-                  let num = parseInt(cleaned, 10);
-                  if (num > 11) num = 11;
-                  if (num < 1) num = 1;
-                  const strVal = isNaN(num) ? '' : String(num);
-                  setCustomPitchTypeNumber(strVal);
-                  if (strVal) {
-                    setFootballMaxPlayers(num * 2);
-                    if (!isEditMode) {
-                      setIsCourtPresetsExpanded(true);
-                    }
-                  }
-                }}
-              />
-              <Text style={{ marginHorizontal: 12, fontSize: 16, fontWeight: 'bold', color: '#555' }}>vs</Text>
-              <TextInput
-                style={[styles.input, { flex: 1, textAlign: 'center', fontSize: 16 }]}
-                editable={false}
-                value={customPitchTypeNumber}
-              />
-            </View>
-          </View>
-        )}
 
         {/* Tên trận đấu */}
         <Text style={styles.sectionLabel}>Tên trận đấu</Text>
