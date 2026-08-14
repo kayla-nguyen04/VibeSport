@@ -312,6 +312,27 @@ export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, isSe
           {bio}
         </Text>
       ) : null}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: bio ? 6 : 10, marginBottom: 4 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: '#FFF7ED',
+            borderColor: '#FFD8A8',
+            borderWidth: 1,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 12,
+            gap: 4,
+          }}
+        >
+          <Ionicons name="ribbon" size={12} color="#C2410C" />
+          <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#C2410C' }}>
+            Trình độ: {profile?.skillLevel || 'Người mới'}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 });
@@ -544,6 +565,8 @@ export function EditProfileModal({
   setEditPhone,
   editBio,
   setEditBio,
+  editSkillLevel,
+  setEditSkillLevel,
   onPickAvatar,
   onClose,
   onSave,
@@ -615,6 +638,36 @@ export function EditProfileModal({
                   maxLength={60}
                   multiline
                 />
+
+                <Text style={styles.inputLabel}>Trình độ</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginVertical: 6 }}>
+                  {['Người mới', 'Trung cấp', 'Chuyên nghiệp'].map((level) => (
+                    <TouchableOpacity
+                      key={level}
+                      activeOpacity={0.7}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        backgroundColor: editSkillLevel === level ? primary.DEFAULT : '#F3F4F6',
+                        borderWidth: 1,
+                        borderColor: editSkillLevel === level ? primary.DEFAULT : '#E5E7EB',
+                        alignItems: 'center',
+                      }}
+                      onPress={() => setEditSkillLevel(level)}
+                    >
+                      <Text
+                        style={{
+                          color: editSkillLevel === level ? '#FFFFFF' : '#374151',
+                          fontSize: 12,
+                          fontWeight: '700',
+                        }}
+                      >
+                        {level}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
                 <Text style={styles.inputLabel}>Email</Text>
                 <TextInput

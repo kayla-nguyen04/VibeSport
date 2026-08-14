@@ -173,19 +173,19 @@ export default function ChatListScreen({ navigation }) {
       return (
         <View style={styles.groupAvatarGrid}>
           {/* Member 1 (top-left) */}
-          <View style={[styles.groupAvatarItem, { width: 34, height: 34, borderRadius: 17, top: 2, left: 2, backgroundColor: getAvatarColor(m0.name) }]}>
+          <View style={[styles.groupAvatarItem, { width: 30, height: 30, borderRadius: 15, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
             {m0.picture ? (
-              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 31, height: 31, borderRadius: 15.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 27, height: 27, borderRadius: 13.5 }} resizeMode="cover" />
             ) : (
-              <Text style={[styles.groupAvatarItemText, { fontSize: 12 }]}>{getInitials(m0.name)}</Text>
+              <Text style={[styles.groupAvatarItemText, { fontSize: 11 }]}>{getInitials(m0.name)}</Text>
             )}
           </View>
           {/* Member 2 (bottom-right) */}
-          <View style={[styles.groupAvatarItem, { width: 34, height: 34, borderRadius: 17, bottom: 2, right: 2, backgroundColor: getAvatarColor(m1.name) }]}>
+          <View style={[styles.groupAvatarItem, { width: 30, height: 30, borderRadius: 15, bottom: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
             {m1.picture ? (
-              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 31, height: 31, borderRadius: 15.5 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 27, height: 27, borderRadius: 13.5 }} resizeMode="cover" />
             ) : (
-              <Text style={[styles.groupAvatarItemText, { fontSize: 12 }]}>{getInitials(m1.name)}</Text>
+              <Text style={[styles.groupAvatarItemText, { fontSize: 11 }]}>{getInitials(m1.name)}</Text>
             )}
           </View>
         </View>
@@ -199,25 +199,25 @@ export default function ChatListScreen({ navigation }) {
       
       return (
         <View style={styles.groupAvatarGrid}>
-          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+          <View style={[styles.groupAvatarItem, { width: 24, height: 24, borderRadius: 12, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
             {m0.picture ? (
-              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 21, height: 21, borderRadius: 10.5 }} resizeMode="cover" />
             ) : (
-              <Text style={styles.groupAvatarItemText}>{getInitials(m0.name)}</Text>
+              <Text style={[styles.groupAvatarItemText, { fontSize: 9 }]}>{getInitials(m0.name)}</Text>
             )}
           </View>
-          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+          <View style={[styles.groupAvatarItem, { width: 24, height: 24, borderRadius: 12, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
             {m1.picture ? (
-              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 21, height: 21, borderRadius: 10.5 }} resizeMode="cover" />
             ) : (
-              <Text style={styles.groupAvatarItemText}>{getInitials(m1.name)}</Text>
+              <Text style={[styles.groupAvatarItemText, { fontSize: 9 }]}>{getInitials(m1.name)}</Text>
             )}
           </View>
-          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, left: 14.5, backgroundColor: getAvatarColor(m2.name) }]}>
+          <View style={[styles.groupAvatarItem, { width: 24, height: 24, borderRadius: 12, bottom: 1, left: 12, backgroundColor: getAvatarColor(m2.name) }]}>
             {m2.picture ? (
-              <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 21, height: 21, borderRadius: 10.5 }} resizeMode="cover" />
             ) : (
-              <Text style={styles.groupAvatarItemText}>{getInitials(m2.name)}</Text>
+              <Text style={[styles.groupAvatarItemText, { fontSize: 9 }]}>{getInitials(m2.name)}</Text>
             )}
           </View>
         </View>
@@ -234,35 +234,35 @@ export default function ChatListScreen({ navigation }) {
     
     return (
       <View style={styles.groupAvatarGrid}>
-        <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
+        <View style={[styles.groupAvatarItem, { width: 23, height: 23, borderRadius: 11.5, top: 1, left: 1, backgroundColor: getAvatarColor(m0.name) }]}>
           {m0.picture ? (
-            <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            <Image source={{ uri: fixMediaUrl(m0.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
           ) : (
             <Text style={styles.groupAvatarItemText}>{getInitials(m0.name)}</Text>
           )}
         </View>
-        <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
+        <View style={[styles.groupAvatarItem, { width: 23, height: 23, borderRadius: 11.5, top: 1, right: 1, backgroundColor: getAvatarColor(m1.name) }]}>
           {m1.picture ? (
-            <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            <Image source={{ uri: fixMediaUrl(m1.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
           ) : (
             <Text style={styles.groupAvatarItemText}>{getInitials(m1.name)}</Text>
           )}
         </View>
-        <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, left: 1, backgroundColor: getAvatarColor(m2.name) }]}>
+        <View style={[styles.groupAvatarItem, { width: 23, height: 23, borderRadius: 11.5, bottom: 1, left: 1, backgroundColor: getAvatarColor(m2.name) }]}>
           {m2.picture ? (
-            <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+            <Image source={{ uri: fixMediaUrl(m2.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
           ) : (
             <Text style={styles.groupAvatarItemText}>{getInitials(m2.name)}</Text>
           )}
         </View>
         {hasMore ? (
-          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, right: 1, backgroundColor: '#07823b' }]}>
+          <View style={[styles.groupAvatarItem, { width: 23, height: 23, borderRadius: 11.5, bottom: 1, right: 1, backgroundColor: '#07823b' }]}>
             <Text style={styles.groupAvatarItemText}>{remainingText}</Text>
           </View>
         ) : (
-          <View style={[styles.groupAvatarItem, { width: 27, height: 27, borderRadius: 13.5, bottom: 1, right: 1, backgroundColor: getAvatarColor(m3.name) }]}>
+          <View style={[styles.groupAvatarItem, { width: 23, height: 23, borderRadius: 11.5, bottom: 1, right: 1, backgroundColor: getAvatarColor(m3.name) }]}>
             {m3.picture ? (
-              <Image source={{ uri: fixMediaUrl(m3.picture) }} style={{ width: 24, height: 24, borderRadius: 12 }} resizeMode="cover" />
+              <Image source={{ uri: fixMediaUrl(m3.picture) }} style={{ width: 20, height: 20, borderRadius: 10 }} resizeMode="cover" />
             ) : (
               <Text style={styles.groupAvatarItemText}>{getInitials(m3.name)}</Text>
             )}
@@ -1619,26 +1619,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 15,
+    borderRadius: 12,
     marginHorizontal: 9,
-    marginVertical: 6,
-    height: 78,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 4, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 0,
-      },
-      android: {
-        borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.08)',
-        borderRightWidth: 4,
-        borderBottomWidth: 4,
-        borderRightColor: 'rgba(0, 0, 0, 0.25)',
-        borderBottomColor: 'rgba(0, 0, 0, 0.25)',
-      },
-    }),
+    marginVertical: 7,
+    height: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
   },
   conversationItemTouchable: {
     flex: 1,
@@ -1655,26 +1641,26 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#EFEFEF',
   },
   avatarFallback: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '700',
   },
   groupAvatarGrid: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     position: 'relative',
   },
   groupAvatarItem: {

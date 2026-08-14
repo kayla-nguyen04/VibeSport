@@ -31,6 +31,11 @@ const virtualUserSchema = new Schema(
       min: 0,
       max: 5,
     },
+    skillLevel: {
+      type: String,
+      enum: ["Người mới", "Trung cấp", "Chuyên nghiệp"],
+      default: "Người mới",
+    },
     totalReviews: {
       type: Number,
       default: 0,

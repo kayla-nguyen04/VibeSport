@@ -34,6 +34,7 @@ function createSessionPayload(user) {
       position: user.position ?? null,
       area: user.area ?? null,
       bio: user.bio ?? null,
+      skillLevel: user.skillLevel ?? 'Người mới',
       rating: user.rating ?? 0,
       profileCompleted: Boolean(user.profileCompleted),
     },
@@ -217,7 +218,7 @@ router.post('/google', async (request, response) => {
 
 router.put('/update-profile', async (request, response) => {
   try {
-    const { userId, name, phone, picture, favoriteSport, position, area, bio, profileCompleted } = request.body ?? {};
+    const { userId, name, phone, picture, favoriteSport, position, area, bio, skillLevel, profileCompleted } = request.body ?? {};
 
     if (!userId) {
       response.status(400).json({ message: 'Thiếu thông tin ID người dùng (userId).' });
@@ -242,6 +243,7 @@ router.put('/update-profile', async (request, response) => {
     if (position !== undefined) updateFields.position = position;
     if (area !== undefined) updateFields.area = area;
     if (bio !== undefined) updateFields.bio = bio;
+    if (skillLevel !== undefined) updateFields.skillLevel = skillLevel;
 
     if (profileCompleted !== undefined) {
       updateFields.profileCompleted = Boolean(profileCompleted);
@@ -274,6 +276,7 @@ router.put('/update-profile', async (request, response) => {
         position: user.position ?? null,
         area: user.area ?? null,
         bio: user.bio ?? null,
+        skillLevel: user.skillLevel ?? 'Người mới',
         rating: user.rating ?? 0,
         profileCompleted: Boolean(user.profileCompleted),
       },

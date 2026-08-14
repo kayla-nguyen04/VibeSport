@@ -54,7 +54,12 @@ export function VirtualAccountModal({
       const res = await getVirtualUsersRequest(token);
       setVirtualUsers(res?.data || []);
     } catch (err) {
-      console.error('[VirtualAccountModal] Load error:', err);
+      console.error('[VirtualAccountModal] Load error details:', {
+        message: err?.message,
+        response: err?.response?.data,
+        status: err?.response?.status,
+      });
+      Alert.alert('Lỗi tải dữ liệu', err?.message || 'Không thể tải danh sách tài khoản ảo. Vui lòng kiểm tra kết nối máy chủ.');
     } finally {
       setLoading(false);
     }

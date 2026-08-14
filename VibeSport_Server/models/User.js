@@ -57,6 +57,11 @@ const userSchema = new Schema(
       type: String,
       default: null,
     },
+    skillLevel: {
+      type: String,
+      enum: ["Người mới", "Trung cấp", "Chuyên nghiệp"],
+      default: "Người mới",
+    },
     rating: {
       type: Number,
       default: 5,

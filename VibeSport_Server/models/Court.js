@@ -1,4 +1,5 @@
 const { Schema, model } = require('mongoose');
+require('./CourtOwner');
 
 const courtSchema = new Schema(
   {
@@ -69,7 +70,7 @@ const courtSchema = new Schema(
     courtCount: { type: Number, default: 0 },
     facilities: [{ type: String }],
     description: { type: String, default: '' },
-    owner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    owner: { type: Schema.Types.ObjectId, ref: 'CourtOwner', default: null },
     images: [{ type: String }],
     locationCoords: {
       lat: { type: Number, default: 21.0285 },

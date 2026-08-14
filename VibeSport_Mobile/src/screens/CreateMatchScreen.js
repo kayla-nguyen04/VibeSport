@@ -1014,6 +1014,22 @@ export default function CreateMatchScreen({ navigation, route }) {
   const [courtDescription, setCourtDescription] = useState(editMatch?.courtDescription || "");
   const [specificAddress, setSpecificAddress] = useState(editMatch?.specificAddress || "");
   const [addressInputType, setAddressInputType] = useState("preset");
+
+  const normalizePhone = (val) => {
+    if (val == null) return "";
+    let s = String(val || "").trim();
+    if (s.startsWith("+84")) {
+      const clean = s.slice(3).replace(/\D/g, "");
+      return "+84" + clean.slice(0, 9);
+    }
+    if (s.startsWith("84") && s.length >= 11) {
+      const clean = s.slice(2).replace(/\D/g, "");
+      return "+84" + clean.slice(0, 9);
+    }
+    const clean = s.replace(/\D/g, "");
+    return clean.slice(0, 10);
+  };
+  
   const [selectedCourtObj, setSelectedCourtObj] = useState(editMatch?.selectedCourtObj || null);
   const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
   const [isCourtPresetsExpanded, setIsCourtPresetsExpanded] = useState(false);
@@ -1034,18 +1050,12 @@ export default function CreateMatchScreen({ navigation, route }) {
     }
   };
 
-  const normalizePhone = (val) => {
-    if (val == null) return "";
-    const s = String(val || "").replace(/\D/g, "");
-    return s.slice(0, 10);
-  };
-
   const handlePhoneBlur = () => {
     const trimmed = contactPhone ? contactPhone.trim() : "";
     if (!trimmed) {
       setContactPhoneError("Số điện thoại không được để trống");
-    } else if (!/^0\d{9}$/.test(trimmed)) {
-      setContactPhoneError("Số điện thoại phải bắt đầu bằng số 0 và có đúng 10 chữ số");
+    } else if (!/^(0|\+84)\d{9}$/.test(trimmed)) {
+      setContactPhoneError("Số điện thoại phải bắt đầu bằng 0 hoặc +84 và có đúng 10-12 ký tự");
     } else {
       setContactPhoneError("");
     }
@@ -1413,6 +1423,8 @@ export default function CreateMatchScreen({ navigation, route }) {
 
     return () => backHandler.remove();
   }, [handleConfirmBack]);
+
+
 
   const handleOpenCreateGroupModal = () => {
     setShowGroupPickerModal(false);
@@ -3040,8 +3052,9 @@ export default function CreateMatchScreen({ navigation, route }) {
                             sMinStr = parts[0] || "";
                             sMaxStr = parts[1] || "";
                           } else {
-                            sMinStr = sCostStr;
-                            sMaxStr = "";
+                            sMinStr = "10000";
+                            sMaxStr = sCostStr;
+                            sCostStr = `10000-${sCostStr}`;
                           }
                         } else if (court.serviceCostMin || court.serviceCostMax) {
                           sMinStr = court.serviceCostMin ? String(court.serviceCostMin) : "";

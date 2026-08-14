@@ -10,8 +10,8 @@ const authMiddleware = require("../middleware/auth");
 const router = express.Router();
 
 const populateFields = [
-  { path: "createdBy", select: "name email picture area favoriteSport position isVirtual" },
-  { path: "contactAppUser", select: "name email picture area favoriteSport position isVirtual" },
+  { path: "createdBy", select: "name email picture avatar phone area favoriteSport position isVirtual" },
+  { path: "contactAppUser", select: "name email picture avatar phone area favoriteSport position isVirtual" },
   { path: "participants", select: "name email picture area favoriteSport isVirtual rating stats" },
   { path: "pendingJoinRequests", select: "name email picture area favoriteSport isVirtual" },
   { path: "invitedMembers", select: "name email picture area favoriteSport isVirtual" },
