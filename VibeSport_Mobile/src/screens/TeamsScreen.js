@@ -197,6 +197,106 @@ const formatTimeAgo = (dateString) => {
   return `${diffDays} ngày trước`;
 };
 
+// ─── TimeWheelPicker Component ───────────────────────────────────────────────
+const WHEEL_ITEM_HEIGHT = 44;
+const WHEEL_VISIBLE_ITEMS = 5;
+const WHEEL_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS;
+
+const TimeWheelPicker = ({ value, onChange, startHour = 5 }) => {
+  const hours = Array.from({ length: 19 }, (_, i) => startHour + i); // 5..23 or 6..24
+  const minutes = [0, 15, 30, 45];
+
+  const parseValue = (val) => {
+    if (!val) return { h: hours[0], m: 0 };
+    const parts = val.split(":");
+    return { h: parseInt(parts[0], 10) || hours[0], m: parseInt(parts[1], 10) || 0 };
+  };
+
+  const { h: selectedH, m: selectedM } = parseValue(value);
+
+  const hourScrollRef = React.useRef(null);
+  const minuteScrollRef = React.useRef(null);
+
+  const hourIndex = hours.indexOf(selectedH) === -1 ? 0 : hours.indexOf(selectedH);
+  const minuteIndex = minutes.indexOf(selectedM) === -1 ? 0 : minutes.indexOf(selectedM);
+
+  React.useEffect(() => {
+    setTimeout(() => {
+      hourScrollRef.current?.scrollTo({ y: hourIndex * WHEEL_ITEM_HEIGHT, animated: false });
+      minuteScrollRef.current?.scrollTo({ y: minuteIndex * WHEEL_ITEM_HEIGHT, animated: false });
+    }, 50);
+  }, []);
+
+  const handleHourScroll = (e) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT);
+    const h = hours[Math.max(0, Math.min(idx, hours.length - 1))];
+    const m = selectedM;
+    onChange(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  };
+
+  const handleMinuteScroll = (e) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT);
+    const m = minutes[Math.max(0, Math.min(idx, minutes.length - 1))];
+    const h = selectedH;
+    onChange(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  };
+
+  const renderWheelColumn = (items, selectedIdx, scrollRef, onScroll) => (
+    <View style={{ width: 64, height: WHEEL_HEIGHT, overflow: "hidden", borderRadius: 12, backgroundColor: "#2C2C2E" }}>
+      {/* Top fade */}
+      <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height: WHEEL_ITEM_HEIGHT * 2, zIndex: 2, backgroundColor: "rgba(44,44,46,0.7)" }} />
+      {/* Highlight bar */}
+      <View pointerEvents="none" style={{
+        position: "absolute",
+        top: WHEEL_ITEM_HEIGHT * 2,
+        left: 0, right: 0,
+        height: WHEEL_ITEM_HEIGHT,
+        zIndex: 1,
+        borderTopWidth: 1,
+        borderBottomWidth: 1,
+        borderColor: "rgba(255,255,255,0.2)",
+      }} />
+      {/* Bottom fade */}
+      <View pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: WHEEL_ITEM_HEIGHT * 2, zIndex: 2, backgroundColor: "rgba(44,44,46,0.7)" }} />
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={WHEEL_ITEM_HEIGHT}
+        decelerationRate="fast"
+        onMomentumScrollEnd={onScroll}
+        contentContainerStyle={{ paddingTop: WHEEL_ITEM_HEIGHT * 2, paddingBottom: WHEEL_ITEM_HEIGHT * 2 }}
+      >
+        {items.map((item, idx) => (
+          <View key={idx} style={{ height: WHEEL_ITEM_HEIGHT, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: "600",
+              color: idx === selectedIdx ? "#FFFFFF" : "rgba(255,255,255,0.35)",
+            }}>
+              {String(item).padStart(2, "0")}
+            </Text>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  return (
+    <View style={{ alignItems: "center" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {renderWheelColumn(hours, hourIndex, hourScrollRef, handleHourScroll)}
+        <Text style={{ fontSize: 22, fontWeight: "800", color: "#333" }}>:</Text>
+        {renderWheelColumn(minutes, minuteIndex, minuteScrollRef, handleMinuteScroll)}
+      </View>
+      {value ? (
+        <TouchableOpacity onPress={() => onChange("")} style={{ marginTop: 8 }}>
+          <Text style={{ fontSize: 12, color: "#aaa", textDecorationLine: "underline" }}>Xóa</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+};
+
 const CreatorProfileRow = ({ creator, label }) => {
   if (!creator || typeof creator !== "object") return null;
   return (
@@ -1155,35 +1255,24 @@ export default function TeamsScreen({ navigation }) {
             {/* 3. Giờ thi đấu */}
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>Giờ thi đấu</Text>
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 6, fontWeight: "600" }}>Từ giờ</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                    {["05:00","06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00"].map((t) => (
-                      <TouchableOpacity
-                        key={t}
-                        style={[styles.timeChip, timeFrom === t && styles.timeChipActive]}
-                        onPress={() => setTimeFrom(timeFrom === t ? "" : t)}
-                      >
-                        <Text style={[styles.timeChipText, timeFrom === t && { color: ORANGE, fontWeight: "700" }]}>{t}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+              <View style={{ flexDirection: "row", gap: 12, justifyContent: "space-around" }}>
+                {/* Từ giờ */}
+                <View style={{ alignItems: "center" }}>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8, fontWeight: "600" }}>Từ giờ</Text>
+                  <TimeWheelPicker
+                    value={timeFrom}
+                    onChange={setTimeFrom}
+                  />
                 </View>
-              </View>
-              <View style={{ marginTop: 10 }}>
-                <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 6, fontWeight: "600" }}>Đến giờ</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {["06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"].map((t) => (
-                    <TouchableOpacity
-                      key={t}
-                      style={[styles.timeChip, timeTo === t && styles.timeChipActive]}
-                      onPress={() => setTimeTo(timeTo === t ? "" : t)}
-                    >
-                      <Text style={[styles.timeChipText, timeTo === t && { color: ORANGE, fontWeight: "700" }]}>{t}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                {/* Đến giờ */}
+                <View style={{ alignItems: "center" }}>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8, fontWeight: "600" }}>Đến giờ</Text>
+                  <TimeWheelPicker
+                    value={timeTo}
+                    onChange={setTimeTo}
+                    startHour={6}
+                  />
+                </View>
               </View>
             </View>
 
@@ -1616,7 +1705,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: Platform.OS === "ios" ? 56 : 44,
+    paddingBottom: 14,
     backgroundColor: "#fff",
     borderBottomWidth: 1.5,
     borderBottomColor: "#CDD1D8",
