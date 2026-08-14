@@ -400,6 +400,22 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
   const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
+  const [costItems, setCostItems] = useState([
+    { id: "1", name: "Tiền thuê sân", quantity: 1, price: 0, selected: true },
+    { id: "2", name: "Nước uống", quantity: 1, price: 0, selected: false }
+  ]);
+  const [isCostCalcExpanded, setIsCostCalcExpanded] = useState(true);
+  const [hasInitializedCost, setHasInitializedCost] = useState(false);
+
+  useEffect(() => {
+    if (match && !hasInitializedCost) {
+      setCostItems([
+        { id: "1", name: "Tiền thuê sân", quantity: 1, price: match.totalCourtCost || 0, selected: true },
+        { id: "2", name: "Nước uống", quantity: 1, price: 0, selected: false }
+      ]);
+      setHasInitializedCost(true);
+    }
+  }, [match, hasInitializedCost]);
 
   const userId = normalizeId(user?.id || user?._id);
 
@@ -923,6 +939,50 @@ export default function MatchDetailScreen({ navigation, route }) {
       Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí chi tiết.");
     }
   };
+
+  const handleAddCostItem = () => {
+    setCostItems((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()),
+        name: "",
+        quantity: 1,
+        price: 0,
+        selected: true,
+      },
+    ]);
+  };
+
+  const handleDeleteItem = (itemId) => {
+    setCostItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  const handleToggleSelectItem = (itemId) => {
+    setCostItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, selected: !item.selected } : item
+      )
+    );
+  };
+
+  const handleUpdateItem = (itemId, field, val) => {
+    setCostItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, [field]: val } : item
+      )
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const allSelected = costItems.every((x) => x.selected);
+    setCostItems((prev) =>
+      prev.map((item) => ({ ...item, selected: !allSelected }))
+    );
+  };
+
+  const totalSelectedCost = costItems
+    .filter((x) => x.selected)
+    .reduce((sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0);
 
   const handleRequestJoin = () => {
     if (match?.deletionVote?.active) {
@@ -1786,6 +1846,257 @@ export default function MatchDetailScreen({ navigation, route }) {
             </>
           )}
         </View>
+
+        {/* TỔNG KẾT TIỀN TRONG TRẬN (Match Cost Summary Calculator) */}
+        {isMatchStarted && (
+          <View style={[styles.card, { marginTop: 12, paddingVertical: 14 }]}>
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 4,
+              }}
+              onPress={() => setIsCostCalcExpanded(!isCostCalcExpanded)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="calculator" size={20} color={ORANGE} />
+                <Text style={{ fontSize: 15, fontWeight: "700", color: "#1F2937" }}>
+                  Tổng kết chi phí trận đấu
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: "600" }}>
+                  {isCostCalcExpanded ? "Thu gọn" : "Mở rộng"}
+                </Text>
+                <Ionicons
+                  name={isCostCalcExpanded ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color="#6B7280"
+                />
+              </View>
+            </TouchableOpacity>
+
+            {isCostCalcExpanded && (
+              <View style={{ marginTop: 12 }}>
+                {/* Toolbar */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 10,
+                    gap: 8,
+                  }}
+                >
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: "#F3F4F6",
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 6,
+                    }}
+                    onPress={toggleSelectAll}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#4B5563" }}>
+                      {costItems.every((x) => x.selected) ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: "#FFF7ED",
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 6,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      borderWidth: 1,
+                      borderColor: "#FFD8A8",
+                    }}
+                    onPress={handleAddCostItem}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add-circle-outline" size={14} color={ORANGE} />
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: ORANGE }}>
+                      Thêm khoản chi
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Table Headers */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingBottom: 6,
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#E5E7EB",
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ width: 24 }} />
+                  <Text style={{ flex: 3, fontSize: 11, fontWeight: "700", color: "#6B7280" }}>
+                    Tên chi phí
+                  </Text>
+                  <Text style={{ flex: 1.2, fontSize: 11, fontWeight: "700", color: "#6B7280", textAlign: "center" }}>
+                    SL
+                  </Text>
+                  <Text style={{ flex: 2, fontSize: 11, fontWeight: "700", color: "#6B7280", textAlign: "right", marginRight: 22 }}>
+                    Đơn giá (VND)
+                  </Text>
+                </View>
+
+                {/* Table Rows */}
+                {costItems.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginBottom: 8,
+                      gap: 6,
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <TouchableOpacity
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        borderWidth: 2,
+                        borderColor: ORANGE,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: item.selected ? ORANGE : "transparent",
+                      }}
+                      onPress={() => handleToggleSelectItem(item.id)}
+                      activeOpacity={0.7}
+                    >
+                      {item.selected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </TouchableOpacity>
+
+                    {/* Name Input */}
+                    <TextInput
+                      style={{
+                        flex: 3,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        fontSize: 13,
+                        color: "#374151",
+                        backgroundColor: "#FFF",
+                      }}
+                      placeholder="Tên chi phí"
+                      value={item.name}
+                      onChangeText={(val) => handleUpdateItem(item.id, "name", val)}
+                    />
+
+                    {/* Quantity Input */}
+                    <TextInput
+                      style={{
+                        flex: 1.2,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        borderRadius: 6,
+                        paddingVertical: 4,
+                        fontSize: 13,
+                        color: "#374151",
+                        textAlign: "center",
+                        backgroundColor: "#FFF",
+                      }}
+                      keyboardType="numeric"
+                      placeholder="1"
+                      value={String(item.quantity || "")}
+                      onChangeText={(val) => {
+                        const cleaned = val.replace(/[^0-9]/g, "");
+                        handleUpdateItem(item.id, "quantity", cleaned ? Number(cleaned) : 0);
+                      }}
+                    />
+
+                    {/* Price Input */}
+                    <TextInput
+                      style={{
+                        flex: 2,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        fontSize: 13,
+                        color: "#374151",
+                        textAlign: "right",
+                        backgroundColor: "#FFF",
+                      }}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      value={formatNumberWithDots(item.price || "")}
+                      onChangeText={(val) => {
+                        const raw = val.replace(/[^0-9]/g, "");
+                        handleUpdateItem(item.id, "price", raw ? Number(raw) : 0);
+                      }}
+                    />
+
+                    {/* Delete Button */}
+                    <TouchableOpacity
+                      onPress={() => handleDeleteItem(item.id)}
+                      style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {/* Summary Calculator Results */}
+                <View
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTopWidth: 1,
+                    borderTopColor: "#E5E7EB",
+                    gap: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#4B5563" }}>
+                      Tổng chi phí được chọn:
+                    </Text>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: "#10B981" }}>
+                      {formatNumberWithDots(totalSelectedCost)} VND
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      backgroundColor: "#F3F4F6",
+                      padding: 8,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Ionicons name="people-outline" size={15} color="#6B7280" />
+                      <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: "600" }}>
+                        Chia đều ({allParticipants.length} người):
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: ORANGE }}>
+                      {formatNumberWithDots(Math.round(totalSelectedCost / Math.max(1, allParticipants.length)))} VND / người
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Danh sách tham gia & Nút Đánh giá ⭐ nằm ngang hàng ở bên phải cho từng người chơi */}
         <View style={styles.participantSectionContainer}>

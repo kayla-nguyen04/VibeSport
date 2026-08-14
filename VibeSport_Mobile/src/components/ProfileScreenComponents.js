@@ -244,7 +244,7 @@ export const ProfileHeaderCard = memo(function ProfileHeaderCard({ profile, isSe
   const followerCount = profile?.followerCount ?? 0;
   const followingCount = profile?.followingCount ?? 0;
   const rating = Number(profile?.rating ?? stats.rating ?? 0) || 0;
-  const ratingDisplay = rating > 0 ? `${rating.toFixed(0)}/5` : '5/5';
+  const ratingDisplay = rating > 0 ? `${rating.toFixed(1)}/5` : '5.0/5';
 
   return (
     <View style={styles.profileCardLeftLayout}>

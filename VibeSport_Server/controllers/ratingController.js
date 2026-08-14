@@ -64,14 +64,20 @@ exports.rateParticipants = async (req, res) => {
       createdRatings.push(ratingDoc);
 
       // 2. Tính lại điểm Rating trung bình 100 điểm đánh giá gần nhất (Grab Style)
+      // Mặc định ban đầu mỗi người có 100 đánh giá 5 sao. Các đánh giá mới sẽ thay thế các đánh giá 5 sao này.
       const userRatings = await Rating.find({ toUser: toUserId })
         .sort({ createdAt: -1 })
         .limit(100);
 
+      const K = userRatings.length;
       let avgRating = 5.0;
-      if (userRatings.length > 0) {
+      if (K >= 100) {
         const totalStars = userRatings.reduce((sum, r) => sum + r.stars, 0);
-        avgRating = Number((totalStars / userRatings.length).toFixed(1));
+        avgRating = Number((totalStars / 100).toFixed(1));
+      } else {
+        const actualStars = userRatings.reduce((sum, r) => sum + r.stars, 0);
+        const defaultStars = (100 - K) * 5;
+        avgRating = Number(((actualStars + defaultStars) / 100).toFixed(1));
       }
 
       // Kiểm tra điều kiện khóa tài khoản (< 2.0 sao)
@@ -85,7 +91,7 @@ exports.rateParticipants = async (req, res) => {
       if (!updatedUser) {
         await VirtualUser.findByIdAndUpdate(toUserId, {
           rating: avgRating,
-          totalReviews: userRatings.length,
+          totalReviews: K,
         });
       }
 
@@ -166,9 +172,16 @@ exports.getUserRatings = async (req, res) => {
       user = await VirtualUser.findById(userId).select('rating name picture');
     }
     const recent100 = ratings.slice(0, 100);
-    const avgRating = recent100.length > 0
-      ? Number((recent100.reduce((sum, r) => sum + r.stars, 0) / recent100.length).toFixed(1))
-      : (user?.rating || 5.0);
+    const K = recent100.length;
+    let avgRating = 5.0;
+    if (K >= 100) {
+      const totalStars = recent100.reduce((sum, r) => sum + r.stars, 0);
+      avgRating = Number((totalStars / 100).toFixed(1));
+    } else {
+      const actualStars = recent100.reduce((sum, r) => sum + r.stars, 0);
+      const defaultStars = (100 - K) * 5;
+      avgRating = Number(((actualStars + defaultStars) / 100).toFixed(1));
+    }
 
     return res.status(200).json({
       success: true,
@@ -214,10 +227,16 @@ exports.getAdminReputationList = async (req, res) => {
       const uId = String(u._id);
       const history = ratingsByUser[uId] || [];
       const recent100 = history.slice(0, 100);
-      const totalStars = recent100.reduce((sum, r) => sum + r.stars, 0);
-      const avgRating = recent100.length > 0
-        ? Number((totalStars / recent100.length).toFixed(1))
-        : Number(u.rating || 5.0);
+      const K = recent100.length;
+      let avgRating = 5.0;
+      if (K >= 100) {
+        const totalStars = recent100.reduce((sum, r) => sum + r.stars, 0);
+        avgRating = Number((totalStars / 100).toFixed(1));
+      } else {
+        const actualStars = recent100.reduce((sum, r) => sum + r.stars, 0);
+        const defaultStars = (100 - K) * 5;
+        avgRating = Number(((actualStars + defaultStars) / 100).toFixed(1));
+      }
 
       return {
         ...u,
