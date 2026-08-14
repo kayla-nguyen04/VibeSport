@@ -220,7 +220,14 @@ export default function TeamsScreen({ navigation }) {
   const [activeSport, setActiveSport] = useState("all");
   const [searchText, setSearchText] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
+  const [districtFilter, setDistrictFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
+  const [skillFilter, setSkillFilter] = useState("");
+  const [pitchStatusFilter, setPitchStatusFilter] = useState("");
+  const [minCostFilter, setMinCostFilter] = useState("");
+  const [maxCostFilter, setMaxCostFilter] = useState("");
+  const [minServiceFilter, setMinServiceFilter] = useState("");
+  const [maxServiceFilter, setMaxServiceFilter] = useState("");
   const [matches, setMatches] = useState([]);
   const [findTeamPosts, setFindTeamPosts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -245,6 +252,8 @@ export default function TeamsScreen({ navigation }) {
       if (area && area.trim()) filters.area = area.trim();
       if (time && time.trim()) filters.startTime = time.trim();
       if (subTab === "created" && userId) filters.createdBy = userId;
+      if (skillFilter) filters.skillLevel = skillFilter;
+      if (pitchStatusFilter) filters.pitchStatus = pitchStatusFilter;
 
       const data = await getMatches(filters);
       setMatches(data || []);
@@ -256,7 +265,7 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [activeSport, activeSubTab, userId, matches.length]);
+  }, [activeSport, activeSubTab, userId, matches.length, skillFilter, pitchStatusFilter]);
 
   const loadFindTeamPosts = useCallback(async () => {
     try {
@@ -560,25 +569,67 @@ export default function TeamsScreen({ navigation }) {
     });
   };
 
-  const getDisplayData = () => {
-    if (activeSubTab === "near") {
-      return matches.filter((m) => m.status !== "completed" && m.status !== "cancelled");
+  const applyClientFilters = (list) => {
+    let result = list;
+    // Lọc trình độ
+    if (skillFilter) {
+      result = result.filter((m) => (m.skillLevel || "") === skillFilter);
     }
-    if (activeSubTab === "joined") {
-      return matches.filter(isUserParticipant).filter((m) => m.status !== "completed" && m.status !== "cancelled");
+    // Lọc trạng thái cọc
+    if (pitchStatusFilter === "Đã cọc") {
+      result = result.filter((m) => m.pitchStatus === "Đã cọc");
+    } else if (pitchStatusFilter === "Chưa cọc") {
+      result = result.filter((m) => m.pitchStatus !== "Đã cọc");
     }
-    if (activeSubTab === "created") {
-      return matches.filter((m) => {
-        const creator = m.createdBy;
-        const creatorId =
-          typeof creator === "object" ? creator?._id || creator?.id : creator;
-        return normalizeId(creatorId) === userId;
+    // Lọc quận/huyện
+    if (districtFilter.trim()) {
+      const kw = districtFilter.trim().toLowerCase();
+      result = result.filter((m) =>
+        (m.locationName || "").toLowerCase().includes(kw) ||
+        (m.area || "").toLowerCase().includes(kw)
+      );
+    }
+    // Lọc giá/người
+    const minC = minCostFilter ? parseInt(minCostFilter.replace(/\D/g, ""), 10) : null;
+    const maxC = maxCostFilter ? parseInt(maxCostFilter.replace(/\D/g, ""), 10) : null;
+    if (minC != null && !isNaN(minC)) result = result.filter((m) => (m.costPerPerson || 0) >= minC);
+    if (maxC != null && !isNaN(maxC)) result = result.filter((m) => (m.costPerPerson || 0) <= maxC);
+    // Lọc giá dịch vụ
+    const minS = minServiceFilter ? parseInt(minServiceFilter.replace(/\D/g, ""), 10) : null;
+    const maxS = maxServiceFilter ? parseInt(maxServiceFilter.replace(/\D/g, ""), 10) : null;
+    if (minS != null && !isNaN(minS)) {
+      result = result.filter((m) => {
+        const sv = parseInt(String(m.serviceCost || "0").split("-")[0].replace(/\D/g, ""), 10) || 0;
+        return sv >= minS;
       });
     }
-    if (activeSubTab === "ended") {
-      return matches.filter((m) => m.status === "completed" || m.status === "cancelled");
+    if (maxS != null && !isNaN(maxS)) {
+      result = result.filter((m) => {
+        const sv = parseInt(String(m.serviceCost || "0").split("-")[0].replace(/\D/g, ""), 10) || 0;
+        return sv <= maxS;
+      });
     }
-    return matches;
+    return result;
+  };
+
+  const getDisplayData = () => {
+    let base;
+    if (activeSubTab === "near") {
+      base = matches.filter((m) => m.status !== "completed" && m.status !== "cancelled");
+    } else if (activeSubTab === "joined") {
+      base = matches.filter(isUserParticipant).filter((m) => m.status !== "completed" && m.status !== "cancelled");
+    } else if (activeSubTab === "created") {
+      base = matches.filter((m) => {
+        const creator = m.createdBy;
+        const creatorId = typeof creator === "object" ? creator?._id || creator?.id : creator;
+        return normalizeId(creatorId) === userId;
+      });
+    } else if (activeSubTab === "ended") {
+      base = matches.filter((m) => m.status === "completed" || m.status === "cancelled");
+    } else {
+      base = matches;
+    }
+    return applyClientFilters(base);
   };
 
   const renderFigmaCard = (item, tabType) => {
@@ -917,10 +968,31 @@ export default function TeamsScreen({ navigation }) {
   const isFindTeamTab = activeSubTab === "findteam";
   const listLoading = isFindTeamTab ? findTeamLoading : loading;
   const listData = isFindTeamTab ? findTeamPosts : getDisplayData();
-  const hasActiveFilters = activeSport !== "all" || Boolean(searchText.trim()) || Boolean(areaFilter.trim()) || Boolean(timeFilter.trim());
+  const hasActiveFilters = activeSport !== "all" || Boolean(searchText.trim()) || Boolean(areaFilter.trim()) ||
+    Boolean(districtFilter.trim()) || Boolean(timeFilter.trim()) || Boolean(skillFilter) ||
+    Boolean(pitchStatusFilter) || Boolean(minCostFilter) || Boolean(maxCostFilter) ||
+    Boolean(minServiceFilter) || Boolean(maxServiceFilter);
+  const activeFilterCount = [activeSport !== "all", searchText.trim(), areaFilter.trim(),
+    districtFilter.trim(), timeFilter.trim(), skillFilter, pitchStatusFilter,
+    minCostFilter, maxCostFilter, minServiceFilter, maxServiceFilter
+  ].filter(Boolean).length;
   const filterSummary = activeSport === "all"
-    ? "Tất cả môn"
+    ? (hasActiveFilters ? `${activeFilterCount} bộ lọc` : "Tất cả môn")
     : SPORT_FILTERS.find((item) => item.key === activeSport)?.label || "Tất cả môn";
+
+  const handleResetFilters = () => {
+    setActiveSport("all");
+    setSearchText("");
+    setAreaFilter("");
+    setDistrictFilter("");
+    setTimeFilter("");
+    setSkillFilter("");
+    setPitchStatusFilter("");
+    setMinCostFilter("");
+    setMaxCostFilter("");
+    setMinServiceFilter("");
+    setMaxServiceFilter("");
+  };
 
   return (
     <KeyboardAvoidingView
@@ -976,93 +1048,217 @@ export default function TeamsScreen({ navigation }) {
       {!isFindTeamTab && (
         <View style={styles.filterToggleRow}>
           <TouchableOpacity
-            style={styles.filterToggleButton}
+            style={[styles.filterToggleButton, hasActiveFilters && { borderColor: ORANGE }]}
             activeOpacity={0.85}
             onPress={() => setIsFiltersCollapsed((prev) => !prev)}
           >
             <View style={styles.filterToggleLeft}>
-              <Ionicons name="filter-outline" size={18} color="#333" />
-              <Text style={styles.filterToggleText}>Bộ lọc</Text>
+              <Ionicons name="options-outline" size={18} color={hasActiveFilters ? ORANGE : "#333"} />
+              <Text style={[styles.filterToggleText, hasActiveFilters && { color: ORANGE }]}>Bộ lọc</Text>
               {hasActiveFilters ? (
-                <Text style={styles.filterToggleHint}>{filterSummary}</Text>
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                </View>
               ) : null}
             </View>
-            <Ionicons name={isFiltersCollapsed ? "chevron-down" : "chevron-up"} size={18} color="#666" />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {hasActiveFilters && (
+                <TouchableOpacity onPress={handleResetFilters} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color="#aaa" />
+                </TouchableOpacity>
+              )}
+              <Ionicons name={isFiltersCollapsed ? "chevron-down" : "chevron-up"} size={18} color="#666" />
+            </View>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* ─── Sport Filters ─── */}
+      {/* ─── Filter Panel ─── */}
       {!isFindTeamTab && !isFiltersCollapsed && (
-        <View style={styles.filtersContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersInner}>
+        <ScrollView
+          style={{ maxHeight: 420 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
+        <View style={styles.filterPanel}>
+
+          {/* 1. Môn thể thao */}
+          <Text style={styles.filterLabel}>Môn thể thao</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 8 }}>
             {SPORT_FILTERS.map((f) => {
               const isActive = activeSport === f.key;
               return (
                 <TouchableOpacity
                   key={f.key}
-                  style={[styles.chip, isActive && styles.chipActive]}
+                  style={[styles.filterChip, isActive && styles.filterChipActive]}
                   onPress={() => setActiveSport(f.key)}
                 >
-                  <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{f.label}</Text>
-                  {f.tagName ? (
-                    <View style={styles.chipIconContainer}>
-                      <TagIcon tagName={f.tagName} size={14} color={isActive ? ORANGE : "#333"} />
-                    </View>
-                  ) : null}
+                  {f.tagName ? <TagIcon tagName={f.tagName} size={13} color={isActive ? ORANGE : "#555"} /> : null}
+                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{f.label}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
-        </View>
-      )}
 
-      {/* ─── Search & Filters Bar ─── */}
-      {!isFindTeamTab && !isFiltersCollapsed && (
-        <View style={styles.searchSection}>
+          {/* 2. Tìm kiếm */}
           <View style={styles.searchWrap}>
             <TextInput
               style={styles.searchInput}
               value={searchText}
               onChangeText={setSearchText}
-              placeholder="Tìm kiếm tên trận đấu, tên người đăng bài,..."
+              placeholder="Tìm kiếm tên trận, người tạo..."
               placeholderTextColor="#aaa"
               returnKeyType="search"
               onSubmitEditing={handleSearch}
             />
             <TouchableOpacity style={styles.searchSubmitBtn} onPress={handleSearch}>
-              <Ionicons name="search" size={20} color="#fff" />
+              <Ionicons name="search" size={18} color="#fff" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.filterRow}>
-            <View style={[styles.filterInputWrap, { marginRight: 12 }]}>
-              <Ionicons name="time-outline" size={18} color="#333" style={styles.filterRowIcon} />
-              <TextInput
-                style={styles.filterInput}
-                value={areaFilter}
-                onChangeText={setAreaFilter}
-                placeholder="Khu vực"
-                placeholderTextColor="#aaa"
-                returnKeyType="search"
-                onSubmitEditing={handleSearch}
-              />
-            </View>
-            <View style={styles.filterInputWrap}>
-              <Ionicons name="location-outline" size={18} color="#333" style={styles.filterRowIcon} />
+          {/* 3. Giờ & Khu vực */}
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            <View style={[styles.filterInputWrap, { flex: 1 }]}>
+              <Ionicons name="time-outline" size={16} color="#666" style={{ marginRight: 6 }} />
               <TextInput
                 style={styles.filterInput}
                 value={timeFilter}
                 onChangeText={setTimeFilter}
-                placeholder="Giờ"
+                placeholder="Giờ (VD: 18:00)"
+                placeholderTextColor="#aaa"
+                keyboardType="numbers-and-punctuation"
+                returnKeyType="search"
+                onSubmitEditing={handleSearch}
+              />
+            </View>
+            <View style={[styles.filterInputWrap, { flex: 1 }]}>
+              <Ionicons name="map-outline" size={16} color="#666" style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.filterInput}
+                value={areaFilter}
+                onChangeText={setAreaFilter}
+                placeholder="Tỉnh / Thành phố"
                 placeholderTextColor="#aaa"
                 returnKeyType="search"
                 onSubmitEditing={handleSearch}
               />
             </View>
           </View>
+
+          {/* 3b. Quận / Huyện */}
+          <View style={[styles.filterInputWrap, { marginBottom: 10 }]}>
+            <Ionicons name="location-outline" size={16} color="#666" style={{ marginRight: 6 }} />
+            <TextInput
+              style={[styles.filterInput, { flex: 1 }]}
+              value={districtFilter}
+              onChangeText={setDistrictFilter}
+              placeholder="Quận / Huyện / Tên sân"
+              placeholderTextColor="#aaa"
+              returnKeyType="search"
+              onSubmitEditing={handleSearch}
+            />
+            {districtFilter ? (
+              <TouchableOpacity onPress={() => setDistrictFilter("")}>
+                <Ionicons name="close-circle" size={16} color="#bbb" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* 4. Trình độ */}
+          <Text style={styles.filterLabel}>Trình độ</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            {["", "Người mới", "Trung cấp", "Bán chuyên"].map((lvl) => (
+              <TouchableOpacity
+                key={lvl || "all_skill"}
+                style={[styles.filterChip, skillFilter === lvl && styles.filterChipActive]}
+                onPress={() => setSkillFilter(lvl)}
+              >
+                <Text style={[styles.filterChipText, skillFilter === lvl && styles.filterChipTextActive]}>
+                  {lvl || "Tất cả"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 5. Trạng thái cọc sân */}
+          <Text style={styles.filterLabel}>Cọc sân</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            {[["", "Tất cả"], ["Đã cọc", "✅ Đã cọc"], ["Chưa cọc", "⏳ Chưa cọc"]].map(([val, lbl]) => (
+              <TouchableOpacity
+                key={val || "all_pitch"}
+                style={[styles.filterChip, pitchStatusFilter === val && styles.filterChipActive]}
+                onPress={() => setPitchStatusFilter(val)}
+              >
+                <Text style={[styles.filterChipText, pitchStatusFilter === val && styles.filterChipTextActive]}>{lbl}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 6. Giá/người & Giá DV */}
+          <Text style={styles.filterLabel}>Giá / người (đ)</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+            <View style={[styles.filterInputWrap, { flex: 1 }]}>
+              <TextInput
+                style={styles.filterInput}
+                value={minCostFilter}
+                onChangeText={setMinCostFilter}
+                placeholder="Từ (VD: 50000)"
+                placeholderTextColor="#aaa"
+                keyboardType="numeric"
+              />
+            </View>
+            <Text style={{ alignSelf: "center", color: "#999", fontSize: 13 }}>–</Text>
+            <View style={[styles.filterInputWrap, { flex: 1 }]}>
+              <TextInput
+                style={styles.filterInput}
+                value={maxCostFilter}
+                onChangeText={setMaxCostFilter}
+                placeholder="Đến"
+                placeholderTextColor="#aaa"
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          <Text style={styles.filterLabel}>Giá dịch vụ (đ)</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
+            <View style={[styles.filterInputWrap, { flex: 1 }]}>
+              <TextInput
+                style={styles.filterInput}
+                value={minServiceFilter}
+                onChangeText={setMinServiceFilter}
+                placeholder="Từ"
+                placeholderTextColor="#aaa"
+                keyboardType="numeric"
+              />
+            </View>
+            <Text style={{ alignSelf: "center", color: "#999", fontSize: 13 }}>–</Text>
+            <View style={[styles.filterInputWrap, { flex: 1 }]}>
+              <TextInput
+                style={styles.filterInput}
+                value={maxServiceFilter}
+                onChangeText={setMaxServiceFilter}
+                placeholder="Đến"
+                placeholderTextColor="#aaa"
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
+          {/* Nút áp dụng */}
+          <TouchableOpacity
+            style={styles.applyFilterBtn}
+            onPress={() => { handleSearch(); setIsFiltersCollapsed(true); }}
+          >
+            <Ionicons name="checkmark-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.applyFilterBtnText}>Áp dụng bộ lọc</Text>
+          </TouchableOpacity>
+
         </View>
+        </ScrollView>
       )}
+
 
       {/* ─── Match / Find Team List ─── */}
       {listLoading && listData.length === 0 ? (
@@ -1339,6 +1535,74 @@ const styles = StyleSheet.create({
   filterToggleHint: {
     fontSize: 12,
     color: "#888",
+  },
+  filterBadge: {
+    backgroundColor: ORANGE,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  filterBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  filterPanel: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  filterChipActive: {
+    backgroundColor: "#FFF7ED",
+    borderColor: ORANGE,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#555",
+  },
+  filterChipTextActive: {
+    color: ORANGE,
+  },
+  applyFilterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ORANGE,
+    borderRadius: 12,
+    paddingVertical: 11,
+    marginTop: 12,
+  },
+  applyFilterBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 
   // Sport Filters Chips

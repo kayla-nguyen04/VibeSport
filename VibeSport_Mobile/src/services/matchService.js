@@ -56,6 +56,10 @@ export async function getMatches(filters = {}, token = null) {
   if (filters.createdBy) params.append("createdBy", filters.createdBy);
   if (filters.participantId) params.append("participantId", filters.participantId);
   if (filters.userId) params.append("userId", filters.userId);
+  if (filters.skillLevel) params.append("skillLevel", filters.skillLevel);
+  if (filters.pitchStatus) params.append("pitchStatus", filters.pitchStatus);
+  if (filters.minCost != null) params.append("minCost", filters.minCost);
+  if (filters.maxCost != null) params.append("maxCost", filters.maxCost);
 
   const query = params.toString() ? `?${params.toString()}` : "";
 
