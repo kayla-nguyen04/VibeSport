@@ -400,6 +400,23 @@ export default function MatchDetailScreen({ navigation, route }) {
   const [kickTarget, setKickTarget] = useState(null);
   const [kickReason, setKickReason] = useState("");
   const [showCourtDetailModal, setShowCourtDetailModal] = useState(false);
+  const [costItems, setCostItems] = useState([
+    { id: "1", name: "Tiền thuê sân", quantity: 1, price: 0, selected: true },
+    { id: "2", name: "Nước uống", quantity: 1, price: 0, selected: false }
+  ]);
+  const [isCostCalcExpanded, setIsCostCalcExpanded] = useState(true);
+  const [isParticipantsExpanded, setIsParticipantsExpanded] = useState(true);
+  const [hasInitializedCost, setHasInitializedCost] = useState(false);
+
+  useEffect(() => {
+    if (match && !hasInitializedCost) {
+      setCostItems([
+        { id: "1", name: "Tiền thuê sân", quantity: 1, price: match.totalCourtCost || 0, selected: true },
+        { id: "2", name: "Nước uống", quantity: 1, price: 0, selected: false }
+      ]);
+      setHasInitializedCost(true);
+    }
+  }, [match, hasInitializedCost]);
 
   const userId = normalizeId(user?.id || user?._id);
 
@@ -477,7 +494,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       if (newStatus === "ended") {
         Alert.alert(
           "Trận đấu đã kết thúc",
-          "Hãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi trong trận đấu này nhé!",
+          "Bảng tổng kết chi phí trận đấu hiện đã được khóa và không thể chỉnh sửa nữa.\n\nHãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi trong trận đấu này nhé!",
           [
             {
               text: "Đánh giá ngay",
@@ -538,7 +555,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const handleEndMatch = () => {
     Alert.alert(
       "Xác nhận kết thúc",
-      "Bạn có chắc chắn muốn KẾT THÚC trận đấu này?",
+      "Bạn có chắc chắn muốn KẾT THÚC trận đấu này?\n\n⚠️ Thao tác này sẽ KHÓA toàn bộ bảng tổng kết chi phí và không thể chỉnh sửa thêm.",
       [
         { text: "Hủy", style: "cancel" },
         { text: "Kết thúc", style: "destructive", onPress: () => handleToggleTeamStatus("ended") },
@@ -866,6 +883,7 @@ export default function MatchDetailScreen({ navigation, route }) {
   const isEnded = match?.status === "completed" || match?.status === "cancelled" || match?.teamStatus === "ended";
   const isMatchStarted = match?.teamStatus === "ongoing" || isEnded;
   const isViaInviteLink = Boolean(route?.params?.invite || route?.params?.viaInvite || route?.params?.fromLink);
+  const isCostEditable = isOwner && !isEnded;
 
   const canJoinMatch = !isOwner && !isParticipant && !hasPendingRequest && !isEnded && !isFull && !isMatchStarted;
 
@@ -923,6 +941,50 @@ export default function MatchDetailScreen({ navigation, route }) {
       Alert.alert("Thông báo", "Trận đấu này chưa có thông tin vị trí chi tiết.");
     }
   };
+
+  const handleAddCostItem = () => {
+    setCostItems((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()),
+        name: "",
+        quantity: 1,
+        price: 0,
+        selected: true,
+      },
+    ]);
+  };
+
+  const handleDeleteItem = (itemId) => {
+    setCostItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  const handleToggleSelectItem = (itemId) => {
+    setCostItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, selected: !item.selected } : item
+      )
+    );
+  };
+
+  const handleUpdateItem = (itemId, field, val) => {
+    setCostItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, [field]: val } : item
+      )
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const allSelected = costItems.every((x) => x.selected);
+    setCostItems((prev) =>
+      prev.map((item) => ({ ...item, selected: !allSelected }))
+    );
+  };
+
+  const totalSelectedCost = costItems
+    .filter((x) => x.selected)
+    .reduce((sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0);
 
   const handleRequestJoin = () => {
     if (match?.deletionVote?.active) {
@@ -1679,9 +1741,29 @@ export default function MatchDetailScreen({ navigation, route }) {
                   borderWidth: 1,
                   borderColor: "#FFD8A8",
                 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#C2410C", marginBottom: 8 }}>
-                     LIÊN HỆ CHỦ SÂN 
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#C2410C", marginBottom: 6 }}>
+                     LIÊN HỆ CHỦ SÂN
                   </Text>
+                  {match.contactAppUser ? (
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}
+                      onPress={() => openProfile(match.contactAppUser)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: "#4B5563" }}>
+                        Tài khoản:
+                      </Text>
+                      <Text style={{ fontSize: 12.5, fontWeight: "700", color: ORANGE, textDecorationLine: "underline" }}>
+                        {typeof match.contactAppUser === "object" ? (match.contactAppUser.name || "Tài khoản chủ sân") : "Tài khoản chủ sân"}
+                      </Text>
+                      <Ionicons name="open-outline" size={13} color={ORANGE} />
+                    </TouchableOpacity>
+                  ) : null}
+                  {match.contactPhone ? (
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: "#4B5563", marginBottom: 8 }}>
+                      Số điện thoại: {match.contactPhone}
+                    </Text>
+                  ) : null}
                   <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                     {match.contactAppUser ? (
                       <TouchableOpacity
@@ -1787,216 +1869,503 @@ export default function MatchDetailScreen({ navigation, route }) {
           )}
         </View>
 
-        {/* Danh sách tham gia & Nút Đánh giá ⭐ nằm ngang hàng ở bên phải cho từng người chơi */}
-        <View style={styles.participantSectionContainer}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>Danh sách tham gia</Text>
-            {isOwner && !isEnded && (
-              <TouchableOpacity
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  backgroundColor: '#F3E8FF',
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 16,
-                }}
-                onPress={() => setShowVirtualModal(true)}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="person-add-outline" size={14} color="#7E22CE" />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: '#7E22CE' }}>
-                  + Tài khoản ảo
+        {/* TỔNG KẾT TIỀN TRONG TRẬN (Match Cost Summary Calculator) */}
+        {isMatchStarted && (
+          <View style={[styles.card, { marginTop: 12, paddingVertical: 14 }]}>
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 4,
+              }}
+              onPress={() => setIsCostCalcExpanded(!isCostCalcExpanded)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="calculator" size={20} color={ORANGE} />
+                <Text style={{ fontSize: 14, fontWeight: "700", color: "#1F2937" }}>
+                  Tổng kết chi phí trận đấu
                 </Text>
-              </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: "600" }}>
+                  {isCostCalcExpanded ? "Thu gọn" : "Mở rộng"}
+                </Text>
+                <Ionicons
+                  name={isCostCalcExpanded ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color="#6B7280"
+                />
+              </View>
+            </TouchableOpacity>
+
+            {isCostCalcExpanded && (
+              <View style={{ marginTop: 12, marginHorizontal: -8 }}>
+                {/* Toolbar - only show for owner and not ended */}
+                {isCostEditable && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 10,
+                      gap: 8,
+                    }}
+                  >
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: "#F3F4F6",
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 6,
+                      }}
+                      onPress={toggleSelectAll}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#4B5563" }}>
+                        {costItems.every((x) => x.selected) ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: "#FFF7ED",
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 6,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        borderWidth: 1,
+                        borderColor: "#FFD8A8",
+                      }}
+                      onPress={handleAddCostItem}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add-circle-outline" size={14} color={ORANGE} />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: ORANGE }}>
+                        Thêm khoản chi
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Table Headers */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingBottom: 8,
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#E5E7EB",
+                    marginBottom: 10,
+                  }}
+                >
+                  <View style={{ width: 28 }} />
+                  <Text style={{ flex: 3.2, fontSize: 13, fontWeight: "700", color: "#6B7280" }}>
+                    Tên chi phí
+                  </Text>
+                  <Text style={{ flex: 1, fontSize: 13, fontWeight: "700", color: "#6B7280", textAlign: "center" }}>
+                    SL
+                  </Text>
+                  <Text style={{ flex: 2, fontSize: 13, fontWeight: "700", color: "#6B7280", textAlign: "right", marginRight: isCostEditable ? 26 : 0 }}>
+                    Đơn giá (VND)
+                  </Text>
+                </View>
+
+                {/* Table Rows */}
+                {costItems.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginBottom: 10,
+                      gap: 8,
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <TouchableOpacity
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 6,
+                        borderWidth: 2,
+                        borderColor: ORANGE,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: item.selected ? ORANGE : "transparent",
+                        opacity: isCostEditable ? 1 : 0.7,
+                      }}
+                      onPress={() => handleToggleSelectItem(item.id)}
+                      disabled={!isCostEditable}
+                      activeOpacity={0.7}
+                    >
+                      {item.selected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </TouchableOpacity>
+
+                    {/* Name Input */}
+                    <TextInput
+                      style={{
+                        flex: 3.2,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 0,
+                        height: 42,
+                        fontSize: 15,
+                        color: "#374151",
+                        backgroundColor: isCostEditable ? "#FFF" : "#F3F4F6",
+                      }}
+                      placeholder="Tên chi phí"
+                      value={item.name}
+                      editable={isCostEditable}
+                      onChangeText={(val) => handleUpdateItem(item.id, "name", val)}
+                    />
+
+                    {/* Quantity Input */}
+                    <TextInput
+                      style={{
+                        flex: 1,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        borderRadius: 8,
+                        paddingVertical: 0,
+                        height: 42,
+                        fontSize: 15,
+                        color: "#374151",
+                        textAlign: "center",
+                        backgroundColor: isCostEditable ? "#FFF" : "#F3F4F6",
+                      }}
+                      keyboardType="numeric"
+                      placeholder="1"
+                      value={String(item.quantity || "")}
+                      editable={isCostEditable}
+                      onChangeText={(val) => {
+                        const cleaned = val.replace(/[^0-9]/g, "");
+                        handleUpdateItem(item.id, "quantity", cleaned ? Number(cleaned) : 0);
+                      }}
+                    />
+
+                    {/* Price Input */}
+                    <TextInput
+                      style={{
+                        flex: 2,
+                        borderWidth: 1,
+                        borderColor: "#D1D5DB",
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 0,
+                        height: 42,
+                        fontSize: 15,
+                        color: "#374151",
+                        textAlign: "right",
+                        backgroundColor: isCostEditable ? "#FFF" : "#F3F4F6",
+                      }}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      value={formatNumberWithDots(item.price || "")}
+                      editable={isCostEditable}
+                      onChangeText={(val) => {
+                        const raw = val.replace(/[^0-9]/g, "");
+                        handleUpdateItem(item.id, "price", raw ? Number(raw) : 0);
+                      }}
+                    />
+
+                    {/* Delete Button - only for owner */}
+                    {isCostEditable && (
+                      <TouchableOpacity
+                        onPress={() => handleDeleteItem(item.id)}
+                        style={{ padding: 6 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash" size={20} color="#EF4444" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+
+                {/* Summary Calculator Results */}
+                <View
+                  style={{
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTopWidth: 1,
+                    borderTopColor: "#E5E7EB",
+                    gap: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: "#4B5563" }}>
+                      Tổng chi phí được chọn:
+                    </Text>
+                    <Text style={{ fontSize: 18, fontWeight: "800", color: "#10B981" }}>
+                      {formatNumberWithDots(totalSelectedCost)} VND
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      backgroundColor: "#F3F4F6",
+                      padding: 10,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="people-outline" size={18} color="#6B7280" />
+                      <Text style={{ fontSize: 14, color: "#6B7280", fontWeight: "600" }}>
+                        Chia đều ({allParticipants.length} người):
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: ORANGE }}>
+                      {formatNumberWithDots(Math.round(totalSelectedCost / Math.max(1, allParticipants.length)))} VND / người
+                    </Text>
+                  </View>
+                </View>
+              </View>
             )}
           </View>
-          {allParticipants.length === 0 ? (
-            <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
-          ) : (
-            allParticipants.map((p, idx) => {
-              const pid = getUserId(p);
-              const isCreatorParticipant = pid === creatorId;
-              const isMe = String(pid) === String(userId);
+        )}
 
-              return (
-                <UserRow
-                  key={pid ? `p_${pid}_${idx}` : `p_idx_${idx}`}
-                  user={typeof p === "object" ? p : { name: "Người chơi" }}
-                  label={getParticipantPositionLabel(pid, p)}
-                  badge={null}
-                  isMe={isMe}
-                  showTeammatesIcon={!isCreatorParticipant}
-                  onPress={() => openProfile(p)}
-                  rightAction={
-                    // CHUẨN THIẾT KẾ: Nút Đánh giá ⭐ nằm ngang hàng ở góc phải khi trận đấu đã kết thúc & viewer là người tham gia trận
-                    isEnded && !isMe && isUserParticipant(match) ? (
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: "#FFF7ED",
-                          borderWidth: 1,
-                          borderColor: "#FFD8A8",
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 20,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                        onPress={() => handleOpenSingleRating(p)}
-                        disabled={myRatedUserIds.includes(String(pid))}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="star" size={14} color={myRatedUserIds.includes(String(pid)) ? "#D1D5DB" : "#F59E0B"} />
-                        <Text style={{ fontSize: 12, fontWeight: "700", color: myRatedUserIds.includes(String(pid)) ? "#9CA3AF" : "#C2410C" }}>
-                          {myRatedUserIds.includes(String(pid)) ? 'Đã đánh giá' : 'Đánh giá'}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : isOwner && !isCreatorParticipant && !isEnded ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {Boolean(p.isVirtual) && (
+        {/* Danh sách tham gia & Nút Đánh giá ⭐ nằm ngang hàng ở bên phải cho từng người chơi */}
+        <View style={styles.participantSectionContainer}>
+          <TouchableOpacity
+            style={[styles.sectionTitleRow, { alignItems: 'center' }]}
+            onPress={() => setIsParticipantsExpanded(!isParticipantsExpanded)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Danh sách tham gia</Text>
+              <Text style={{ fontSize: 13, color: "#6B7280", fontWeight: "600" }}>
+                ({allParticipants.length})
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {isOwner && !isEnded && (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: '#F3E8FF',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 16,
+                  }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setShowVirtualModal(true);
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="person-add-outline" size={14} color="#7E22CE" />
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#7E22CE' }}>
+                    + Tài khoản ảo
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <Ionicons
+                name={isParticipantsExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="#6B7280"
+              />
+            </View>
+          </TouchableOpacity>
+
+          {isParticipantsExpanded && (
+            <>
+              {allParticipants.length === 0 ? (
+                <Text style={styles.emptyText}>Chưa có ai tham gia</Text>
+              ) : (
+                allParticipants.map((p, idx) => {
+                  const pid = getUserId(p);
+                  const isCreatorParticipant = pid === creatorId;
+                  const isMe = String(pid) === String(userId);
+
+                  return (
+                    <UserRow
+                      key={pid ? `p_${pid}_${idx}` : `p_idx_${idx}`}
+                      user={typeof p === "object" ? p : { name: "Người chơi" }}
+                      label={getParticipantPositionLabel(pid, p)}
+                      badge={null}
+                      isMe={isMe}
+                      showTeammatesIcon={!isCreatorParticipant}
+                      onPress={() => openProfile(p)}
+                      rightAction={
+                        // CHUẨN THIẾT KẾ: Nút Đánh giá ⭐ nằm ngang hàng ở góc phải khi trận đấu đã kết thúc & viewer là người tham gia trận
+                        isEnded && !isMe && isUserParticipant(match) ? (
                           <TouchableOpacity
                             style={{
-                              backgroundColor: '#F3E8FF',
+                              backgroundColor: "#FFF7ED",
                               borderWidth: 1,
-                              borderColor: '#E9D5FF',
-                              paddingHorizontal: 9,
+                              borderColor: "#FFD8A8",
+                              paddingHorizontal: 10,
                               paddingVertical: 5,
-                              borderRadius: 14,
+                              borderRadius: 20,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 4,
                             }}
-                            onPress={() => {
-                              setVirtualPositionTarget(p);
-                              const currentPosEntry = (match?.memberPositions || []).find((m) => getUserId(m.userId) === pid);
-                              setSelectedVirtualPosId(currentPosEntry?.positionId || "");
-                            }}
+                            onPress={() => handleOpenSingleRating(p)}
+                            disabled={myRatedUserIds.includes(String(pid))}
                             activeOpacity={0.7}
                           >
-                            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#7E22CE' }}>
-                              Vị trí
+                            <Ionicons name="star" size={14} color={myRatedUserIds.includes(String(pid)) ? "#D1D5DB" : "#F59E0B"} />
+                            <Text style={{ fontSize: 12, fontWeight: "700", color: myRatedUserIds.includes(String(pid)) ? "#9CA3AF" : "#C2410C" }}>
+                              {myRatedUserIds.includes(String(pid)) ? 'Đã đánh giá' : 'Đánh giá'}
                             </Text>
                           </TouchableOpacity>
-                        )}
+                        ) : isOwner && !isCreatorParticipant && !isEnded ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            {Boolean(p.isVirtual) && (
+                              <TouchableOpacity
+                                style={{
+                                  backgroundColor: '#F3E8FF',
+                                  borderWidth: 1,
+                                  borderColor: '#E9D5FF',
+                                  paddingHorizontal: 9,
+                                  paddingVertical: 5,
+                                  borderRadius: 14,
+                                }}
+                                onPress={() => {
+                                  setVirtualPositionTarget(p);
+                                  const currentPosEntry = (match?.memberPositions || []).find((m) => getUserId(m.userId) === pid);
+                                  setSelectedVirtualPosId(currentPosEntry?.positionId || "");
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#7E22CE' }}>
+                                  Vị trí
+                                </Text>
+                              </TouchableOpacity>
+                            )}
 
-                        <TouchableOpacity
-                          style={styles.kickSmallBtn}
-                          onPress={() => handleOpenKick(p)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.kickSmallBtnText}>Kích</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : null
-                  }
-                />
-              );
-            })
-          )}
+                            <TouchableOpacity
+                              style={styles.kickSmallBtn}
+                              onPress={() => handleOpenKick(p)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.kickSmallBtnText}>Kích</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : null
+                      }
+                    />
+                  );
+                })
+              )}
 
-          {/* Nút Mời thêm bạn bè */}
-          {isOwner && (
-            isEnded ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "#F3F4F6",
-                  borderWidth: 1,
-                  borderColor: "#E5E7EB",
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 12,
-                  marginTop: 10,
-                  marginBottom: 8,
-                  gap: 6,
-                }}
-              >
-                <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
-                <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
-                  Trận đấu đã kết thúc (Không thể mời)
-                </Text>
-              </View>
-            ) : match?.teamStatus === "ongoing" ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "#F3F4F6",
-                  borderWidth: 1,
-                  borderColor: "#E5E7EB",
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 12,
-                  marginTop: 10,
-                  marginBottom: 8,
-                  gap: 6,
-                }}
-              >
-                <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
-                <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
-                  Trận đấu đang diễn ra (Không thể mời)
-                </Text>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "#FFF7ED",
-                  borderWidth: 1.5,
-                  borderColor: "#FFD8A8",
-                  paddingVertical: 10,
-                  paddingHorizontal: 16,
-                  borderRadius: 12,
-                  marginTop: 10,
-                  marginBottom: 8,
-                  gap: 6,
-                }}
-                onPress={handleOpenInvite}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="person-add" size={18} color={ORANGE} />
-                <Text style={{ color: ORANGE, fontWeight: "700", fontSize: 13.5 }}>
-                  + Mời thêm bạn bè tham gia
-                </Text>
-              </TouchableOpacity>
-            )
-          )}
+              {/* Nút Mời thêm bạn bè */}
+              {isOwner && (
+                isEnded ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#F3F4F6",
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                      marginTop: 10,
+                      marginBottom: 8,
+                      gap: 6,
+                    }}
+                  >
+                    <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
+                    <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
+                      Trận đấu đã kết thúc (Không thể mời)
+                    </Text>
+                  </View>
+                ) : match?.teamStatus === "ongoing" ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#F3F4F6",
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                      marginTop: 10,
+                      marginBottom: 8,
+                      gap: 6,
+                    }}
+                  >
+                    <Ionicons name="ban-outline" size={18} color="#9CA3AF" />
+                    <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 13.5 }}>
+                      Trận đấu đang diễn ra (Không thể mời)
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#FFF7ED",
+                      borderWidth: 1.5,
+                      borderColor: "#FFD8A8",
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                      marginTop: 10,
+                      marginBottom: 8,
+                      gap: 6,
+                    }}
+                    onPress={handleOpenInvite}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="person-add" size={18} color={ORANGE} />
+                    <Text style={{ color: ORANGE, fontWeight: "700", fontSize: 13.5 }}>
+                      + Mời thêm bạn bè tham gia
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
 
-          {/* NÚT THAM GIA HOẶC HỦY YÊU CẦU CHO NGƯỜI CHƠI KHÁC */}
-          {canJoinMatch && (
-            <TouchableOpacity
-              style={styles.joinBottomBtn}
-              onPress={handleRequestJoin}
-              disabled={actionLoading}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.joinBottomBtnText}>Tham gia trận đấu</Text>
-            </TouchableOpacity>
-          )}
+              {/* NÚT THAM GIA HOẶC HỦY YÊU CẦU CHO NGƯỜI CHƠI KHÁC */}
+              {canJoinMatch && (
+                <TouchableOpacity
+                  style={styles.joinBottomBtn}
+                  onPress={handleRequestJoin}
+                  disabled={actionLoading}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.joinBottomBtnText}>Tham gia trận đấu</Text>
+                </TouchableOpacity>
+              )}
 
-          {hasPendingRequest && !isOwner && (
-            <View style={styles.actionStack}>
-              <TouchableOpacity
-                style={styles.joinBottomBtn}
-                onPress={handleChangePositionRequest}
-                disabled={actionLoading}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.joinBottomBtnText}>Thay đổi vị trí</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
-                onPress={handleCancelRequest}
-                disabled={actionLoading}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
-              </TouchableOpacity>
-            </View>
+              {hasPendingRequest && !isOwner && (
+                <View style={styles.actionStack}>
+                  <TouchableOpacity
+                    style={styles.joinBottomBtn}
+                    onPress={handleChangePositionRequest}
+                    disabled={actionLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.joinBottomBtnText}>Thay đổi vị trí</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.joinBottomBtn, styles.joinBottomBtnSecondary]}
+                    onPress={handleCancelRequest}
+                    disabled={actionLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.joinBottomBtnText}>Hủy yêu cầu</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           )}
         </View>
 

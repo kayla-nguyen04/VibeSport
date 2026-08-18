@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Court = require('../models/Court');
+const CourtOwner = require('../models/CourtOwner');
 const User = require('../models/User');
 const Match = require('../models/Match');
 const Notification = require('../models/Notification');
@@ -140,7 +141,7 @@ router.get('/', async (req, res) => {
 
     const queryObj = conditions.length > 0 ? { $and: conditions } : {};
 
-    const courts = await Court.find(queryObj).populate('owner', 'name phone email avatar').sort({ rating: -1, createdAt: -1 });
+    const courts = await Court.find(queryObj).populate('owner', 'name phone email picture avatar').sort({ rating: -1, createdAt: -1 });
     const normalizedCourts = courts.map((court) => normalizePitchOptions(court.toObject ? court.toObject() : court));
     res.json({ success: true, count: normalizedCourts.length, data: normalizedCourts });
   } catch (err) {
@@ -165,7 +166,7 @@ router.post('/upload-images', uploadCourt.array('images', 10), (req, res) => {
 // GET /api/courts/:id
 router.get('/:id', async (req, res) => {
   try {
-    const court = await Court.findById(req.params.id).populate('owner', 'name phone email avatar');
+    const court = await Court.findById(req.params.id).populate('owner', 'name phone email picture avatar');
     if (!court) return res.status(404).json({ success: false, message: 'Không tìm thấy mẫu sân' });
     const normalizedCourt = normalizePitchOptions(court.toObject ? court.toObject() : court);
     res.json({ success: true, data: normalizedCourt });
@@ -188,7 +189,7 @@ router.post('/', async (req, res) => {
 
     const newCourt = new Court(requestBody);
     await newCourt.save();
-    const populated = await Court.findById(newCourt._id).populate('owner', 'name phone email avatar');
+    const populated = await Court.findById(newCourt._id).populate('owner', 'name phone email picture avatar');
     res.status(201).json({ success: true, message: 'Thêm mẫu sân mới thành công', data: populated });
   } catch (err) {
     console.error('[CourtCreateError]', err);
@@ -211,7 +212,7 @@ router.put('/:id', async (req, res) => {
     }
     delete requestBody.priceGuide;
 
-    const updated = await Court.findByIdAndUpdate(req.params.id, requestBody, { returnDocument: 'after' }).populate('owner', 'name phone email avatar');
+    const updated = await Court.findByIdAndUpdate(req.params.id, requestBody, { returnDocument: 'after' }).populate('owner', 'name phone email picture avatar');
 
     // Nếu chuyển trạng thái sang hidden (Ẩn sân)
     if (req.body.status === 'hidden' && oldCourt.status !== 'hidden') {

@@ -146,6 +146,7 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
   const [editName, setEditName] = useState(user?.name ?? '');
   const [editPhone, setEditPhone] = useState(user?.phone ?? '');
   const [editBio, setEditBio] = useState(user?.bio ?? '');
+  const [editSkillLevel, setEditSkillLevel] = useState(user?.skillLevel ?? 'Người mới');
 
   const authUser = useSelector((state) => state.auth.user);
   const displayProfile = useMemo(() => profile || user || authUser || {}, [profile, user, authUser]);
@@ -243,6 +244,7 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
     setEditName(nextProfile.name ?? '');
     setEditPhone(nextProfile.phone ?? '');
     setEditBio(nextProfile.bio ?? '');
+    setEditSkillLevel(nextProfile.skillLevel ?? 'Người mới');
   }, [user]);
 
   const loadProfile = useCallback(async ({ silent = false } = {}) => {
@@ -508,6 +510,7 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
         name: editName.trim(),
         phone: editPhone.trim(),
         bio: editBio.trim(),
+        skillLevel: editSkillLevel,
       });
 
       setProfile((current) => ({ ...(current || {}), ...(updatedUser || {}) }));
@@ -779,6 +782,8 @@ export function ProfileScreen({ navigation, onLogout, onUpdateProfile, user }) {
         setEditPhone={setEditPhone}
         editBio={editBio}
         setEditBio={setEditBio}
+        editSkillLevel={editSkillLevel}
+        setEditSkillLevel={setEditSkillLevel}
         onPickAvatar={handlePickAvatar}
         onClose={() => setIsEditModalVisible(false)}
         onSave={handleSaveProfile}
