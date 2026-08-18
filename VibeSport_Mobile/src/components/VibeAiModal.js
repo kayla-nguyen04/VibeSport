@@ -20,10 +20,10 @@ import { sendAiChatRequest } from '../services/aiService';
 const ORANGE = '#FF5F3D';
 
 const QUICK_CHIPS = [
-  'Tìm trận bóng đá tối nay',
-  'Tìm trận cầu lông gần đây',
-  'Hướng dẫn tạo trận đấu',
-  'Luật chơi Pickleball',
+  '⚽ Tìm trận bóng đá tối nay',
+  '🏸 Tìm trận cầu lông gần đây',
+  '❓ Hướng dẫn tạo trận đấu',
+  '🏆 Luật chơi Pickleball',
 ];
 
 export function VibeAiModal({ navigation }) {
@@ -38,7 +38,7 @@ export function VibeAiModal({ navigation }) {
     {
       id: 'welcome_1',
       sender: 'ai',
-      text: 'Xin chào! Tôi là **VibeSport AI** \nTôi có thể giúp bạn tìm trận đấu, giải đáp luật chơi hoặc cập nhật tin tức thể thao. Bạn cần tôi hỗ trợ gì hôm nay?',
+      text: 'Xin chào! Tôi là **VibeSport AI** 🤖\nTôi có thể giúp bạn tìm trận đấu, giải đáp luật chơi hoặc hướng dẫn các tính năng trên VibeSport. Bạn cần tôi hỗ trợ gì hôm nay?',
       suggestedMatches: [],
     },
   ]);
@@ -133,9 +133,7 @@ export function VibeAiModal({ navigation }) {
         statusBarTranslucent
       >
         <View style={[styles.modalSafeArea, { paddingBottom: insets.bottom }]}>
-          {/* Header Cố Định Ở Đỉnh — tự cộng insets.top (mức tối thiểu 24) vì SafeAreaView
-              bên trong Modal đôi khi không nhận đúng safe-area (đặc biệt khi test qua Chrome/web).
-              Đo thêm chiều cao thực tế để bù trừ cho KeyboardAvoidingView trên iOS */}
+          {/* Header Cố Định Ở Đỉnh */}
           <View
             style={[styles.modalHeader, { paddingTop: Math.max(insets.top, 24) + 12 }]}
             onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
@@ -163,8 +161,7 @@ export function VibeAiModal({ navigation }) {
             </View>
           </View>
 
-          {/* KeyboardAvoidingView: dùng 'height' cho Android (thay vì undefined) để bàn phím
-              không đè lên ô nhập, và bù trừ chiều cao header cho iOS bằng keyboardVerticalOffset */}
+          {/* KeyboardAvoidingView chuẩn cho cả iOS và Android */}
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -218,17 +215,17 @@ export function VibeAiModal({ navigation }) {
                           <View key={match.matchId || idx} style={styles.matchCard}>
                             <View style={styles.matchCardHeader}>
                               <Text style={styles.matchCardTitle} numberOfLines={1}>
-                                {match.title || match.sport}
+                                ⚽ {match.title || match.sport}
                               </Text>
                               <Text style={styles.matchCardCost}>
                                 {match.costPerPerson ? `${match.costPerPerson.toLocaleString('vi-VN')}đ` : 'Miễn phí'}
                               </Text>
                             </View>
                             <Text style={styles.matchCardSub} numberOfLines={1}>
-                              {match.location || 'Sân thi đấu'}
+                              📍 {match.location || 'Sân thi đấu'}
                             </Text>
                             <Text style={styles.matchCardSub}>
-                              {match.startTime || ''} - {match.date || ''} • 👥 {match.players || ''}
+                              🕐 {match.startTime || ''} - {match.date || ''} • 👥 {match.players || ''}
                             </Text>
 
                             <TouchableOpacity
@@ -279,7 +276,7 @@ export function VibeAiModal({ navigation }) {
               </ScrollView>
             </View>
 
-            {/* Ô nhập tin nhắn luôn nổi trên bàn phím */}
+            {/* Ô nhập tin nhắn */}
             <View style={styles.inputBar}>
               <TextInput
                 style={styles.textInput}
