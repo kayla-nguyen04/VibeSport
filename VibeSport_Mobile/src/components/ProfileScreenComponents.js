@@ -28,6 +28,7 @@ import {
   text,
 } from '../theme';
 import { VibeReactionIcon, VIBE_REACTION } from './PostReactions';
+import { getRequiredPlayersBySport, getMatchCostValue } from '../utils/matchRules';
 
 export const SPORTS = [
   { key: 'Bóng đá', label: 'Bóng đá' },
@@ -498,12 +499,12 @@ function getMatchStatusMeta(status) {
     case 'completed':
       return { label: 'Đã kết thúc', color: '#0f766e', backgroundColor: '#ccfbf1' };
     case 'full':
-      return { label: 'Đủ người', color: '#b45309', backgroundColor: '#ffedd5' };
+      return { label: 'Đang diễn ra', color: '#15803d', backgroundColor: '#dcfce7' };
     case 'cancelled':
       return { label: 'Đã hủy', color: '#b91c1c', backgroundColor: '#fee2e2' };
     case 'open':
     default:
-      return { label: 'Đang mở', color: '#1d4ed8', backgroundColor: '#dbeafe' };
+      return { label: 'Chưa bắt đầu', color: '#c2410c', backgroundColor: '#fff7ed' };
   }
 }
 
@@ -517,6 +518,7 @@ export const MatchHistoryCard = memo(function MatchHistoryCard({ match, userId }
   const participantIds = (match.participants || []).map((participant) => String(participant?._id || participant));
   const isCreator = String(creatorId || '') === String(userId || '');
   const isParticipant = participantIds.includes(String(userId || ''));
+  const requiredPlayers = getRequiredPlayersBySport(match?.sport, match, Number(match?.maxPlayers || 2));
   const statusMeta = getMatchStatusMeta(match.status);
 
   return (
@@ -546,7 +548,7 @@ export const MatchHistoryCard = memo(function MatchHistoryCard({ match, userId }
 
       <View style={styles.matchFooterRow}>
         <Text style={styles.matchMeta} numberOfLines={1}>
-          {match.currentPlayers ?? match.participants?.length ?? 0}/{match.maxPlayers ?? 0} người
+          {(match.currentPlayers ?? match.participants?.length ?? 0)}/{requiredPlayers || match.maxPlayers || 0} người
         </Text>
         <Text style={styles.matchMeta} numberOfLines={1}>
           {isCreator ? 'Bạn là chủ trận' : isParticipant ? 'Bạn đã tham gia' : 'Đã liên quan'}

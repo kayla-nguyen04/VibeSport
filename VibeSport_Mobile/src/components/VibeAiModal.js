@@ -218,7 +218,9 @@ export function VibeAiModal({ navigation }) {
                                 ⚽ {match.title || match.sport}
                               </Text>
                               <Text style={styles.matchCardCost}>
-                                {match.costPerPerson ? `${match.costPerPerson.toLocaleString('vi-VN')}đ` : 'Miễn phí'}
+                                {(match.costPerPlayer ?? match.costPerPerson)
+                                  ? `${Number(match.costPerPlayer ?? match.costPerPerson).toLocaleString('vi-VN')}đ`
+                                  : 'Miễn phí'}
                               </Text>
                             </View>
                             <Text style={styles.matchCardSub} numberOfLines={1}>

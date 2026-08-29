@@ -201,6 +201,14 @@ router.post("/", authMiddleware, async (req, res) => {
       depositAmount,
     } = req.body;
 
+    const normalizedSelectedPositionIds = Array.isArray(selectedPositionIds)
+      ? selectedPositionIds.map((value) => String(value)).filter(Boolean)
+      : [];
+
+    const normalizedMaxPlayers = sport === "football"
+      ? Number(maxPlayers || 0)
+      : (normalizedSelectedPositionIds.length > 0 ? normalizedSelectedPositionIds.length : Number(maxPlayers || 2));
+
     if (!sport || !title || !date || !startTime || !maxPlayers || !locationName) {
       return res.status(400).json({
         success: false,
@@ -215,7 +223,7 @@ router.post("/", authMiddleware, async (req, res) => {
       });
     }
 
-    if (Number(maxPlayers) <= 0) {
+    if (Number(normalizedMaxPlayers) <= 0) {
       return res.status(400).json({
         success: false,
         message: "Số người tối đa phải lớn hơn 0",
@@ -270,9 +278,9 @@ router.post("/", authMiddleware, async (req, res) => {
       totalHours: req.body.totalHours ? Number(req.body.totalHours) : 1.5,
       totalCourtCost: req.body.totalCourtCost ? Number(req.body.totalCourtCost) : 450000,
       costPerPlayer: req.body.costPerPlayer ? Number(req.body.costPerPlayer) : Number(costPerPerson || 0),
-      maxPlayers: Number(maxPlayers),
+      maxPlayers: Number(normalizedMaxPlayers),
       positionsNeeded: sport === "football" ? positionsNeeded || [] : [],
-      selectedPositionIds: sport === "football" ? selectedPositionIds || [] : [],
+      selectedPositionIds: normalizedSelectedPositionIds,
       benchMembersTeam1: sport === "football" ? Number(benchMembersTeam1 || 0) : 0,
       benchMembersTeam2: sport === "football" ? Number(benchMembersTeam2 || 0) : 0,
       footballFormation: sport === "football" ? footballFormation || "" : "",
@@ -598,6 +606,13 @@ router.put("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy trận đấu" });
     }
 
+    const normalizedSelectedPositionIds = Array.isArray(selectedPositionIds)
+      ? selectedPositionIds.map((value) => String(value)).filter(Boolean)
+      : [];
+    const normalizedMaxPlayers = match.sport === "football"
+      ? Number(maxPlayers ?? match.maxPlayers ?? 2)
+      : (normalizedSelectedPositionIds.length > 0 ? normalizedSelectedPositionIds.length : Number(maxPlayers ?? match.maxPlayers ?? 2));
+
     // Quy tắc: Khi trận đấu Đang bắt đầu (ongoing) hoặc sắp diễn ra trong vòng 3 tiếng, không cho phép Sửa
     if (match.teamStatus === "ongoing" || isMatchWithinOneHour(match)) {
       return res.status(400).json({ success: false, message: "Trận đấu sắp diễn ra trong vòng 3 tiếng (hoặc đang diễn ra), không thể chỉnh sửa!" });
@@ -608,8 +623,8 @@ router.put("/:id", authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: "Chỉ chủ trận mới có thể chỉnh sửa trận đấu" });
     }
 
-    if (maxPlayers !== undefined) {
-      const nextMax = Number(maxPlayers);
+    if (maxPlayers !== undefined || selectedPositionIds !== undefined) {
+      const nextMax = Number(normalizedMaxPlayers);
       if (nextMax <= 0) {
         return res.status(400).json({ success: false, message: "Số người tối đa phải lớn hơn 0" });
       }
@@ -646,7 +661,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
       match.positionsNeeded = match.sport === "football" ? positionsNeeded || [] : [];
     }
     if (selectedPositionIds !== undefined) {
-      match.selectedPositionIds = match.sport === "football" ? selectedPositionIds || [] : [];
+      match.selectedPositionIds = normalizedSelectedPositionIds;
     }
     if (benchMembersTeam1 !== undefined) {
       match.benchMembersTeam1 = match.sport === "football" ? Number(benchMembersTeam1 || 0) : 0;
@@ -1291,9 +1306,9 @@ router.post("/:id/reject-join", async (req, res) => {
 });
 
 // Update team status (Bắt đầu, Tạm dừng, Kết thúc)
-router.post("/:id/team-status", async (req, res) => {
+router.post("/:id/team-status", authMiddleware, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, finalSettlement, expenseBreakdown, memberAdjustments } = req.body;
     if (!["not_started", "ongoing", "paused", "ended"].includes(status)) {
       return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
     }
@@ -1305,9 +1320,33 @@ router.post("/:id/team-status", async (req, res) => {
       return res.status(400).json({ success: false, message: "Trận đấu đang trong quá trình biểu quyết xóa, không thể bắt đầu!" });
     }
     match.teamStatus = status;
-    // Sync match status if it is ended
     if (status === "ended") {
       match.status = "completed";
+      if (finalSettlement !== undefined) {
+        match.finalSettlement = {
+          totalExpense: Number(finalSettlement?.totalExpense || 0),
+          perPerson: Number(finalSettlement?.perPerson || 0),
+          participantsCount: Number(finalSettlement?.participantsCount || match.participants.length || 0),
+          note: finalSettlement?.note || "",
+        };
+      }
+      if (Array.isArray(expenseBreakdown)) {
+        match.expenseBreakdown = expenseBreakdown.map((item) => ({
+          id: item?.id || String(Date.now() + Math.random()),
+          name: item?.name || "Chi phí",
+          quantity: Number(item?.quantity || 0),
+          price: Number(item?.price || 0),
+          selected: Boolean(item?.selected),
+        }));
+      }
+      if (Array.isArray(memberAdjustments)) {
+        match.memberAdjustments = memberAdjustments.map((entry) => ({
+          userId: entry?.userId || null,
+          amount: Number(entry?.amount || 0),
+          note: entry?.note || "",
+          name: entry?.name || "",
+        }));
+      }
     }
     if (status === "ended" || status === "cancelled") {
       const ownerEntry = Array.isArray(match.memberRoles)

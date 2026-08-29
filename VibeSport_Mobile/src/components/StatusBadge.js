@@ -5,11 +5,13 @@ import { background, text, status, borderRadius, fontWeight } from '../theme';
 const LABELS = {
   joined: 'Đã tham gia',
   notStarted: 'Chưa bắt đầu',
-  ongoing: 'Đang bắt đầu',
+  ongoing: 'Đang diễn ra',
+  ended: 'Đã kết thúc',
+  cancelled: 'Đã hủy',
 };
 
 const StatusBadge = ({ status: variant, text: customText }) => {
-  const label = customText ?? LABELS[variant];
+  const label = customText ?? LABELS[variant] ?? 'Không xác định';
 
   if (variant === 'joined') {
     return (
@@ -31,6 +33,14 @@ const StatusBadge = ({ status: variant, text: customText }) => {
     return (
       <View style={styles.ongoingContainer}>
         <Text style={styles.ongoingText}>{label}</Text>
+      </View>
+    );
+  }
+
+  if (variant === 'ended' || variant === 'cancelled') {
+    return (
+      <View style={styles.endedContainer}>
+        <Text style={styles.endedText}>{label}</Text>
       </View>
     );
   }
@@ -72,6 +82,20 @@ const styles = StyleSheet.create({
   },
   ongoingText: {
     color: status.successDark,
+    fontSize: 13,
+    fontWeight: fontWeight.semibold,
+  },
+  endedContainer: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: borderRadius.xs,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  endedText: {
+    color: '#374151',
     fontSize: 13,
     fontWeight: fontWeight.semibold,
   },
