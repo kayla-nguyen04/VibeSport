@@ -72,6 +72,50 @@ const matchSchema = new Schema(
       min: 0,
     },
 
+    expenseBreakdown: {
+      type: [
+        {
+          id: String,
+          name: String,
+          quantity: Number,
+          price: Number,
+          selected: Boolean,
+        }
+      ],
+      default: [],
+    },
+
+    finalSettlement: {
+      totalExpense: {
+        type: Number,
+        default: 0,
+      },
+      perPerson: {
+        type: Number,
+        default: 0,
+      },
+      participantsCount: {
+        type: Number,
+        default: 0,
+      },
+      note: {
+        type: String,
+        default: "",
+      },
+    },
+
+    memberAdjustments: {
+      type: [
+        {
+          userId: Schema.Types.ObjectId,
+          amount: Number,
+          note: String,
+          name: String,
+        }
+      ],
+      default: [],
+    },
+
     currentPlayers: {
       type: Number,
       default: 1,

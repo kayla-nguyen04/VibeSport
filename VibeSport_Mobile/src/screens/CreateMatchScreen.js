@@ -91,6 +91,7 @@ import { getCourtsRequest } from "../services/courtService";
 import { Screen } from "../components/Screen";
 import { TagIcon } from "../components/TagIcon";
 import { primary } from "../theme";
+import { getRequiredPlayersBySport, getEffectiveMaxPlayersForSport } from "../utils/matchRules";
 
 import GroupCreationModal from '../components/GroupCreationModal';
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
@@ -943,6 +944,11 @@ export default function CreateMatchScreen({ navigation, route }) {
   );
 
   const [sport, setSport] = useState(editMatch?.sport || "football");
+  const [footballTotalPlayers, setFootballTotalPlayers] = useState(() => (
+    editMatch?.sport === "football" && editMatch?.maxPlayers
+      ? String(editMatch.maxPlayers)
+      : "10"
+  ));
   const [findTeamPosts, setFindTeamPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
@@ -1069,17 +1075,15 @@ export default function CreateMatchScreen({ navigation, route }) {
   }, [sport, footballMaxPlayers, racketMaxPlayers]);
 
   const activeTotalPeople = useMemo(() => {
-    if (sport === "football") {
-      const b1 = Number(benchMembersTeam1 || 0);
-      const b2 = Number(benchMembersTeam2 || 0);
-      const fMax = Number(footballMaxPlayers || 10);
-      return fMax + b1 + b2;
-    }
-    if (sport === "badminton" || sport === "pickleball") {
-      return Number(racketMaxPlayers || 4);
-    }
-    return Number(maxPlayersOther || 2);
-  }, [sport, footballMaxPlayers, benchMembersTeam1, benchMembersTeam2, racketMaxPlayers, maxPlayersOther]);
+    const matchLike = {
+      sport,
+      selectedPositionIds: safeSelectedPositionIds,
+      benchMembersTeam1,
+      benchMembersTeam2,
+      maxPlayers: sport === "football" ? Number(footballTotalPlayers || footballMaxPlayers || 10) : Number(maxPlayersOther || racketMaxPlayers || 2),
+    };
+    return getRequiredPlayersBySport(sport, matchLike, Number(maxPlayersOther || racketMaxPlayers || 2));
+  }, [sport, footballMaxPlayers, footballTotalPlayers, benchMembersTeam1, benchMembersTeam2, racketMaxPlayers, maxPlayersOther, safeSelectedPositionIds]);
 
   const activePitchTypeLabel = useMemo(() => {
     if (sport === "football") {
@@ -1293,12 +1297,17 @@ export default function CreateMatchScreen({ navigation, route }) {
   // ── Position map state ──
   // selectedPositionIds: list of position ids ticked on the pitch
   const [selectedPositionIds, setSelectedPositionIds] = useState(() => {
-    if (editMatch?.selectedPositionIds?.length) {
-      return editMatch.selectedPositionIds;
-    }
-    return [];
+    const initialValue = Array.isArray(editMatch?.selectedPositionIds)
+      ? editMatch.selectedPositionIds
+      : [];
+    return initialValue.map((value) => String(value)).filter(Boolean);
   });
+  const safeSelectedPositionIds = useMemo(
+    () => Array.from(new Set((Array.isArray(selectedPositionIds) ? selectedPositionIds : []).map((value) => String(value)).filter(Boolean))),
+    [selectedPositionIds]
+  );
   const [showPitchModal, setShowPitchModal] = useState(false);
+
 
   // Bench members for Team 1 and Team 2 (optional, max 3 each)
   const [benchMembersTeam1, setBenchMembersTeam1] = useState(
@@ -1308,8 +1317,11 @@ export default function CreateMatchScreen({ navigation, route }) {
     editMatch?.benchMembersTeam2 ? String(editMatch.benchMembersTeam2) : ""
   );
 
-  // Auto-calculate số người cần tìm = selected positions + reserves of both teams
-  const totalNeeded = selectedPositionIds.length + Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0);
+  // Số người cần tìm cập nhật theo số vị trí đã chọn trên sơ đồ.
+  // Với football vẫn cộng thêm số dự bị theo đội; với racket sports dựa trên số ô đã chọn trong sơ đồ.
+  const totalNeeded = sport === "football"
+    ? safeSelectedPositionIds.length + Number(benchMembersTeam1 || 0) + Number(benchMembersTeam2 || 0)
+    : safeSelectedPositionIds.length;
 
   // For non-football sports keep a manual maxPlayers field
   const [maxPlayersOther, setMaxPlayersOther] = useState(
@@ -1369,13 +1381,18 @@ export default function CreateMatchScreen({ navigation, route }) {
       setSkillLevel(editMatch.skillLevel || "Người mới");
       setServiceCost(editMatch.serviceCost ? String(editMatch.serviceCost) : "");
       setSelectedContactUser(editMatch.contactAppUser || null);
-      setSelectedPositionIds(editMatch.selectedPositionIds || []);
+      setSelectedPositionIds(
+        Array.isArray(editMatch.selectedPositionIds)
+          ? editMatch.selectedPositionIds.map((value) => String(value)).filter(Boolean)
+          : []
+      );
       setBenchMembersTeam1(editMatch.benchMembersTeam1 ? String(editMatch.benchMembersTeam1) : "");
       setBenchMembersTeam2(editMatch.benchMembersTeam2 ? String(editMatch.benchMembersTeam2) : "");
       setMaxPlayersOther(editMatch.maxPlayers ? String(editMatch.maxPlayers) : "2");
       setSelectedChatGroupId(editMatch.chatGroupId?._id || editMatch.chatGroupId || null);
       if (editMatch.sport === "football" && editMatch.maxPlayers) {
         setFootballMaxPlayers(editMatch.maxPlayers);
+        setFootballTotalPlayers(String(editMatch.maxPlayers));
       }
       if ((editMatch.sport === "badminton" || editMatch.sport === "pickleball") && editMatch.maxPlayers) {
         setRacketMaxPlayers(editMatch.maxPlayers);
@@ -1729,6 +1746,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       endTimeSlot,
       maxPlayersOther,
       footballMaxPlayers,
+      footballTotalPlayers,
       racketMaxPlayers,
       costPerPerson,
       note,
@@ -1756,6 +1774,7 @@ export default function CreateMatchScreen({ navigation, route }) {
       endTimeSlot,
       maxPlayersOther,
       footballMaxPlayers,
+      footballTotalPlayers,
       racketMaxPlayers,
       costPerPerson,
       note,
@@ -1786,10 +1805,17 @@ export default function CreateMatchScreen({ navigation, route }) {
     if (draft.endTimeSlot) setEndTimeSlot(draft.endTimeSlot);
     if (draft.maxPlayersOther != null) setMaxPlayersOther(String(draft.maxPlayersOther));
     if (draft.footballMaxPlayers != null) setFootballMaxPlayers(Number(draft.footballMaxPlayers));
+    if (draft.footballTotalPlayers != null) setFootballTotalPlayers(String(draft.footballTotalPlayers));
     if (draft.racketMaxPlayers != null) setRacketMaxPlayers(Number(draft.racketMaxPlayers));
     if (draft.costPerPerson != null) setCostPerPerson(String(draft.costPerPerson));
     if (draft.note != null) setNote(draft.note);
-    if (draft.selectedPositionIds != null) setSelectedPositionIds(draft.selectedPositionIds);
+    if (draft.selectedPositionIds != null) {
+      setSelectedPositionIds(
+        Array.isArray(draft.selectedPositionIds)
+          ? draft.selectedPositionIds.map((value) => String(value)).filter(Boolean)
+          : []
+      );
+    }
     if (draft.benchMembersTeam1 != null) setBenchMembersTeam1(String(draft.benchMembersTeam1));
     if (draft.benchMembersTeam2 != null) setBenchMembersTeam2(String(draft.benchMembersTeam2));
     if (draft.locationName != null) setLocationName(draft.locationName);
@@ -1830,12 +1856,24 @@ export default function CreateMatchScreen({ navigation, route }) {
     { key: "pickleball", label: "Pickleball" },
   ];
 
-  const handleSelectSport = (selectedSport) => {
-    if (isEditMode) {
-      Alert.alert("Thông báo", "Không thể thay đổi môn thể thao khi sửa trận đấu.");
-      return;
-    }
+  const isFormDirty = () => (
+    Boolean(
+      title.trim() ||
+      locationName.trim() ||
+      note.trim() ||
+      costPerPerson.trim() ||
+      safeSelectedPositionIds.length > 0
+    )
+  );
+
+  const applySportSelection = (selectedSport) => {
     setSport(selectedSport);
+    setSelectedCourtObj(null);
+    setLocationName("");
+    setSpecificAddress("");
+    setCourtDescription("");
+    setLocationCoords(null);
+    setCostPerPerson("");
     if (selectedSport !== "football") {
       setMaxPlayersOther("2");
       setSelectedPositionIds([]);
@@ -1844,25 +1882,51 @@ export default function CreateMatchScreen({ navigation, route }) {
       }
     } else {
       setFootballMaxPlayers(10);
+      setFootballTotalPlayers("10");
       setSelectedPositionIds([]);
     }
+  };
+
+  const handleSelectSport = (selectedSport) => {
+    if (isEditMode) {
+      Alert.alert("Thông báo", "Không thể thay đổi môn thể thao khi sửa trận đấu.");
+      return;
+    }
+    if (selectedSport === sport) return;
+    if (isFormDirty()) {
+      Alert.alert(
+        "Xác nhận đổi môn thể thao",
+        "Thay đổi môn thể thao sẽ đặt lại sơ đồ vị trí và loại sân đã chọn. Bạn có chắc muốn tiếp tục?",
+        [
+          { text: "Ở lại", style: "cancel" },
+          { text: "Tiếp tục đổi", style: "destructive", onPress: () => applySportSelection(selectedSport) },
+        ]
+      );
+      return;
+    }
+    applySportSelection(selectedSport);
   };
 
   const handleSelectFootballMaxPlayers = (maxP) => {
     const numP = Number(maxP);
     setFootballMaxPlayers(numP);
+    setFootballTotalPlayers(String(numP));
+    setCustomPitchTypeNumber(String(numP / 2));
     if (!isEditMode) {
       setIsCourtPresetsExpanded(true);
     }
     setSelectedPositionIds([]);
   };
 
+  const isPresetCourtSelected = Boolean(selectedCourtObj);
+
   const handleIncreaseRole = (role) => {
     const limit = (FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
 
     // Count current selections for Team 1 and Team 2
-    const t1Count = selectedPositionIds.filter((id) => id.startsWith("t1_")).length;
-    const t2Count = selectedPositionIds.filter((id) => id.startsWith("t2_")).length;
+    const currentSelected = Array.isArray(selectedPositionIds) ? selectedPositionIds : [];
+    const t1Count = currentSelected.filter((id) => id.startsWith("t1_")).length;
+    const t2Count = currentSelected.filter((id) => id.startsWith("t2_")).length;
 
     const formatInfo = FOOTBALL_FORMATS[22];
     const allowedIds = [...formatInfo.team1Ids, ...formatInfo.team2Ids];
@@ -1872,14 +1936,14 @@ export default function CreateMatchScreen({ navigation, route }) {
     // Try Team 1 first if it has slots remaining
     if (t1Count < limit) {
       candidate = TEAM1_POSITIONS.find(
-        (pos) => allowedIds.includes(pos.id) && pos.role === role && !selectedPositionIds.includes(pos.id)
+        (pos) => allowedIds.includes(pos.id) && pos.role === role && !safeSelectedPositionIds.includes(pos.id)
       );
     }
 
     // Try Team 2 if Team 1 didn't have candidates or was full
     if (!candidate && t2Count < limit) {
       candidate = TEAM2_POSITIONS.find(
-        (pos) => allowedIds.includes(pos.id) && pos.role === role && !selectedPositionIds.includes(pos.id)
+        (pos) => allowedIds.includes(pos.id) && pos.role === role && !safeSelectedPositionIds.includes(pos.id)
       );
     }
 
@@ -1896,7 +1960,7 @@ export default function CreateMatchScreen({ navigation, route }) {
   const handleDecreaseRole = (role) => {
     // Find a selected position on the pitch of this role to remove
     const candidate = ALL_POSITIONS.find(
-      (pos) => pos.role === role && selectedPositionIds.includes(pos.id)
+      (pos) => pos.role === role && safeSelectedPositionIds.includes(pos.id)
     );
     
     if (candidate) {
@@ -1913,6 +1977,12 @@ export default function CreateMatchScreen({ navigation, route }) {
     const num = parseInt(digits, 10);
     const limit = SPORT_LIMITS[sport]?.maxPlayers || 4;
     setMaxPlayersOther(String(Math.min(num, limit)));
+  };
+
+  const handleFootballTotalPlayersChange = (text) => {
+    const digits = text.replace(/[^0-9]/g, "");
+    const safeFallback = footballMaxPlayers || 10;
+    setFootballTotalPlayers(digits || String(safeFallback));
   };
 
   const handleCostChange = (text) => {
@@ -1938,13 +2008,14 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const togglePosition = (id) => {
+    const currentSelected = Array.isArray(selectedPositionIds) ? selectedPositionIds : [];
     const isTeam1 = id.startsWith("t1_");
     const limit = (FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam;
 
-    if (selectedPositionIds.includes(id)) {
-      setSelectedPositionIds((prev) => prev.filter((x) => x !== id));
+    if (currentSelected.includes(id)) {
+      setSelectedPositionIds((prev) => (Array.isArray(prev) ? prev.filter((x) => x !== id) : []));
     } else {
-      const teamCount = selectedPositionIds.filter((x) => x.startsWith(isTeam1 ? "t1_" : "t2_")).length;
+      const teamCount = currentSelected.filter((x) => x.startsWith(isTeam1 ? "t1_" : "t2_")).length;
       if (teamCount >= limit) {
         Alert.alert(
           "Giới hạn đội hình",
@@ -1952,18 +2023,18 @@ export default function CreateMatchScreen({ navigation, route }) {
         );
         return;
       }
-      setSelectedPositionIds((prev) => [...prev, id]);
+      setSelectedPositionIds((prev) => [...(Array.isArray(prev) ? prev : []), id]);
     }
   };
 
   // Build role summary from selected positions
   const selectedRoleSummary = useMemo(() => {
     const counts = {};
-    ALL_POSITIONS.filter((p) => selectedPositionIds.includes(p.id)).forEach((p) => {
+    ALL_POSITIONS.filter((p) => safeSelectedPositionIds.includes(p.id)).forEach((p) => {
       counts[p.role] = (counts[p.role] || 0) + 1;
     });
     return counts;
-  }, [selectedPositionIds]);
+  }, [safeSelectedPositionIds]);
 
   const roleLabels = {
     goalkeeper: "Thủ môn",
@@ -1973,9 +2044,15 @@ export default function CreateMatchScreen({ navigation, route }) {
   };
 
   const buildPayload = () => {
-    const maxPlayers = sport === "football"
-      ? (totalNeeded > 0 ? Math.min(totalNeeded, activeTotalPeople) : activeTotalPeople)
-      : activeTotalPeople;
+    // Football: maxPlayers là tổng số người chơi của trận.
+    // Badminton/Pickleball: maxPlayers phải theo số vị trí đã chọn trên sơ đồ, không còn theo preset 1v1/2v2.
+    const maxPlayers = getEffectiveMaxPlayersForSport(sport, {
+      selectedPositionIds: safeSelectedPositionIds,
+      benchMembersTeam1,
+      benchMembersTeam2,
+      maxPlayers: sport === "football" ? Number(footballTotalPlayers || footballMaxPlayers || 10) : Number(maxPlayersOther || racketMaxPlayers || 2),
+    }, Number(maxPlayersOther || racketMaxPlayers || 2));
+
     // Build positionsNeeded from selected positions for backward-compat
     const positionsNeeded = Object.entries(selectedRoleSummary).map(([role, qty]) => ({
       key: role,
@@ -1998,15 +2075,15 @@ export default function CreateMatchScreen({ navigation, route }) {
       costPerPlayer: (() => {
         const totalBench = b1 + b2;
         const courtTypePlayers = sport === "football"
-          ? Number(footballMaxPlayers || 10)
-          : ((sport === "badminton" || sport === "pickleball") ? Number(racketMaxPlayers || 4) : Number(maxPlayersOther || 2));
+          ? Number(footballTotalPlayers || footballMaxPlayers || 10)
+          : ((sport === "badminton" || sport === "pickleball") ? Number(safeSelectedPositionIds.length > 0 ? safeSelectedPositionIds.length : (maxPlayersOther || racketMaxPlayers || 4)) : Number(maxPlayersOther || 2));
         const totalPeopleOnCourt = courtTypePlayers + totalBench;
         const totalCourtCostVal = Math.round(Number(costPerPerson || 0) * calculateTotalHours(selectedTimeSlot, endTimeSlot));
         return Math.round(totalCourtCostVal / Math.max(1, totalPeopleOnCourt));
       })(),
       maxPlayers,
       positionsNeeded: sport === "football" ? positionsNeeded : [],
-      selectedPositionIds: sport === "football" ? selectedPositionIds : [],
+      selectedPositionIds: safeSelectedPositionIds,
       benchMembers: sport === "football" ? (b1 + b2) : 0,
       benchMembersTeam1: sport === "football" ? b1 : 0,
       benchMembersTeam2: sport === "football" ? b2 : 0,
@@ -2051,17 +2128,27 @@ export default function CreateMatchScreen({ navigation, route }) {
       Alert.alert("Thiếu thông tin", "Vui lòng chọn giờ bắt đầu");
       return false;
     }
+    const startDateTime = combineDateAndTime(selectedDate, selectedTimeSlot);
+    const endDateTime = combineDateAndTime(selectedDate, endTimeSlot);
+    if (!isEditMode && startDateTime < new Date()) {
+      Alert.alert("Dữ liệu không hợp lệ", "Không thể chọn ngày hoặc giờ bắt đầu trong quá khứ so với thời điểm hiện tại");
+      return false;
+    }
+    if (endDateTime <= startDateTime) {
+      Alert.alert("Dữ liệu không hợp lệ", "Giờ kết thúc phải lớn hơn giờ bắt đầu.");
+      return false;
+    }
     if (!locationName.trim()) {
       Alert.alert("Thiếu thông tin", "Vui lòng chọn địa điểm sân trên bản đồ");
       return false;
     }
-    if (sport === "football" && totalNeeded === 0) {
-      Alert.alert("Thiếu thông tin", "Vui lòng chọn ít nhất 1 vị trí cần tìm trên sơ đồ");
-      return false;
-    }
+    // Vị trí cần tìm là tùy chọn; không bắt buộc phải có ít nhất 1 lựa chọn trên sơ đồ,
+    // bởi người dùng có thể tạo trận đấu đã đủ người hoặc muốn chỉ tạo lịch tập/đá nội bộ.
     const maxCourtPlayers = sport === "football"
-      ? (footballMaxPlayers || 10)
-      : (sport === "badminton" || sport === "pickleball" ? (racketMaxPlayers || 4) : Number(maxPlayersOther || 2));
+      ? (Number(footballTotalPlayers) || footballMaxPlayers || 10)
+      : (sport === "badminton" || sport === "pickleball"
+          ? (safeSelectedPositionIds.length > 0 ? safeSelectedPositionIds.length : (Number(maxPlayersOther || racketMaxPlayers || 4)))
+          : Number(maxPlayersOther || 2));
 
     if (totalNeeded > maxCourtPlayers) {
       Alert.alert(
@@ -2302,13 +2389,13 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Text>
 
           {/* Legend */}
-          <RoleLegend />
+          {sport === "football" && <RoleLegend />}
 
           {/* Count badge */}
           <View style={pitchModal.countBadge}>
             <Text style={pitchModal.countBadgeText}>
               Đã chọn:{" "}
-              <Text style={pitchModal.countBadgeNum}>{selectedPositionIds.length}</Text>
+              <Text style={pitchModal.countBadgeNum}>{safeSelectedPositionIds.length}</Text>
               {" "}vị trí
             </Text>
           </View>
@@ -2330,7 +2417,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           )}
 
           {/* Role adjustment */}
-          <View style={pitchModal.breakdownBox}>
+          {sport === "football" && <View style={pitchModal.breakdownBox}>
             <Text style={pitchModal.breakdownTitle}>Vị trí cần tìm:</Text>
             <View style={pitchModal.adjustableRolesContainer}>
               {Object.entries(roleLabels).map(([role, label]) => {
@@ -2384,10 +2471,10 @@ export default function CreateMatchScreen({ navigation, route }) {
             <Text style={{ fontSize: 11, color: "#666", marginTop: 10, fontStyle: "italic", textAlign: "center" }}>
               Đội 1: {selectedPositionIds.filter(id => id.startsWith("t1_")).length}/{(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam} vị trí • Đội 2: {selectedPositionIds.filter(id => id.startsWith("t2_")).length}/{(FOOTBALL_FORMATS[footballMaxPlayers] || FOOTBALL_FORMATS[22]).playerCountPerTeam} vị trí
             </Text>
-          </View>
+          </View>}
 
           {/* Bench */}
-          <View style={pitchModal.benchSection}>
+          {sport === "football" && <View style={pitchModal.benchSection}>
             <Text style={pitchModal.benchLabel}>Thành viên dự bị (không bắt buộc)</Text>
             <Text style={pitchModal.benchHint}>Mỗi đội tối đa 3 người dự bị • Để trống nếu không cần</Text>
             <View style={pitchModal.benchRow}>
@@ -2425,7 +2512,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                 </View>
               </View>
             </View>
-          </View>
+          </View>}
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -2500,14 +2587,13 @@ export default function CreateMatchScreen({ navigation, route }) {
           {sport === "football" ? (
             <>
               {[
-                { maxPlayers: 10, label: "5 vs 5", count: "10 người" },
-                { maxPlayers: 14, label: "7 vs 7", count: "14 người" },
-                { maxPlayers: 22, label: "11 vs 11", count: "22 người" },
+                { maxPlayers: 10, label: "Sân 5vs5", count: "10 người" },
+                { maxPlayers: 14, label: "Sân 7vs7", count: "14 người" },
+                { maxPlayers: 22, label: "Sân 11vs11", count: "22 người" },
               ].map((item) => (
                 <CourtTypeButton
                   key={item.maxPlayers}
                   label={item.label}
-                  subLabel={item.count}
                   isSelected={footballMaxPlayers === item.maxPlayers}
                   onPress={() => handleSelectFootballMaxPlayers(item.maxPlayers)}
                 />
@@ -2526,6 +2612,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                   isSelected={racketMaxPlayers === item.maxPlayers}
                   onPress={() => {
                     setRacketMaxPlayers(item.maxPlayers);
+                    setMaxPlayersOther(String(item.maxPlayers));
                     if (!isEditMode) {
                       setIsCourtPresetsExpanded(true);
                     }
@@ -2535,6 +2622,25 @@ export default function CreateMatchScreen({ navigation, route }) {
             </>
           )}
         </View>
+
+        {sport === "football" && (
+          <>
+            <Text style={styles.sectionLabel}>Tổng số người chơi</Text>
+            <View style={[styles.inputWrapper, { backgroundColor: "#F3F4F6" }]}>
+              <TextInput
+                style={[styles.input, { color: "#6B7280" }]}
+                value={footballTotalPlayers}
+                onChangeText={handleFootballTotalPlayersChange}
+                keyboardType="numeric"
+                placeholder="Sân 5vs5"
+                placeholderTextColor="#9CA3AF"
+                editable={false}
+                selectTextOnFocus={false}
+                pointerEvents="none"
+              />
+            </View>
+          </>
+        )}
 
         {/* Tên trận đấu */}
         <Text style={styles.sectionLabel}>Tên trận đấu</Text>
@@ -2702,7 +2808,7 @@ export default function CreateMatchScreen({ navigation, route }) {
           </Modal>
         )}
 
-        {/* Sơ đồ & Số người cần tìm – chỉ hiện với bóng đá */}
+        {/* Sơ đồ & Số người cần tìm */}
         {sport === "football" && (
           <>
             <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
@@ -2727,7 +2833,7 @@ export default function CreateMatchScreen({ navigation, route }) {
             </View>
 
             {/* Role chips summary */}
-            {(selectedPositionIds.length > 0 || Number(benchMembersTeam1 || 0) > 0 || Number(benchMembersTeam2 || 0) > 0) && (
+            {(safeSelectedPositionIds.length > 0 || Number(benchMembersTeam1 || 0) > 0 || Number(benchMembersTeam2 || 0) > 0) && (
               <View style={styles.roleChipsRow}>
                 {Object.entries(selectedRoleSummary).map(([role, qty]) => (
                   <View key={role} style={styles.roleChip}>
@@ -2755,6 +2861,30 @@ export default function CreateMatchScreen({ navigation, route }) {
           </>
         )}
 
+        {sport !== "football" && (
+          <>
+            <Text style={styles.sectionLabel}>Vị trí cần tìm ( tùy chọn)</Text>
+            <View style={styles.pitchTriggerContainer}>
+              <View style={styles.pitchTriggerShadow} />
+              <TouchableOpacity
+                style={styles.pitchTriggerContent}
+                onPress={() => setShowPitchModal(true)}
+                activeOpacity={0.9}
+              >
+                <View style={styles.pitchTriggerLeft}>
+                  <MaterialCommunityIcons name="badminton" size={32} color="#1A1A1A" />
+                  <View style={styles.pitchTriggerTextContainer}>
+                    <Text style={styles.pitchTriggerTitle}>
+                      {`Sơ đồ vị trí ( ${racketMaxPlayers === 2 ? "1vs 1" : "2vs 2"} )`}
+                    </Text>
+                    <Text style={styles.pitchTriggerSub}>Nhấn để mở sơ đồ</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
         <Text style={styles.sectionLabel}>Số người cần tìm</Text>
         <View style={styles.inputWrapper}>
           <TextInput
@@ -2762,9 +2892,14 @@ export default function CreateMatchScreen({ navigation, route }) {
             value={
               sport === "football"
                 ? (totalNeeded > 0 ? `${totalNeeded} người` : "")
-                : (selectedPositionIds.length > 0 ? `${selectedPositionIds.length} người` : "Chưa chọn (Tự do)")
+                : (safeSelectedPositionIds.length > 0 ? `${safeSelectedPositionIds.length} người` : "")
             }
-           
+            onChangeText={undefined}
+            keyboardType="numeric"
+            editable={false}
+            placeholder={sport === "football" ? "Nhập số người cần tìm" : "Chọn vị trí trên sơ đồ để cập nhật"}
+            placeholderTextColor="#bbb"
+            pointerEvents="none"
           />
         </View>
 
@@ -3315,16 +3450,21 @@ export default function CreateMatchScreen({ navigation, route }) {
 
         {/* Giá thuê 1 giờ */}
         <Text style={styles.sectionLabel}>Giá thuê 1 giờ</Text>
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, isPresetCourtSelected ? { backgroundColor: "#F3F4F6" } : null]}>
           <TextInput
-            style={[styles.input, styles.costInput]}
+            style={[styles.input, styles.costInput, isPresetCourtSelected ? { color: "#6B7280" } : null]}
             value={formatNumberWithDots(costPerPerson)}
             onChangeText={handleCostChange}
             keyboardType="numeric"
-            placeholder="100.000"
+            placeholder={isPresetCourtSelected ? "Từ sân mẫu" : "100.000"}
             placeholderTextColor="#bbb"
+            editable={!isPresetCourtSelected}
+            selectTextOnFocus={!isPresetCourtSelected}
           />
           <Text style={styles.currencySuffix}>VND</Text>
+          {isPresetCourtSelected && (
+            <Text style={{ fontSize: 11, color: "#9CA3AF", marginRight: 10, fontStyle: "italic" }}>Từ mẫu sân</Text>
+          )}
         </View>
 
         {/* Tính toán Tổng giờ thuê & Tổng tiền thuê sân */}

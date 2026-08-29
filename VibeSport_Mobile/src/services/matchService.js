@@ -198,14 +198,18 @@ export async function rejectDeleteMatch(matchId, token = null) {
   );
 }
 
-export async function updateTeamStatus(matchId, status) {
-  return matchRequest(`${MATCHES_URL}/${matchId}/team-status`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function updateTeamStatus(matchId, status, extraData = {}, token = null) {
+  return matchRequest(
+    `${MATCHES_URL}/${matchId}/team-status`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status, ...extraData }),
     },
-    body: JSON.stringify({ status }),
-  });
+    token
+  );
 }
 
 export async function kickTeamMember(matchId, ownerId, userId, reason) {

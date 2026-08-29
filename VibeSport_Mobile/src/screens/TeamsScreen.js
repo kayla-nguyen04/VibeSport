@@ -27,6 +27,7 @@ import { primary } from "../theme";
 import { savePost, unsavePost, deletePost, fetchSavedPosts } from "../redux/postSlice";
 import { ReportModal } from "../components/ReportModal";
 import { VibeAiModal } from "../components/VibeAiModal"; // 🟢 THÊM IMPORT VIBESPORT AI
+import { getRequiredPlayersBySport, getMatchCostValue } from "../utils/matchRules";
 
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
 const SPORT_TAG_MAP = { football: "Bóng đá", badminton: "Cầu lông", pickleball: "Pickleball" };
@@ -120,14 +121,14 @@ const getInitials = (name) => {
 };
 
 const getMatchStatusInfo = (m) => {
-  if (!m) return { label: "⏳ CHƯA BẮT ĐẦU", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
+  if (!m) return { label: "Chưa bắt đầu", icon: "time-outline", bg: "#FFF7ED", color: "#C2410C", borderColor: "#FFD8A8" };
   const isEnded = m.teamStatus === "ended" || m.status === "completed";
   const isOngoing = m.teamStatus === "ongoing";
   const isCancelled = m.status === "cancelled";
 
   if (isCancelled) {
     return {
-      label: "TRẬN ĐẤU ĐÃ HỦY",
+      label: "Đã hủy",
       icon: "close-circle-outline",
       bg: "#FEE2E2",
       color: "#B91C1C",
@@ -136,7 +137,7 @@ const getMatchStatusInfo = (m) => {
   }
   if (isEnded) {
     return {
-      label: "TRẬN ĐẤU ĐÃ KẾT THÚC 🏁",
+      label: "Đã kết thúc",
       icon: "flag-outline",
       bg: "#F3F4F6",
       color: "#4B5563",
@@ -145,7 +146,7 @@ const getMatchStatusInfo = (m) => {
   }
   if (isOngoing) {
     return {
-      label: "🔴 TRẬN ĐẤU ĐANG DIỄN RA (LIVE)",
+      label: "Đang diễn ra",
       icon: "radio-button-on-outline",
       bg: "#DCFCE7",
       color: "#15803D",
@@ -153,7 +154,7 @@ const getMatchStatusInfo = (m) => {
     };
   }
   return {
-    label: "⏳ CHƯA BẮT ĐẦU",
+    label: "Chưa bắt đầu",
     icon: "time-outline",
     bg: "#FFF7ED",
     color: "#C2410C",
@@ -164,6 +165,11 @@ const getMatchStatusInfo = (m) => {
 const normalizeId = (id) => (id == null ? "" : String(id));
 
 const getUserIdValue = (value) => normalizeId(typeof value === "object" ? value?._id || value?.id : value);
+
+const getNormalizedRequiredPlayers = (match) => {
+  if (!match) return 0;
+  return getRequiredPlayersBySport(match.sport, match, Number(match.maxPlayers || 2));
+};
 
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
@@ -346,9 +352,7 @@ export default function TeamsScreen({ navigation }) {
 
   const loadMatches = useCallback(async (keyword, area, time, subTab = activeSubTab) => {
     try {
-      if (matches.length === 0) {
-        setLoading(true);
-      }
+      setLoading(true);
       const filters = {};
       if (activeSport !== "all") filters.sport = activeSport;
       if (keyword && keyword.trim()) filters.q = keyword.trim();
@@ -359,7 +363,7 @@ export default function TeamsScreen({ navigation }) {
       if (pitchStatusFilter) filters.pitchStatus = pitchStatusFilter;
 
       const data = await getMatches(filters);
-      setMatches(data || []);
+      setMatches(Array.isArray(data) ? data : []);
       setSearched(true);
     } catch (err) {
       console.log("Load matches error:", err.message);
@@ -368,13 +372,11 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [activeSport, activeSubTab, userId, matches.length, skillFilter, pitchStatusFilter]);
+  }, [activeSport, activeSubTab, userId, skillFilter, pitchStatusFilter]);
 
   const loadFindTeamPosts = useCallback(async () => {
     try {
-      if (findTeamPosts.length === 0) {
-        setFindTeamLoading(true);
-      }
+      setFindTeamLoading(true);
       const res = await getPostsRequest(1, 50, token, "Tìm đội");
       setFindTeamPosts(res.data || []);
     } catch (err) {
@@ -383,7 +385,7 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setFindTeamLoading(false);
     }
-  }, [token, findTeamPosts.length]);
+  }, [token]);
 
   useEffect(() => {
     if (activeSubTab === "findteam") {
@@ -391,7 +393,7 @@ export default function TeamsScreen({ navigation }) {
     } else {
       loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
     }
-  }, [activeSport, activeSubTab]);
+  }, [activeSport, activeSubTab, searchText, areaFilter, timeFilter, loadMatches, loadFindTeamPosts]);
 
   useFocusEffect(
     useCallback(() => {
@@ -750,15 +752,14 @@ export default function TeamsScreen({ navigation }) {
     const creator = typeof item.createdBy === "object" ? item.createdBy : null;
     const creatorId = getUserIdValue(item.createdBy);
     const participantList = Array.isArray(item.participants) ? item.participants : [];
-    const participantsCount = participantList.filter((participant) => {
-      const participantId = getUserIdValue(participant);
-      return Boolean(participantId) && participantId !== creatorId && !isVirtualUser(participant);
-    }).length;
+    const actualJoinedCount = Number(item.currentPlayers ?? participantList.length ?? 0);
+    const participantsCount = Math.max(actualJoinedCount, participantList.length || 0);
+    const requiredPlayers = getNormalizedRequiredPlayers(item);
     const positionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
     const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
-    const totalNeededPositions = positionCount + benchCount;
-    const displayFound = `${participantsCount}/${totalNeededPositions || item.maxPlayers || 10}`;
-    const maxCount = item.maxPlayers || 10;
+    const totalNeededPositions = item.sport === "football" ? positionCount + benchCount : requiredPlayers;
+    const maxCount = Math.max(Number(item.maxPlayers || requiredPlayers || 10), requiredPlayers || 1);
+    const displayFound = `${participantsCount}/${Math.max(totalNeededPositions || maxCount, maxCount)}`;
     let timeLabel = item.time;
     if (!timeLabel || !timeLabel.includes("-")) {
       const startStr = item.startTime || "19:00";
@@ -774,16 +775,19 @@ export default function TeamsScreen({ navigation }) {
     }
     const isEnded = item.status === "completed" || item.status === "cancelled";
 
-    const pitchTypeLabel = item.customPitchType ? `Sân ${item.customPitchType}` : (item.sport === "football"
-      ? (maxCount === 10 ? "Sân 5 (5v5)" : maxCount === 14 ? "Sân 7 (7v7)" : "Sân 11 (11v11)")
-      : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)"));
+    const selectedPositionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
+    const pitchTypeLabel = item.customPitchType
+      ? `Sân ${item.customPitchType}`
+      : (item.sport === "football"
+        ? (maxCount === 10 ? "Sân 5 (5v5)" : maxCount === 14 ? "Sân 7 (7v7)" : "Sân 11 (11v11)")
+        : ((selectedPositionCount > 0 && (item.sport === "badminton" || item.sport === "pickleball"))
+          ? (selectedPositionCount <= 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)")
+          : (maxCount === 2 ? "Sân đơn (1v1)" : "Sân đôi (2v2)")));
 
-    const mainPlayersCount = item.sport === "football" && Array.isArray(item.selectedPositionIds) && item.selectedPositionIds.length > 0
-      ? item.selectedPositionIds.length
-      : Math.max(1, (item.maxPlayers || 10) - (item.benchMembers || 0));
-    const totalHoursVal = item.totalHours || 1;
-    const totalCostVal = item.totalCourtCost || (item.costPerPerson * totalHoursVal);
-    const costPerPlayerVal = item.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / mainPlayersCount) : item.costPerPerson);
+    const mainPlayersCount = Math.max(1, requiredPlayers || Number(item.maxPlayers || 10));
+    const totalHoursVal = Number(item.totalHours || 1);
+    const totalCostVal = Number(item.totalCourtCost || 0);
+    const costPerPlayerVal = getMatchCostValue({ ...item, sport: item.sport, requiredPlayers: mainPlayersCount, totalCourtCost: totalCostVal });
 
     // Position needs with Team indicator
     const positionNeeds = [];

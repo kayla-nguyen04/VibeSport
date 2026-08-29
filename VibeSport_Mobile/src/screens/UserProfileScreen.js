@@ -73,13 +73,13 @@ function fixMediaUrl(url) {
 function getStatusConfig(status) {
   switch (status) {
     case 'completed':
-      return { label: 'Đã hoàn thành', color: '#10B981' };
+      return { label: 'Đã kết thúc', color: '#10B981' };
     case 'cancelled':
       return { label: 'Đã hủy', color: '#EF4444' };
     case 'full':
       return { label: 'Đang diễn ra', color: '#0B74FF' };
     default:
-      return { label: 'Sắp diễn ra', color: '#F5A623' };
+      return { label: 'Chưa bắt đầu', color: '#F5A623' };
   }
 }
 
