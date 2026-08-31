@@ -309,23 +309,19 @@ export function NotificationScreen({ navigation }) {
       ]}
     >
       <ScreenHeader style={styles.header}>
-        <View style={styles.headerSide}>
-          <BackButton onPress={() => navigation.goBack()} />
-        </View>
+        <BackButton onPress={() => navigation.goBack()} color="#111827" style={styles.backButton} />
 
         <Text style={styles.headerTitle}>
-          Thông <Text style={styles.headerTitleHighlight}>Báo</Text>
+          Thông <Text style={styles.headerTitleHighlight}>báo</Text>
         </Text>
 
-        <View style={[styles.headerSide, styles.headerSideRight]}>
-          <TouchableOpacity
-            onPress={handleHeaderMorePress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.headerIconButton}
-          >
-            <Ionicons name="ellipsis-vertical" size={24} color="#000000" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={handleHeaderMorePress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.headerIconButton}
+        >
+          <Ionicons name="ellipsis-vertical" size={22} color="#111827" />
+        </TouchableOpacity>
       </ScreenHeader>
 
       <FlatList
@@ -364,37 +360,39 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 56,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 94, 94, 0.19)',
+    height: 58,
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
-  headerSide: {
-    width: 44,
-    height: 44,
+  backButton: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerSideRight: {
-    marginLeft: 'auto',
-  },
   headerTitle: {
-    position: 'absolute',
-    left: 60,
-    right: 60,
+    flex: 1,
     textAlign: 'center',
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
+    fontWeight: '800',
+    color: '#111111',
   },
   headerTitleHighlight: {
-    color: '#FF5F3D',
+    color: '#FF6B35',
   },
   headerIconButton: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

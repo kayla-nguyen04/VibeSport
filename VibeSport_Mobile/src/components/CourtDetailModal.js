@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   View,
@@ -10,11 +10,15 @@ import {
   Linking,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen } from "./Screen";
 import { primary } from "../theme";
+import { CourtRatingModal } from "./CourtRatingModal";
+import { getCourtRatingsRequest } from "../services/courtRatingApi";
+import { useSelector } from "react-redux";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const ORANGE = primary.DEFAULT; // '#FF6B3D'
@@ -649,11 +653,57 @@ export const COURT_DIRECTORY = [
 ];
 
 export function CourtDetailModal({ visible, court, onClose, navigation }) {
+  const user = useSelector((state) => state.auth?.user);
+  const token = useSelector((state) => state.auth?.token);
+  const userId = user?.id || user?._id;
+
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [courtRatingSummary, setCourtRatingSummary] = useState({ avgRating: court?.rating || 0, totalReviews: court?.reviewsCount || court?.reviewCount || 0, ratings: [] });
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [activeAccordionSport, setActiveAccordionSport] = useState(court?.sportType || "football");
+  const topInsetPadding = Platform.OS === 'ios' ? (insets.top > 0 ? insets.top : 47) : (insets.top || 0);
+
+  useEffect(() => {
+    const courtId = court?._id || court?.id;
+    if (!visible || !courtId || !token) {
+      if (court) {
+        setCourtRatingSummary({
+          avgRating: court?.rating || 0,
+          totalReviews: court?.reviewsCount || court?.reviewCount || 0,
+          ratings: [],
+        });
+      }
+      return;
+    }
+
+    const loadCourtRatingSummary = async () => {
+      try {
+        setRatingLoading(true);
+        const data = await getCourtRatingsRequest(courtId, token);
+        if (data) {
+          setCourtRatingSummary({
+            avgRating: Number(data.avgRating || court?.rating || 0),
+            totalReviews: Number(data.totalReviews || court?.reviewsCount || court?.reviewCount || 0),
+            ratings: data.ratings || [],
+          });
+        }
+      } catch (error) {
+        console.warn("[CourtDetailModal] loadCourtRatingSummary error:", error);
+      } finally {
+        setRatingLoading(false);
+      }
+    };
+
+    loadCourtRatingSummary();
+  }, [visible, court?._id, court?.id, court?.rating, court?.reviewsCount, court?.reviewCount, token]);
+
   if (!court) return null;
 
   const images = court.images && court.images.length > 0
     ? court.images
     : ["https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800"];
+  const reviewPreview = (courtRatingSummary.ratings || []).slice(0, 2);
 
   const handleOpenMap = () => {
     if (court?.mapUrl || court?.googleMapUrl) {
@@ -701,10 +751,6 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
       });
     }
   };
-
-  const insets = useSafeAreaInsets();
-  const [activeAccordionSport, setActiveAccordionSport] = useState(court?.sportType || "football");
-  const topInsetPadding = Platform.OS === 'ios' ? (insets.top > 0 ? insets.top : 47) : (insets.top || 0);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -771,10 +817,53 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                 })()}
               </View>
               
-              <View style={styles.ratingRow}>
-                <Text style={styles.ratingText}>
-                  Đánh giá: {court.rating || 4.5} ({court.reviewsCount || court.reviewCount || 100} lượt)
-                </Text>
+              <View style={styles.ratingSummaryCard}>
+                <View style={styles.ratingSummaryHeader}>
+                  <View style={styles.ratingStarsRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= Math.round(courtRatingSummary.avgRating || 0) ? "star" : "star-outline"}
+                        size={16}
+                        color={star <= Math.round(courtRatingSummary.avgRating || 0) ? "#F59E0B" : "#D1D5DB"}
+                      />
+                    ))}
+                    <Text style={styles.ratingValueText}>{Number(courtRatingSummary.avgRating || 0).toFixed(1)}</Text>
+                  </View>
+                  <Text style={styles.ratingCountText}>{courtRatingSummary.totalReviews || 0} lượt đánh giá</Text>
+                </View>
+
+                {ratingLoading ? (
+                  <View style={styles.reviewLoadingRow}>
+                    <ActivityIndicator size="small" color={ORANGE} />
+                    <Text style={styles.reviewLoadingText}>Đang tải đánh giá...</Text>
+                  </View>
+                ) : reviewPreview.length > 0 ? (
+                  <View style={styles.reviewPreviewList}>
+                    {reviewPreview.map((review, index) => (
+                      <View key={review?._id || `${review?.user?._id || "review"}-${index}`} style={styles.reviewPreviewItem}>
+                        <Text style={styles.reviewPreviewUser} numberOfLines={1}>
+                          {review?.user?.name || "Người dùng"}
+                        </Text>
+                        <View style={styles.reviewPreviewStars}>
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Ionicons
+                              key={star}
+                              name={star <= Number(review?.stars || 0) ? "star" : "star-outline"}
+                              size={12}
+                              color={star <= Number(review?.stars || 0) ? "#F59E0B" : "#D1D5DB"}
+                            />
+                          ))}
+                        </View>
+                        {review?.comment ? (
+                          <Text style={styles.reviewPreviewText} numberOfLines={2}>{review.comment}</Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.noReviewText}>Chưa có đánh giá nào cho sân này.</Text>
+                )}
               </View>
 
               <View style={styles.infoLine}>
@@ -1078,13 +1167,33 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
               <Text style={{ fontSize: 13, color: "#666", marginBottom: 10 }}>
                 {court.address}
               </Text>
-              <TouchableOpacity style={styles.mapBtn} onPress={handleOpenMap} activeOpacity={0.8}>
-                <Text style={styles.mapBtnText}>Xem trên bản đồ</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity style={[styles.mapBtn, { flex: 1 }]} onPress={handleOpenMap} activeOpacity={0.8}>
+                  <Text style={styles.mapBtnText}>Xem trên bản đồ</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.mapBtn, styles.ratingBtn, { flex: 1 }]} 
+                  onPress={() => setShowRatingModal(true)} 
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="star-outline" size={16} color="#FFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.mapBtnText}>Đánh giá</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </ScrollView>
       </Screen>
+
+      {/* Court Rating Modal */}
+      <CourtRatingModal
+        visible={showRatingModal}
+        courtId={court?._id || court?.id}
+        courtName={court?.name}
+        token={token}
+        userId={userId}
+        onClose={() => setShowRatingModal(false)}
+      />
     </Modal>
   );
 }
@@ -1161,15 +1270,76 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#111827",
   },
-  ratingRow: {
+  ratingSummaryCard: {
+    backgroundColor: "#FFF7ED",
+    borderColor: "#FFD8A8",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  ratingSummaryHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    justifyContent: "space-between",
+    gap: 8,
   },
-  ratingText: {
-    fontSize: 13,
+  ratingStarsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flex: 1,
+  },
+  ratingValueText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#111827",
+    marginLeft: 4,
+  },
+  ratingCountText: {
+    fontSize: 11,
     fontWeight: "600",
-    color: "#374151",
+    color: "#6B7280",
+  },
+  reviewPreviewList: {
+    gap: 8,
+  },
+  reviewPreviewItem: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#F3E7D5",
+    padding: 8,
+    gap: 4,
+  },
+  reviewPreviewUser: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  reviewPreviewStars: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  reviewPreviewText: {
+    fontSize: 11.5,
+    color: "#4B5563",
+    lineHeight: 16,
+  },
+  noReviewText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  reviewLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  reviewLoadingText: {
+    fontSize: 12,
+    color: "#6B7280",
   },
   infoLine: {
     flexDirection: "row",
@@ -1261,6 +1431,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
+  },
+  ratingBtn: {
+    backgroundColor: "#F59E0B",
   },
   mapBtnText: {
     color: "#fff",

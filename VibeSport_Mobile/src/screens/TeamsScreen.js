@@ -664,9 +664,19 @@ export default function TeamsScreen({ navigation }) {
 
   const handleCreateOption = (option) => {
     setShowCreateModal(false);
-    if (option === "match") {
-      navigation?.navigate?.("CreateMatch");
-    }
+    if (option !== "match") return;
+
+    Alert.alert(
+      "ℹ️ Thông báo",
+      "Nếu đội ban đầu của bạn có quá ít người thì không nên tạo trận, thay vào đó hãy tìm trận đấu phù hợp",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Tiếp tục",
+          onPress: () => navigation?.navigate?.("CreateMatch"),
+        },
+      ]
+    );
   };
 
   const isUserParticipant = (match) => {

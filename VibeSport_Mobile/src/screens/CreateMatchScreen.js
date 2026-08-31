@@ -940,7 +940,7 @@ export default function CreateMatchScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       if (token) dispatch(fetchConversations());
-    }, [token])
+    }, [token, dispatch])
   );
 
   const [sport, setSport] = useState(editMatch?.sport || "football");
@@ -1847,7 +1847,7 @@ export default function CreateMatchScreen({ navigation, route }) {
         }
         navigation.setParams({ formDraft: undefined, selectedLocation: undefined });
       }
-    }, [applyFormDraft, navigation, route?.params?.formDraft, route?.params?.selectedLocation])
+    }, [applyFormDraft, navigation, route])
   );
 
   const sports = [
@@ -2217,6 +2217,14 @@ export default function CreateMatchScreen({ navigation, route }) {
         }
       }
 
+      proceedWithSubmit();
+    } catch (error) {
+      Alert.alert("Lỗi", error.message);
+    }
+  };
+
+  const proceedWithSubmit = async () => {
+    try {
       const payload = buildPayload();
 
       const processSave = async () => {

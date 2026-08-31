@@ -2244,7 +2244,7 @@ export default function MatchDetailScreen({ navigation, route }) {
               </Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              {isOwner && !isEnded && (
+              {isOwner && !isMatchStarted && (
                 <TouchableOpacity
                   style={{
                     flexDirection: 'row',
@@ -2634,72 +2634,24 @@ export default function MatchDetailScreen({ navigation, route }) {
           </View>
         </Modal>
 
-        {/* MODAL MỜI BẠN BÈ */}
-        <Modal visible={showInviteModal} animationType="slide">
-          <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-            <ScreenHeader style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
-              <TouchableOpacity style={styles.backButton} onPress={() => setShowInviteModal(false)}>
-                <Text style={styles.backArrow}>←</Text>
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
-              <View style={styles.headerSpacer} />
-            </ScreenHeader>
-
-            <View style={{ flex: 1, paddingHorizontal: 16 }}>
-              {inviteLoading ? (
-                <View style={styles.centered}>
-                  <ActivityIndicator size="large" color={ORANGE} />
-                </View>
-              ) : followingUsers.length === 0 ? (
-                <View style={styles.centered}>
-                  <Text style={styles.emptyInviteText}>Không có người dùng nào để mời</Text>
-                  <Text style={styles.emptyInviteSub}>Bạn chưa follow ai hoặc tất cả đã tham gia</Text>
-                </View>
-              ) : (
-                <FlatList
-                  data={followingUsers}
-                  keyExtractor={(item) => String(item._id || item.id)}
-                  contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
-                  renderItem={({ item }) => {
-                    const uName = item.name || "Người dùng";
-                    const isInvited = Boolean(item.isInvited);
-                    return (
-                      <View style={styles.inviteUserCard}>
-                        <View style={[styles.userAvatar, { backgroundColor: "#ef4444" }]}>
-                          <Text style={styles.userInitials}>{getInitials(uName)}</Text>
-                        </View>
-                        <View style={styles.inviteUserInfo}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Text style={styles.inviteUserName}>{uName}</Text>
-                            <Ionicons name="people-outline" size={14} color={ORANGE} />
-                          </View>
-                          <Text style={styles.inviteUserSub}>{item.favoriteSport || "Thể thao"}</Text>
-                        </View>
-                        <TouchableOpacity
-                          style={[styles.inviteActionBtn, isInvited && styles.inviteActionBtnDisabled]}
-                          onPress={() => handleInviteUser(String(item._id || item.id))}
-                          disabled={actionLoading || isInvited}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.inviteActionBtnText}>{isInvited ? "Đã mời" : "Mời"}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  }}
-                />
-              )}
-            </View>
-          </Screen>
-        </Modal>
-
         {/* MODAL DUYỆT YÊU CẦU THAM GIA */}
         <Modal visible={showRequestModal} animationType="slide">
           <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-            <View style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
-              <BackButton onPress={() => setShowRequestModal(false)} style={styles.backButton} />
-              <Text style={styles.headerTitle}>Yêu cầu tham gia</Text>
-              <View style={styles.headerSpacer} />
-            </View>
+            <ScreenHeader
+              style={[
+                styles.standardHeader,
+                {
+                  marginTop: 42,
+                },
+              ]}
+            >
+              <BackButton onPress={() => setShowRequestModal(false)} style={styles.standardBackButton} />
+              <Text style={styles.standardHeaderTitle}>
+                <Text style={styles.standardHeaderTitleBlack}>Yêu cầu </Text>
+                <Text style={styles.standardHeaderTitleOrange}>tham gia</Text>
+              </Text>
+              <View style={styles.standardHeaderSpacer} />
+            </ScreenHeader>
 
             <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
               {pendingRequests.length === 0 ? (
@@ -2805,7 +2757,7 @@ export default function MatchDetailScreen({ navigation, route }) {
                       </Text>
                       {isOccupied && (
                         <Text style={{ color: "#9CA3AF", fontSize: 11.5, marginTop: 2, fontStyle: "italic" }}>
-                          🔒 Đã có người chọn
+                           Đã có người chọn
                         </Text>
                       )}
                     </View>
@@ -2842,12 +2794,26 @@ export default function MatchDetailScreen({ navigation, route }) {
       {/* ─── Invite Modal ─── */}
       <Modal visible={showInviteModal} animationType="slide">
         <Screen style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-          <ScreenHeader style={[styles.header, { paddingTop: insets.top, height: 58 + insets.top }]}>
-            <BackButton onPress={() => setShowInviteModal(false)} style={styles.backButton} />
-            <Text style={styles.headerTitle}>Chọn người bạn muốn mời</Text>
-            <View style={styles.headerSpacer} />
+          <ScreenHeader
+            style={[
+              styles.standardHeader,
+              {
+                marginTop: 42,
+              },
+            ]}
+          >
+            <BackButton
+              onPress={() => setShowInviteModal(false)}
+              style={styles.standardBackButton}
+            />
+
+            <Text style={styles.standardHeaderTitle}>
+              <Text style={styles.standardHeaderTitleBlack}>Mời </Text>
+              <Text style={styles.standardHeaderTitleOrange}>bạn bè</Text>
+            </Text>
+
+            <View style={styles.standardHeaderSpacer} />
           </ScreenHeader>
-          
           <View style={{ flex: 1, paddingHorizontal: 16 }}>
             {inviteLoading ? (
               <View style={styles.centered}>
@@ -3167,8 +3133,31 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
   },
-  backButton: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: "#111", marginLeft: 8 },
+  standardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(99, 94, 94, 0.19)",
+    height: 58,
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
+  standardBackButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  standardHeaderTitle: { flex: 1, fontSize: 18, fontWeight: "800", textAlign: "center" },
+  standardHeaderTitleBlack: { color: "#111111" },
+  standardHeaderTitleOrange: { color: ORANGE },
+  standardHeaderSpacer: { width: 36 },
+  backButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: "#111", textAlign: "center" },
+  headerTitleHighlight: { color: ORANGE },
   headerSpacer: { width: 36 },
   joinHeaderBtn: {
     backgroundColor: "#fff",

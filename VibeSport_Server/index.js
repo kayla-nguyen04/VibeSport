@@ -17,6 +17,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const { Server } = require('socket.io');
 const ratingRoutes = require('./routes/ratingRoutes');
+const courtRatingRoutes = require('./routes/courtRatingRoutes');
 const authRouter = require('./routes/auth');
 const agoraRouter = require('./routes/agora');
 const otpRoutes = require("./routes/otp");
@@ -685,6 +686,7 @@ app.use(express.json({ limit: '10mb' }));
 // ĐÃ SỬA: Đăng ký Router Ratings ĐÚNG VỊ TRÍ (sau app.use(express.json()))
 app.use('/api/ai', aiRoutes);
 app.use('/api/ratings', ratingRoutes);
+app.use('/api/court-ratings', courtRatingRoutes);
 app.use('/api/agora', agoraRouter);
 app.use("/api/otp", otpRoutes);
 app.use("/api/matches", matchRoutes);

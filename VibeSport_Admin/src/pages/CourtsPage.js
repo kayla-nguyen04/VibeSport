@@ -151,6 +151,8 @@ export default function CourtsPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [courtReviews, setCourtReviews] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState({
     visible: false, title: '', message: '', actionType: null, targetCourt: null,
@@ -347,11 +349,52 @@ export default function CourtsPage() {
   };
 
   // ── Open modal helpers ────────────────────────────────
+  const fetchCourtReviews = useCallback(async (courtId) => {
+    if (!courtId) {
+      setCourtReviews([]);
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const res = await api.get(`/courts/${courtId}/ratings`);
+      const items = res.data?.data || [];
+      setCourtReviews(items);
+    } catch (err) {
+      console.error('Fetch court reviews failed:', err);
+      setCourtReviews([]);
+      showNotification('Không thể tải đánh giá sân: ' + (err.response?.data?.error || err.message), 'error');
+    } finally {
+      setReviewLoading(false);
+    }
+  }, []);
+
   const handleViewDetail = (court) => {
     setSelectedCourt(court);
     setGalleryIndex(0);
     setShowDetailModal(true);
     setActiveMenuId(null);
+  };
+
+  useEffect(() => {
+    if (showDetailModal && selectedCourt) {
+      const courtId = selectedCourt._id || selectedCourt.id;
+      fetchCourtReviews(courtId);
+    }
+  }, [showDetailModal, selectedCourt, fetchCourtReviews]);
+
+  const handleDeleteReview = async (review) => {
+    if (!selectedCourt) return;
+    const courtId = selectedCourt._id || selectedCourt.id;
+    const ratingId = review._id || review.id;
+
+    try {
+      await api.delete(`/courts/${courtId}/ratings/${ratingId}`);
+      showNotification('Đã xóa đánh giá sân.');
+      fetchCourtReviews(courtId);
+    } catch (err) {
+      showNotification('Không thể xóa đánh giá sân: ' + (err.response?.data?.error || err.message), 'error');
+    }
   };
 
   const initFormForAdd = () => {
@@ -1114,6 +1157,36 @@ export default function CourtsPage() {
                   <p className="mobile-desc-text">{selectedCourt.description}</p>
                 </div>
               )}
+
+              {/* Court ratings manager */}
+              <div className="mobile-section-card">
+                <h3 className="mobile-sec-title">Đánh giá sân</h3>
+
+                <div className="review-admin-panel">
+                  <div className="review-list-box">
+                    {reviewLoading ? (
+                      <p className="empty-review-text">Đang tải đánh giá...</p>
+                    ) : courtReviews.length === 0 ? (
+                      <p className="empty-review-text">Chưa có đánh giá nào cho sân này.</p>
+                    ) : (
+                      courtReviews.map((review) => (
+                        <div key={review._id || review.id} className="review-item-card">
+                          <div className="review-item-header">
+                            <div>
+                              <strong>{review.user?.name || 'Người dùng'}</strong>
+                              <div className="review-stars">{'★'.repeat(Number(review.stars || 0))}{'☆'.repeat(5 - Number(review.stars || 0))}</div>
+                            </div>
+                            <div className="review-action-group">
+                              <button type="button" className="mini-action-btn danger" onClick={() => handleDeleteReview(review)}>Xóa</button>
+                            </div>
+                          </div>
+                          <p className="review-comment">{review.comment || 'Không có nhận xét.'}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
