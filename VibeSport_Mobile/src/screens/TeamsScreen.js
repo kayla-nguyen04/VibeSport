@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   View,
   Text,
@@ -204,8 +205,8 @@ const formatTimeAgo = (dateString) => {
 };
 
 // ─── TimeWheelPicker Component ───────────────────────────────────────────────
-const WHEEL_ITEM_HEIGHT = 44;
-const WHEEL_VISIBLE_ITEMS = 5;
+const WHEEL_ITEM_HEIGHT = 32;
+const WHEEL_VISIBLE_ITEMS = 3;
 const WHEEL_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS;
 
 const TimeWheelPicker = ({ value, onChange, startHour = 5 }) => {
@@ -248,34 +249,34 @@ const TimeWheelPicker = ({ value, onChange, startHour = 5 }) => {
   };
 
   const renderWheelColumn = (items, selectedIdx, scrollRef, onScroll) => (
-    <View style={{ width: 64, height: WHEEL_HEIGHT, overflow: "hidden", borderRadius: 12, backgroundColor: "#2C2C2E" }}>
+    <View style={{ width: 48, height: WHEEL_HEIGHT, overflow: "hidden", borderRadius: 8, backgroundColor: "#2C2C2E" }}>
       {/* Top fade */}
-      <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height: WHEEL_ITEM_HEIGHT * 2, zIndex: 2, backgroundColor: "rgba(44,44,46,0.7)" }} />
+      <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height: WHEEL_ITEM_HEIGHT * 1, zIndex: 2, backgroundColor: "rgba(44,44,46,0.7)" }} />
       {/* Highlight bar */}
       <View pointerEvents="none" style={{
         position: "absolute",
-        top: WHEEL_ITEM_HEIGHT * 2,
+        top: WHEEL_ITEM_HEIGHT * 1,
         left: 0, right: 0,
         height: WHEEL_ITEM_HEIGHT,
         zIndex: 1,
         borderTopWidth: 1,
         borderBottomWidth: 1,
-        borderColor: "rgba(255,255,255,0.2)",
+        borderColor: "rgba(255,255,255,0.25)",
       }} />
       {/* Bottom fade */}
-      <View pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: WHEEL_ITEM_HEIGHT * 2, zIndex: 2, backgroundColor: "rgba(44,44,46,0.7)" }} />
+      <View pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: WHEEL_ITEM_HEIGHT * 1, zIndex: 2, backgroundColor: "rgba(44,44,46,0.7)" }} />
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         snapToInterval={WHEEL_ITEM_HEIGHT}
         decelerationRate="fast"
         onMomentumScrollEnd={onScroll}
-        contentContainerStyle={{ paddingTop: WHEEL_ITEM_HEIGHT * 2, paddingBottom: WHEEL_ITEM_HEIGHT * 2 }}
+        contentContainerStyle={{ paddingTop: WHEEL_ITEM_HEIGHT * 1, paddingBottom: WHEEL_ITEM_HEIGHT * 1 }}
       >
         {items.map((item, idx) => (
           <View key={idx} style={{ height: WHEEL_ITEM_HEIGHT, alignItems: "center", justifyContent: "center" }}>
             <Text style={{
-              fontSize: 20,
+              fontSize: 15,
               fontWeight: "600",
               color: idx === selectedIdx ? "#FFFFFF" : "rgba(255,255,255,0.35)",
             }}>
@@ -289,14 +290,14 @@ const TimeWheelPicker = ({ value, onChange, startHour = 5 }) => {
 
   return (
     <View style={{ alignItems: "center" }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
         {renderWheelColumn(hours, hourIndex, hourScrollRef, handleHourScroll)}
-        <Text style={{ fontSize: 22, fontWeight: "800", color: "#333" }}>:</Text>
+        <Text style={{ fontSize: 16, fontWeight: "800", color: "#333" }}>:</Text>
         {renderWheelColumn(minutes, minuteIndex, minuteScrollRef, handleMinuteScroll)}
       </View>
       {value ? (
-        <TouchableOpacity onPress={() => onChange("")} style={{ marginTop: 8 }}>
-          <Text style={{ fontSize: 12, color: "#aaa", textDecorationLine: "underline" }}>Xóa</Text>
+        <TouchableOpacity onPress={() => onChange("")} style={{ marginTop: 4 }}>
+          <Text style={{ fontSize: 11, color: "#aaa", textDecorationLine: "underline" }}>Xóa</Text>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -323,12 +324,12 @@ export default function TeamsScreen({ navigation }) {
   const user = useSelector((state) => state.auth?.user);
   const token = useSelector((state) => state.auth?.token);
   const [activeSubTab, setActiveSubTab] = useState("near");
-  const [activeSport, setActiveSport] = useState("all");
+  const [activeSports, setActiveSports] = useState([]); // multi-select
   const [searchText, setSearchText] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
   const [districtFilter, setDistrictFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
-  const [skillFilter, setSkillFilter] = useState("");
+  const [skillFilters, setSkillFilters] = useState([]); // multi-select
   const [pitchStatusFilter, setPitchStatusFilter] = useState("");
   const [minCostFilter, setMinCostFilter] = useState("");
   const [maxCostFilter, setMaxCostFilter] = useState("");
@@ -347,6 +348,8 @@ export default function TeamsScreen({ navigation }) {
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   const userId = normalizeId(user?.id || user?._id);
 
@@ -354,12 +357,12 @@ export default function TeamsScreen({ navigation }) {
     try {
       setLoading(true);
       const filters = {};
-      if (activeSport !== "all") filters.sport = activeSport;
+      if (activeSports.length === 1) filters.sport = activeSports[0]; // gửi 1 sport lên server nếu chỉ chọn 1
       if (keyword && keyword.trim()) filters.q = keyword.trim();
       if (area && area.trim()) filters.area = area.trim();
       if (time && time.trim()) filters.startTime = time.trim();
       if (subTab === "created" && userId) filters.createdBy = userId;
-      if (skillFilter) filters.skillLevel = skillFilter;
+      if (skillFilters.length === 1) filters.skillLevel = skillFilters[0];
       if (pitchStatusFilter) filters.pitchStatus = pitchStatusFilter;
 
       const data = await getMatches(filters);
@@ -372,7 +375,7 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [activeSport, activeSubTab, userId, skillFilter, pitchStatusFilter]);
+  }, [activeSports, activeSubTab, userId, skillFilters, pitchStatusFilter]);
 
   const loadFindTeamPosts = useCallback(async () => {
     try {
@@ -393,7 +396,7 @@ export default function TeamsScreen({ navigation }) {
     } else {
       loadMatches(searchText, areaFilter, timeFilter, activeSubTab);
     }
-  }, [activeSport, activeSubTab, searchText, areaFilter, timeFilter, loadMatches, loadFindTeamPosts]);
+  }, [activeSports, activeSubTab, searchText, areaFilter, timeFilter, loadMatches, loadFindTeamPosts]);
 
   useFocusEffect(
     useCallback(() => {
@@ -676,9 +679,13 @@ export default function TeamsScreen({ navigation }) {
 
   const applyClientFilters = (list) => {
     let result = list;
-    // Lọc trình độ
-    if (skillFilter) {
-      result = result.filter((m) => (m.skillLevel || "") === skillFilter);
+    // Lọc môn thể thao (multi)
+    if (activeSports.length > 0) {
+      result = result.filter((m) => activeSports.includes(m.sport || ""));
+    }
+    // Lọc trình độ (multi)
+    if (skillFilters.length > 0) {
+      result = result.filter((m) => skillFilters.includes(m.skillLevel || ""));
     }
     // Lọc trạng thái cọc
     if (pitchStatusFilter === "Đã cọc") {
@@ -1085,32 +1092,47 @@ export default function TeamsScreen({ navigation }) {
   const isFindTeamTab = activeSubTab === "findteam";
   const listLoading = isFindTeamTab ? findTeamLoading : loading;
   const listData = isFindTeamTab ? findTeamPosts : getDisplayData();
-  const hasActiveFilters = activeSport !== "all" || Boolean(searchText.trim()) || Boolean(areaFilter.trim()) ||
-    Boolean(districtFilter.trim()) || Boolean(timeFilter.trim()) || Boolean(timeFrom) || Boolean(timeTo) || Boolean(skillFilter) ||
+  const hasActiveFilters = activeSports.length > 0 || Boolean(searchText.trim()) || Boolean(areaFilter.trim()) ||
+    Boolean(districtFilter.trim()) || Boolean(timeFilter.trim()) || Boolean(timeFrom) || Boolean(timeTo) || skillFilters.length > 0 ||
     Boolean(pitchStatusFilter) || Boolean(minCostFilter) || Boolean(maxCostFilter) ||
     Boolean(minServiceFilter) || Boolean(maxServiceFilter);
-  const activeFilterCount = [activeSport !== "all", searchText.trim(), areaFilter.trim(),
-    districtFilter.trim(), timeFilter.trim(), skillFilter, pitchStatusFilter,
+  const activeFilterCount = [
+    activeSports.length > 0, searchText.trim(), areaFilter.trim(),
+    districtFilter.trim(), timeFilter.trim(), skillFilters.length > 0, pitchStatusFilter,
     minCostFilter, maxCostFilter, minServiceFilter, maxServiceFilter
   ].filter(Boolean).length;
-  const filterSummary = activeSport === "all"
+  const filterSummary = activeSports.length === 0
     ? (hasActiveFilters ? `${activeFilterCount} bộ lọc` : "Tất cả môn")
-    : SPORT_FILTERS.find((item) => item.key === activeSport)?.label || "Tất cả môn";
+    : activeSports.length === 1
+      ? (SPORT_FILTERS.find((f) => f.key === activeSports[0])?.label || "1 môn")
+      : `${activeSports.length} môn`;
 
   const handleResetFilters = () => {
-    setActiveSport("all");
+    setActiveSports([]);
     setSearchText("");
     setAreaFilter("");
     setDistrictFilter("");
     setTimeFilter("");
     setTimeFrom("");
     setTimeTo("");
-    setSkillFilter("");
+    setSkillFilters([]);
     setPitchStatusFilter("");
     setMinCostFilter("");
     setMaxCostFilter("");
     setMinServiceFilter("");
     setMaxServiceFilter("");
+  };
+
+  const toggleSport = (key) => {
+    setActiveSports((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const toggleSkill = (lvl) => {
+    setSkillFilters((prev) =>
+      prev.includes(lvl) ? prev.filter((k) => k !== lvl) : [...prev, lvl]
+    );
   };
 
   return (
@@ -1217,18 +1239,26 @@ export default function TeamsScreen({ navigation }) {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ padding: 16, gap: 16 }}
           >
-            {/* 1. Môn thể thao */}
+            {/* 1. Môn thể thao (multi-select) */}
             <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Môn thể thao</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                <Text style={styles.filterLabel}>Môn thể thao</Text>
+                {activeSports.length > 0 && (
+                  <Text style={{ fontSize: 12, color: ORANGE, marginLeft: 8, fontWeight: "600" }}>
+                    ({activeSports.length} đã chọn)
+                  </Text>
+                )}
+              </View>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {SPORT_FILTERS.map((f) => {
-                  const isActive = activeSport === f.key;
+                {SPORT_FILTERS.filter((f) => f.key !== "all").map((f) => {
+                  const isActive = activeSports.includes(f.key);
                   return (
                     <TouchableOpacity
                       key={f.key}
                       style={[styles.filterChip, styles.filterChipLarge, isActive && styles.filterChipActive]}
-                      onPress={() => setActiveSport(f.key)}
+                      onPress={() => toggleSport(f.key)}
                     >
+                      {isActive && <Ionicons name="checkmark" size={13} color={ORANGE} style={{ marginRight: 4 }} />}
                       {f.tagName ? <TagIcon tagName={f.tagName} size={15} color={isActive ? ORANGE : "#555"} /> : null}
                       <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{f.label}</Text>
                     </TouchableOpacity>
@@ -1250,35 +1280,139 @@ export default function TeamsScreen({ navigation }) {
                   returnKeyType="search"
                   onSubmitEditing={handleSearch}
                 />
-                <TouchableOpacity style={styles.searchSubmitBtn} onPress={handleSearch}>
-                  <Ionicons name="search" size={18} color="#fff" />
-                </TouchableOpacity>
               </View>
             </View>
 
-            {/* 3. Giờ thi đấu */}
+            {/* 3. Giờ bắt đầu và kết thúc */}
             <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Giờ thi đấu</Text>
-              <View style={{ flexDirection: "row", gap: 12, justifyContent: "space-around" }}>
-                {/* Từ giờ */}
-                <View style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8, fontWeight: "600" }}>Từ giờ</Text>
-                  <TimeWheelPicker
-                    value={timeFrom}
-                    onChange={setTimeFrom}
-                  />
+              <Text style={styles.filterLabel}>Giờ bắt đầu và kết thúc</Text>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                {/* Giờ bắt đầu */}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 6, fontWeight: "500" }}>Giờ bắt đầu</Text>
+                  <TouchableOpacity
+                    style={styles.timePickerBtn}
+                    onPress={() => setShowStartTimePicker(true)}
+                  >
+                    <Ionicons name="time-outline" size={15} color="#6B7280" />
+                    <Text style={styles.timePickerBtnText}>
+                      {timeFrom ? `${timeFrom.split(":")[0]}g ${timeFrom.split(":")[1]}p` : "Chọn giờ"}
+                    </Text>
+                    {timeFrom ? (
+                      <TouchableOpacity onPress={() => setTimeFrom("")}>
+                        <Ionicons name="close-circle" size={14} color="#bbb" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </TouchableOpacity>
                 </View>
-                {/* Đến giờ */}
-                <View style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8, fontWeight: "600" }}>Đến giờ</Text>
-                  <TimeWheelPicker
-                    value={timeTo}
-                    onChange={setTimeTo}
-                    startHour={6}
-                  />
+                {/* Giờ kết thúc */}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 6, fontWeight: "500" }}>Giờ kết thúc</Text>
+                  <TouchableOpacity
+                    style={styles.timePickerBtn}
+                    onPress={() => setShowEndTimePicker(true)}
+                  >
+                    <Ionicons name="time-outline" size={15} color="#6B7280" />
+                    <Text style={styles.timePickerBtnText}>
+                      {timeTo ? `${timeTo.split(":")[0]}g ${timeTo.split(":")[1]}p` : "Chọn giờ"}
+                    </Text>
+                    {timeTo ? (
+                      <TouchableOpacity onPress={() => setTimeTo("")}>
+                        <Ionicons name="close-circle" size={14} color="#bbb" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
+
+
+            {/* Start Time Picker - Android */}
+            {showStartTimePicker && Platform.OS === "android" && (
+              <DateTimePicker
+                value={(() => { const [h, m] = (timeFrom || "19:00").split(":").map(Number); const d = new Date(); d.setHours(h || 19, m || 0, 0, 0); return d; })()}
+                mode="time"
+                display="spinner"
+                is24Hour={true}
+                onChange={(event, date) => {
+                  setShowStartTimePicker(false);
+                  if (event.type === "set" && date) {
+                    setTimeFrom(`${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`);
+                  }
+                }}
+              />
+            )}
+            {Platform.OS === "ios" && (
+              <Modal visible={showStartTimePicker} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                  <View style={styles.timeModalContent}>
+                    <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>🕐 Giờ bắt đầu</Text>
+                      <TouchableOpacity onPress={() => setShowStartTimePicker(false)}>
+                        <Text style={styles.modalDone}>Xong</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={(() => { const [h, m] = (timeFrom || "19:00").split(":").map(Number); const d = new Date(); d.setHours(h || 19, m || 0, 0, 0); return d; })()}
+                      mode="time"
+                      display="spinner"
+                      is24Hour={true}
+                      onChange={(event, date) => {
+                        if (event.type === "set" && date) {
+                          setTimeFrom(`${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`);
+                        }
+                      }}
+                      style={{ height: 200 }}
+                      locale="vi-VN"
+                    />
+                  </View>
+                </View>
+              </Modal>
+            )}
+
+            {/* End Time Picker - Android */}
+            {showEndTimePicker && Platform.OS === "android" && (
+              <DateTimePicker
+                value={(() => { const [h, m] = (timeTo || "20:30").split(":").map(Number); const d = new Date(); d.setHours(h || 20, m || 30, 0, 0); return d; })()}
+                mode="time"
+                display="spinner"
+                is24Hour={true}
+                onChange={(event, date) => {
+                  setShowEndTimePicker(false);
+                  if (event.type === "set" && date) {
+                    setTimeTo(`${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`);
+                  }
+                }}
+              />
+            )}
+            {Platform.OS === "ios" && (
+              <Modal visible={showEndTimePicker} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                  <View style={styles.timeModalContent}>
+                    <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>🕕 Giờ kết thúc</Text>
+                      <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                        <Text style={styles.modalDone}>Xong</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={(() => { const [h, m] = (timeTo || "20:30").split(":").map(Number); const d = new Date(); d.setHours(h || 20, m || 30, 0, 0); return d; })()}
+                      mode="time"
+                      display="spinner"
+                      is24Hour={true}
+                      onChange={(event, date) => {
+                        if (event.type === "set" && date) {
+                          setTimeTo(`${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`);
+                        }
+                      }}
+                      style={{ height: 200 }}
+                      locale="vi-VN"
+                    />
+                  </View>
+                </View>
+              </Modal>
+            )}
+
 
             {/* 4. Khu vực */}
             <View style={styles.filterSection}>
@@ -1314,21 +1448,30 @@ export default function TeamsScreen({ navigation }) {
               </View>
             </View>
 
-            {/* 5. Trình độ */}
+            {/* 5. Trình độ (multi-select) */}
             <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Trình độ</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                <Text style={styles.filterLabel}>Trình độ</Text>
+                {skillFilters.length > 0 && (
+                  <Text style={{ fontSize: 12, color: ORANGE, marginLeft: 8, fontWeight: "600" }}>
+                    ({skillFilters.length} đã chọn)
+                  </Text>
+                )}
+              </View>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {["", "Người mới", "Trung cấp", "Chuyên nghiệp"].map((lvl) => (
-                  <TouchableOpacity
-                    key={lvl || "all_skill"}
-                    style={[styles.filterChip, styles.filterChipLarge, skillFilter === lvl && styles.filterChipActive]}
-                    onPress={() => setSkillFilter(lvl)}
-                  >
-                    <Text style={[styles.filterChipText, skillFilter === lvl && styles.filterChipTextActive]}>
-                      {lvl || "Tất cả"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {["Người mới", "Trung cấp", "Chuyên nghiệp"].map((lvl) => {
+                  const isActive = skillFilters.includes(lvl);
+                  return (
+                    <TouchableOpacity
+                      key={lvl}
+                      style={[styles.filterChip, styles.filterChipLarge, isActive && styles.filterChipActive]}
+                      onPress={() => toggleSkill(lvl)}
+                    >
+                      {isActive && <Ionicons name="checkmark" size={13} color={ORANGE} style={{ marginRight: 4 }} />}
+                      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{lvl}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
@@ -2350,5 +2493,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.3,
+  },
+  timePickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  timePickerBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  timeModalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    maxHeight: "60%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e0e0e0",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#333",
+  },
+  modalDone: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FF6B35",
   },
 });
