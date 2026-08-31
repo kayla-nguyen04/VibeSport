@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Court = require('../models/Court');
 const CourtOwner = require('../models/CourtOwner');
+const CourtRating = require('../models/CourtRating');
 const User = require('../models/User');
 const Match = require('../models/Match');
 const Notification = require('../models/Notification');
 const uploadCourt = require('../middleware/uploadCourt');
+const requireAdmin = require('../middleware/adminAuth');
 
 // Hàm gửi thông báo tới các user trong các trận đấu đang sử dụng sân bị Ẩn/Xóa
 const normalizePitchTypeValue = (value = '') => {
@@ -51,6 +53,41 @@ const normalizePitchOptions = (court) => {
   }
 
   return court;
+};
+
+const recalculateCourtRatingSummary = async (courtId) => {
+  const ratings = await CourtRating.find({ court: courtId }).sort({ createdAt: -1 }).lean();
+  const totalReviews = ratings.length;
+
+  if (totalReviews === 0) {
+    await Court.findByIdAndUpdate(courtId, {
+      rating: 4.5,
+      reviewCount: 0,
+      reviewsCount: 0,
+    });
+    return { avgRating: 4.5, totalReviews: 0, ratings: [] };
+  }
+
+  const recent100 = [...ratings].slice(0, 100);
+  const K = recent100.length;
+
+  let avgRating = 5.0;
+  if (K >= 100) {
+    const totalStars = recent100.reduce((sum, r) => sum + Number(r.stars || 0), 0);
+    avgRating = Number((totalStars / 100).toFixed(1));
+  } else {
+    const actualStars = recent100.reduce((sum, r) => sum + Number(r.stars || 0), 0);
+    const defaultStars = (100 - K) * 5;
+    avgRating = Number(((actualStars + defaultStars) / 100).toFixed(1));
+  }
+
+  await Court.findByIdAndUpdate(courtId, {
+    rating: avgRating,
+    reviewCount: totalReviews,
+    reviewsCount: totalReviews,
+  });
+
+  return { avgRating, totalReviews, ratings };
 };
 
 async function notifyMatchParticipantsForCourt(court, actionLabel) {
@@ -172,6 +209,120 @@ router.get('/:id', async (req, res) => {
     res.json({ success: true, data: normalizedCourt });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/courts/:courtId/ratings
+router.get('/:courtId/ratings', async (req, res) => {
+  try {
+    const { courtId } = req.params;
+    const court = await Court.findById(courtId);
+    if (!court) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sân' });
+    }
+
+    const ratings = await CourtRating.find({ court: courtId })
+      .populate('user', 'name picture avatar email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      data: ratings,
+      avgRating: court.rating || 4.5,
+      totalReviews: ratings.length,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/:courtId/ratings', async (req, res) => {
+  try {
+    const { courtId } = req.params;
+    const { userId, stars, comment } = req.body;
+
+    const court = await Court.findById(courtId);
+    if (!court) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sân' });
+    }
+
+    if (!userId || !stars || Number(stars) < 1 || Number(stars) > 5) {
+      return res.status(400).json({ success: false, message: 'userId và số sao không hợp lệ' });
+    }
+
+    const foundUser = await User.findById(userId);
+    if (!foundUser) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    }
+
+    const newRating = await CourtRating.create({
+      court: courtId,
+      user: userId,
+      stars: Number(stars),
+      comment: String(comment || '').trim(),
+    });
+
+    const summary = await recalculateCourtRatingSummary(courtId);
+    const populated = await CourtRating.findById(newRating._id).populate('user', 'name picture avatar email').lean();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Thêm đánh giá sân thành công',
+      data: populated,
+      summary,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/:courtId/ratings/:ratingId', async (req, res) => {
+  try {
+    const { courtId, ratingId } = req.params;
+    const { stars, comment } = req.body;
+
+    const review = await CourtRating.findOne({ _id: ratingId, court: courtId });
+    if (!review) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đánh giá sân' });
+    }
+
+    review.stars = Number(stars) || review.stars;
+    review.comment = String(comment ?? review.comment).trim();
+    await review.save();
+
+    const summary = await recalculateCourtRatingSummary(courtId);
+    const populated = await CourtRating.findById(review._id).populate('user', 'name picture avatar email').lean();
+
+    return res.json({
+      success: true,
+      message: 'Cập nhật đánh giá sân thành công',
+      data: populated,
+      summary,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.delete('/:courtId/ratings/:ratingId', async (req, res) => {
+  try {
+    const { courtId, ratingId } = req.params;
+    const review = await CourtRating.findOne({ _id: ratingId, court: courtId });
+    if (!review) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đánh giá sân' });
+    }
+
+    await CourtRating.deleteOne({ _id: ratingId, court: courtId });
+    const summary = await recalculateCourtRatingSummary(courtId);
+
+    return res.json({
+      success: true,
+      message: 'Đã xóa đánh giá sân',
+      summary,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
