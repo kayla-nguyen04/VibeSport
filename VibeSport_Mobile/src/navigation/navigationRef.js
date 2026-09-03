@@ -12,10 +12,10 @@ export function navigate(name, params) {
 }
 
 /**
- * Go back one screen, only if the current route is 'Call'.
- * Safe to call from socket handlers — avoids accidentally
- * popping non-call screens if user already navigated away.
- * @returns {boolean} true nếu đã pop, false nếu không (không ở route Call)
+ * 
+ * 
+ * 
+ * @returns {boolean}
  */
 export function safeGoBackFromCall() {
   const state = navigationRef.current?.getRootState();

@@ -43,7 +43,6 @@ export default function MatchHistoryScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  // Single rating modal state
   const [singleRatingTarget, setSingleRatingTarget] = useState(null); // { match, targetUser }
   const [stars, setStars] = useState(5);
   const [comment, setComment] = useState('');
@@ -52,7 +51,6 @@ export default function MatchHistoryScreen({ navigation }) {
   const pageRef = React.useRef(1);
   const isFetching = React.useRef(false);
 
-  // Nạp dữ liệu gộp (Chỉ hiển thị trận đã kết thúc)
   const loadMatchesData = useCallback(async ({ refresh = false } = {}) => {
     if (!token || !userId || isFetching.current) return;
 
@@ -77,13 +75,11 @@ export default function MatchHistoryScreen({ navigation }) {
         ...(Array.isArray(joinedRes) ? joinedRes : [])
       ];
 
-      // Lọc trùng khớp dữ liệu bằng Map theo ID trận đấu
       const uniqueMap = new Map();
       combined.forEach((match) => {
         if (match && match._id) uniqueMap.set(String(match._id), match);
       });
 
-      // CHỈ GIỮ LẠI CÁC TRẬN ĐẤU ĐÃ KẾT THÚC / HOÀN THÀNH
       const completedList = Array.from(uniqueMap.values())
         .filter((item) => item.status === 'completed' || item.teamStatus === 'ended')
         .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
@@ -117,7 +113,6 @@ export default function MatchHistoryScreen({ navigation }) {
     navigation.navigate('MatchDetail', { matchId });
   };
 
-  // Mở Đánh giá cho 1 cá nhân
   const handleOpenSingleRating = async (match, targetUser) => {
     if (!token) return Alert.alert('Thông báo', 'Vui lòng đăng nhập để đánh giá.');
     try {
@@ -135,7 +130,6 @@ export default function MatchHistoryScreen({ navigation }) {
     setComment('');
   };
 
-  // Gửi đánh giá cho cá nhân
   const handleSubmitSingleRating = async () => {
     if (!singleRatingTarget || !token) return;
     const { match, targetUser } = singleRatingTarget;
@@ -167,7 +161,6 @@ export default function MatchHistoryScreen({ navigation }) {
 
     return (
       <View style={uiStyles.matchCard}>
-        {/* DÒNG 1: ⚽ Tên trận đấu */}
         <TouchableOpacity activeOpacity={0.8} onPress={() => handleOpenDetail(item._id)} style={uiStyles.row1}>
           <MaterialCommunityIcons name="soccer" size={20} color="#1F2937" />
           <Text style={uiStyles.matchTitle} numberOfLines={1}>
@@ -176,7 +169,6 @@ export default function MatchHistoryScreen({ navigation }) {
           <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
         </TouchableOpacity>
 
-        {/* DÒNG 2: 📍 Tên sân thi đấu ────── Trạng thái */}
         <View style={uiStyles.row2}>
           <View style={uiStyles.locationWrap}>
             <MaterialCommunityIcons name="map-marker" size={16} color="#7C8190" />
@@ -193,13 +185,11 @@ export default function MatchHistoryScreen({ navigation }) {
           </View>
         </View>
 
-        {/* DÒNG 3: 🕒 Thời gian diễn ra */}
         <View style={uiStyles.row3}>
           <MaterialCommunityIcons name="clock-outline" size={15} color="#7C8190" />
           <Text style={uiStyles.timeText}>{displayDate}</Text>
         </View>
 
-        {/* DANH SÁCH BẠN ĐẤU ĐỂ ĐÁNH GIÁ TỪNG NGƯỜI */}
         {otherParticipants.length > 0 && (
           <View style={uiStyles.participantsContainer}>
             <Text style={uiStyles.participantsHeader}>Thành viên trong trận:</Text>
@@ -228,7 +218,6 @@ export default function MatchHistoryScreen({ navigation }) {
                     <Text style={uiStyles.userName} numberOfLines={1}>{name}</Text>
                   </TouchableOpacity>
 
-                  {/* Nút Đánh giá từng người */}
                   <TouchableOpacity
                     style={uiStyles.singleRatingBtn}
                     onPress={() => handleOpenSingleRating(item, p)}
@@ -289,7 +278,6 @@ export default function MatchHistoryScreen({ navigation }) {
         />
       )}
 
-      {/* MODAL ĐÁNH GIÁ CHO TỪNG NGƯỜI */}
       <Modal
         visible={!!singleRatingTarget}
         transparent
@@ -309,7 +297,6 @@ export default function MatchHistoryScreen({ navigation }) {
               Trận: {singleRatingTarget?.match?.title}
             </Text>
 
-            {/* Chọn số sao */}
             <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, my: 16, marginVertical: 16 }}>
               {[1, 2, 3, 4, 5].map((star) => (
                 <TouchableOpacity key={star} onPress={() => setStars(star)}>
@@ -322,7 +309,6 @@ export default function MatchHistoryScreen({ navigation }) {
               ))}
             </View>
 
-            {/* Ô nhập nhận xét */}
             <TextInput
               style={uiStyles.commentInput}
               placeholder="Nhập nhận xét thái độ thi đấu của bạn chơi..."

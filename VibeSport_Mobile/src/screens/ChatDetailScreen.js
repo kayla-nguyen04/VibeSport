@@ -109,25 +109,16 @@ export default function ChatDetailScreen({ route, navigation }) {
   const flatListRef = useRef(null);
   const currentUserId = user?.id || user?._id;
 
-  // ============================
-  // Follow status (cho phép gọi thoại/video chỉ khi MUTUAL follow)
-  // - isFollowing: currentUser đang follow peer
-  // - isFollowedBy: peer đang follow currentUser
-  // - mutualFollow = isFollowing && isFollowedBy
-  // ============================
+  
   const [followStatus, setFollowStatus] = useState({
     isFollowing: false,
     isFollowedBy: false,
     loading: true,
   });
 
-  // ============================
-  // Hàm khởi tạo cuộc gọi Agora
-  // ============================
   const handleStartCall = async (callType) => {
     if (!token || !currentUserId) return;
 
-    // Gate: 1-1 call yêu cầu cả 2 bên follow nhau (mutual)
     if (!isGroup && !canCall) {
       Alert.alert(
         'Chưa thể gọi',
@@ -143,16 +134,12 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     const channelName = `call_${conversationId}`;
 
-    // Lấy peerId để emit socket tới đúng người
     let peerId = null;
     let memberIds = [];
-    // Danh sách participants tối giản để CallScreen map agoraUid → tên hiển thị.
-    // - 1-1: truyền [peer] (nếu có).
-    // - Group: truyền toàn bộ participants (đã populate name/_id từ server).
+    
     let callParticipants = [];
     if (isGroup) {
       peerId = null;
-      // Lấy danh sách tất cả thành viên trong nhóm (trở caller)
       const participants = conversationMeta?.participants || [];
       memberIds = participants
         .map((p) => String(p._id || p))
@@ -182,15 +169,11 @@ export default function ChatDetailScreen({ route, navigation }) {
       memberIds,
     };
 
-    // Bước 1: Emit sự kiện cuộc gọi tới người nhận (peerId = null → server emit tới tất cả memberIds)
     socketEmitter.emit('start_call', { ...payload, peerId });
 
-    // State machine: caller đã emit start_call, đang chờ callee nhấc máy
     dispatch(setCallState('OUTGOING_RINGING'));
 
-    // Bước 2: Navigate caller vào CallScreen và join channel luôn.
-    // Truyền kèm `participants` để CallScreen có thể map agoraUid → tên thật
-    // khi hiển thị tile (vì Agora chỉ trả về uid dạng số, không trả tên).
+    
     navigation.navigate('Call', {
       channelName,
       callType,
@@ -630,7 +613,6 @@ export default function ChatDetailScreen({ route, navigation }) {
     if (!content) return '';
     const regex = /vibesport:\/\/chat\/invite\/([a-fA-F0-9]+)/gi;
     
-    // Quick check to avoid regex if not containing invite scheme
     if (!content.toLowerCase().includes('vibesport://chat/invite/')) {
       return highlightSearchText(content, searchQuery, isHighlightedMsg);
     }
@@ -640,7 +622,6 @@ export default function ChatDetailScreen({ route, navigation }) {
     let match;
     let hasMatch = false;
 
-    // Use light sky blue for own message bubble (blue background) and brand blue for peer message bubble (white background)
     const linkColor = isMine ? '#BFDBFE' : '#0b74ff';
 
     while ((match = regex.exec(content)) !== null) {
@@ -649,12 +630,10 @@ export default function ChatDetailScreen({ route, navigation }) {
       const fullLink = match[0];
       const inviteCode = match[1];
 
-      // Add text before link
       if (matchIndex > lastIndex) {
         parts.push(content.substring(lastIndex, matchIndex));
       }
 
-      // Add clickable link text
       parts.push(
         <Text
           key={`link-${matchIndex}`}
@@ -772,7 +751,6 @@ export default function ChatDetailScreen({ route, navigation }) {
               resizeMode="cover"
             />
           </TouchableOpacity>
-          {/* Bottom two side-by-side images */}
           <View style={styles.imageGridRow}>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -818,7 +796,6 @@ export default function ChatDetailScreen({ route, navigation }) {
       );
     }
 
-    // 4 or more images: 2x2 grid
     const img0 = images[0];
     const img1 = images[1];
     const img2 = images[2];
@@ -828,7 +805,6 @@ export default function ChatDetailScreen({ route, navigation }) {
 
     return (
       <View style={styles.imageGridContainer}>
-        {/* Row 1 */}
         <View style={[styles.imageGridRow, { marginBottom: 4 }]}>
           <TouchableOpacity
             activeOpacity={0.8}
@@ -869,7 +845,6 @@ export default function ChatDetailScreen({ route, navigation }) {
             />
           </TouchableOpacity>
         </View>
-        {/* Row 2 */}
         <View style={styles.imageGridRow}>
           <TouchableOpacity
             activeOpacity={0.8}
@@ -964,7 +939,6 @@ export default function ChatDetailScreen({ route, navigation }) {
   };
 
   const renderMessage = ({ item, index }) => {
-    // Grouped images path
     if (item.isGroupedImages) {
       const senderId = item.senderId?._id || item.senderId;
       const isMine = String(senderId) === String(currentUserId);
@@ -1028,7 +1002,6 @@ export default function ChatDetailScreen({ route, navigation }) {
       );
     }
 
-    // Normal message path (text, recalled, etc.)
     const senderId = item.senderId?._id || item.senderId;
     const isMine = String(senderId) === String(currentUserId);
     const isPending = !!item.isPending;
@@ -1319,7 +1292,6 @@ export default function ChatDetailScreen({ route, navigation }) {
     if (canChat) {
       return (
         <View style={styles.inputBar}>
-            {/* Icon chọn ảnh */}
             <TouchableOpacity
               onPress={handlePickImage}
               style={styles.imagePickBtn}

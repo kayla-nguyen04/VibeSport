@@ -5,7 +5,6 @@ const Report = require('../models/Report');
 const User = require('../models/User');
 const { incrementReportCount, decrementReportCount } = require('../utils/reportHelpers');
 
-// ─── Helper: gửi thông báo vi phạm cho user (non-blocking) ───
 async function notifyUserViolation(userId, postId, reason, category) {
   try {
     const post = await Post.findById(postId).lean();
@@ -55,7 +54,6 @@ async function notifyUserViolation(userId, postId, reason, category) {
   }
 }
 
-// ─── Helper: gửi thông báo khôi phục cho user (non-blocking) ───
 async function notifyUserRestore(userId, postId) {
   try {
     const post = await Post.findById(postId).lean();
@@ -94,7 +92,6 @@ async function notifyUserRestore(userId, postId) {
   }
 }
 
-// ─── 1. Xóa nội dung vi phạm ───
 exports.removePostViolation = async (req, res) => {
   try {
     const { postId } = req.params;
@@ -175,7 +172,6 @@ exports.removePostViolation = async (req, res) => {
   }
 };
 
-// ─── 2. Khôi phục bài viết ───
 exports.restorePost = async (req, res) => {
   try {
     const { postId } = req.params;
@@ -237,7 +233,6 @@ exports.restorePost = async (req, res) => {
   }
 };
 
-// ─── 3. Lấy danh sách bài viết (admin) ───
 exports.getAdminPosts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -250,10 +245,8 @@ exports.getAdminPosts = async (req, res) => {
     const validSortFields = ['createdAt', 'reportCount', 'likesCount', 'commentsCount'];
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
 
-    // ✅ FIX: lookup + addFields PHẢI chạy trước $match theo hasPendingReports,
-    // nếu không field này chưa tồn tại khi filter → luôn trả về rỗng/sai
+   
     const pipeline = [
-      // 1. Lookup reports pending trước
       {
         $lookup: {
           from: 'reports',
@@ -270,7 +263,6 @@ exports.getAdminPosts = async (req, res) => {
           as: 'pendingReportsLookup',
         },
       },
-      // 2. Tính hasPendingReports
       {
         $addFields: {
           hasPendingReports: { $gt: [{ $size: '$pendingReportsLookup' }, 0] },
@@ -278,7 +270,6 @@ exports.getAdminPosts = async (req, res) => {
       },
       { $project: { pendingReportsLookup: 0 } },
 
-      // 3. Bây giờ mới filter theo status — hasPendingReports đã sẵn sàng
       ...(status && status !== 'all'
         ? [
             status === 'reported'
@@ -336,7 +327,6 @@ exports.getAdminPosts = async (req, res) => {
   }
 };
 
-// ─── 4. Lấy chi tiết bài viết (admin) ───
 exports.getAdminPostById = async (req, res) => {
   try {
     const { postId } = req.params;
@@ -379,7 +369,6 @@ exports.getAdminPostById = async (req, res) => {
   }
 };
 
-// ─── 5. Lấy lịch sử moderation ───
 exports.getModerationLogs = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -417,7 +406,6 @@ exports.getModerationLogs = async (req, res) => {
   }
 };
 
-// ─── 6. Thêm/sửa report count (endpoint nội bộ cho user report) ───
 exports.updateReportCount = async (req, res) => {
   try {
     const { postId } = req.params;

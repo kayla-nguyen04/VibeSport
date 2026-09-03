@@ -1,13 +1,8 @@
-/**
- * API Helper - Wrapper with proper error handling & timeout
- */
 
 const DEFAULT_TIMEOUT_MS = 30000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
-/**
- * Lỗi tùy chỉnh cho API
- */
+
 export class APIError extends Error {
   constructor(message, code = 'UNKNOWN', statusCode = null, originalError = null) {
     super(message);
@@ -17,9 +12,7 @@ export class APIError extends Error {
   }
 }
 
-/**
- * Helper: Convert HTTP status code to user-friendly Vietnamese message
- */
+
 function getHttpErrorMessage(statusCode) {
   const messages = {
     400: 'Yêu cầu không hợp lệ. Vui lòng kiểm tra thông tin.',
@@ -35,9 +28,7 @@ function getHttpErrorMessage(statusCode) {
   return messages[statusCode] || `Lỗi ${statusCode}. Vui lòng thử lại.`;
 }
 
-/**
- * Helper: Format error message based on error type
- */
+
 function formatErrorMessage(error, defaultMessage) {
   if (error instanceof APIError) {
     return error.message;

@@ -1,10 +1,6 @@
 const Post = require('../models/Post');
 
-/**
- * Tăng reportCount trên Post và tự động chuyển sang pending_review
- * khi đạt ngưỡng >= 3 reports và status hiện tại là 'active'.
- * Dùng chung cho cả user report và admin report endpoint.
- */
+
 async function incrementReportCount(postId) {
   const post = await Post.findById(postId);
   if (!post) return null;
@@ -20,9 +16,7 @@ async function incrementReportCount(postId) {
   return post;
 }
 
-/**
- * Giảm reportCount trên Post (khi admin xử lý/ignore report).
- */
+
 async function decrementReportCount(postId) {
   const post = await Post.findById(postId);
   if (!post) return null;

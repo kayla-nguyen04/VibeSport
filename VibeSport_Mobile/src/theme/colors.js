@@ -28,7 +28,7 @@ export const text = {
 
 export const icon = {
   primary: '#000000',
-  dark: '#1f1f1f',  // #1f1f1f - stroke color for header back icon (Figma node 381:31)
+  dark: '#1f1f1f',  // #1f1f1f 
 };
 
 export const primary = {
@@ -37,8 +37,8 @@ export const primary = {
 
 export const border = {
   default: '#989898',
-  subtle: '#231416', // #231416 - stroke color cho FilterChip unselected
-  subtleOpacity: 0.21, // opacity cho FilterChip unselected stroke
+  subtle: '#231416', // #231416 
+  subtleOpacity: 0.21, 
 };
 
 export const surface = {
@@ -46,7 +46,7 @@ export const surface = {
 };
 
 export const input = {
-  strokeOpacity: 0.2, // opacity cho input stroke (border)
+  strokeOpacity: 0.2, 
 };
 
 export const status = {
@@ -55,5 +55,5 @@ export const status = {
   dangerDarker: '#990000',
   success: '#13E500',
   successDark: '#018426',
-  active: '#00AE31', // #00AE31 - stroke color cho badge 'Đang bắt đầu', chỉ có 1 instance trong Figma, độ tin cậy THẤP
+  active: '#00AE31', // #00AE31 
 };

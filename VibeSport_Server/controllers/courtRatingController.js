@@ -20,7 +20,6 @@ const calculateCourtAverageRating = (ratings) => {
   return avgRating;
 };
 
-// Submit court rating
 exports.rateCourtController = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
@@ -35,10 +34,8 @@ exports.rateCourtController = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy sân.' });
     }
 
-    // Check if user already rated this court
     const existing = await CourtRating.findOne({ user: userId, court: courtId });
     if (existing) {
-      // Update existing rating
       existing.stars = stars;
       existing.comment = comment || '';
       await existing.save();
@@ -49,7 +46,6 @@ exports.rateCourtController = async (req, res) => {
       });
     }
 
-    // Create new rating
     const rating = await CourtRating.create({
       user: userId,
       court: courtId,
@@ -57,7 +53,6 @@ exports.rateCourtController = async (req, res) => {
       comment: comment || '',
     });
 
-    // Calculate average rating for court using the same model as user reputation
     const allRatings = await CourtRating.find({ court: courtId }).sort({ createdAt: -1 });
     if (allRatings.length > 0) {
       const avgRating = calculateCourtAverageRating(allRatings);
@@ -68,7 +63,6 @@ exports.rateCourtController = async (req, res) => {
       });
     }
 
-    // Send notification to court owner
     try {
       if (court.owner) {
         const owner = typeof court.owner === 'object' ? court.owner._id : court.owner;
@@ -96,7 +90,6 @@ exports.rateCourtController = async (req, res) => {
   }
 };
 
-// Get court ratings
 exports.getCourtRatings = async (req, res) => {
   try {
     const { courtId } = req.params;
@@ -127,7 +120,6 @@ exports.getCourtRatings = async (req, res) => {
   }
 };
 
-// Get user's rating for a court
 exports.getMyCourtRating = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;

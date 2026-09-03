@@ -1,7 +1,4 @@
-/**
- * Migration script: Set admin field for existing group conversations.
- * Run once: node scripts/migrateGroupAdmin.js
- */
+
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Conversation = require('../models/Conversation');

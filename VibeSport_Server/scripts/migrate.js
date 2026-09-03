@@ -1,11 +1,9 @@
 require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 
-// Fix DNS querySrv ECONNREFUSED/ENOTFOUND on Windows when resolving MongoDB Atlas SRV records
 if (process.env.MONGODB_URI && process.env.MONGODB_URI.startsWith('mongodb+srv://')) {
   try {
     require('node:dns').setServers(['8.8.8.8', '1.1.1.1']);
   } catch (err) {
-    // Fallback if dns.setServers fails or is restricted
   }
 }
 
@@ -18,19 +16,15 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/vibesp
 
 async function migrateData() {
   try {
-    // Kết nối MongoDB
     await mongoose.connect(MONGODB_URI);
     console.log('✓ Đã kết nối MongoDB');
 
-    // Xóa indexes cũ (nếu có) để tránh conflict
     try {
       await User.collection.dropIndexes();
       console.log('✓ Xóa indexes cũ');
     } catch (error) {
-      // Bỏ qua nếu không có index
     }
 
-    // Đọc dữ liệu từ db.json
     const dbPath = path.join(__dirname, '..', 'db.json');
     if (!fs.existsSync(dbPath)) {
       console.log(`\n⚠️  Không tìm thấy tệp db.json tại: ${dbPath}`);
@@ -43,7 +37,6 @@ async function migrateData() {
 
     console.log(`\n📥 Bắt đầu import ${users.length} users...`);
 
-    // Import từng user
     let importedCount = 0;
     for (const user of users) {
       const existingUser = await User.findOne({ email: user.email });
@@ -63,11 +56,9 @@ async function migrateData() {
 
     console.log(`\n✅ Import hoàn tất! Đã thêm ${importedCount} users vào MongoDB`);
     
-    // Hiển thị tổng số users
     const totalUsers = await User.countDocuments();
     console.log(`📊 Tổng số users trong MongoDB: ${totalUsers}`);
 
-    // Có thể xóa db.json hoặc giữ lại backup
     console.log('\n💡 Lưu ý: Nếu muốn, bạn có thể xóa db.json hoặc đổi tên thành db.json.backup');
     
     await mongoose.disconnect();

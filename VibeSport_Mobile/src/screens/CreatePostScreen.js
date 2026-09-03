@@ -44,11 +44,9 @@ export function CreatePostScreen({ navigation, route }) {
   const token = useSelector((state) => state.auth.token);
   const { creating } = useSelector((state) => state.posts);
 
-  // ── Edit mode ──────────────────────────────────────────────────
   const editPost = route?.params?.editPost ?? null;
   const isEditMode = !!editPost;
 
-  // ── State ──────────────────────────────────────────────────────
   const [content, setContent] = React.useState(editPost?.content ?? '');
   const [catalogTags, setCatalogTags] = React.useState([]);
   const [selectedTag, setSelectedTag] = React.useState(() => {
@@ -62,18 +60,14 @@ export function CreatePostScreen({ navigation, route }) {
   const [location, setLocation] = React.useState(editPost?.location ?? '');
   const [locationLoading, setLocationLoading] = React.useState(false);
 
-  // ── Media state ────────────────────────────────────────────────
-  // keptUrls  : ảnh gốc mà user chưa xóa (edit mode)
-  // newAssets : ảnh mới user vừa chọn từ thư viện
+  
   const [keptUrls, setKeptUrls] = React.useState(
     isEditMode ? (editPost?.mediaUrls ?? []).map(fixMediaUrl) : []
   );
   const [newAssets, setNewAssets] = React.useState([]);
 
-  // Tổng số ảnh hiện tại
   const totalCount = keptUrls.length + newAssets.length;
 
-  // ── Load tags ──────────────────────────────────────────────────
   React.useEffect(() => {
     getTagsRequest(token)
       .then((res) => setCatalogTags(res.data || []))
@@ -88,7 +82,6 @@ export function CreatePostScreen({ navigation, route }) {
     ? ''
     : sportTagNames.has(selectedTag) ? selectedTag : editPost?.sportType || 'Bóng đá';
 
-  // ── Pick media ─────────────────────────────────────────────────
   const handlePickMedia = async () => {
     if (totalCount >= MAX_MEDIA) {
       Alert.alert('Giới hạn', `Bạn chỉ có thể có tối đa ${MAX_MEDIA} ảnh/video.`);
@@ -110,7 +103,6 @@ export function CreatePostScreen({ navigation, route }) {
     }
   };
 
-  // ── Remove handlers ────────────────────────────────────────────
   const handleRemoveKept = (index) => {
     setKeptUrls((prev) => prev.filter((_, i) => i !== index));
   };
@@ -119,7 +111,6 @@ export function CreatePostScreen({ navigation, route }) {
     setNewAssets((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // ── Location ───────────────────────────────────────────────────
   const handleGetLocation = async () => {
     setLocationLoading(true);
     try {
@@ -160,7 +151,6 @@ export function CreatePostScreen({ navigation, route }) {
     }
   };
 
-  // ── Publish / Update ───────────────────────────────────────────
   const handlePublish = async () => {
     if (!content.trim() && totalCount === 0) {
       Alert.alert('Nội dung trống', 'Vui lòng viết gì đó hoặc thêm hình ảnh/video.');
@@ -177,17 +167,13 @@ export function CreatePostScreen({ navigation, route }) {
     formData.append('sportType', sportType);
     formData.append('tags', JSON.stringify(finalTags));
 
-    // Gửi danh sách URL gốc muốn GIỮ LẠI (server sẽ xóa các URL không có trong này)
     if (isEditMode) {
-      // Gửi URL gốc (trước khi fixMediaUrl) để server có thể so khớp
       const originalKeptUrls = keptUrls.map((url) =>
-        // Đảo ngược fixMediaUrl: khôi phục URL gốc từ server
-        url.replace(API_BASE_URL, API_BASE_URL) // URL đã là tuyệt đối, giữ nguyên
+        url.replace(API_BASE_URL, API_BASE_URL) 
       );
       formData.append('keepMediaUrls', JSON.stringify(originalKeptUrls));
     }
 
-    // Append ảnh mới
     newAssets.forEach((asset, index) => {
       const uri = asset.uri;
       const uriParts = uri.split('.');
@@ -227,11 +213,9 @@ export function CreatePostScreen({ navigation, route }) {
 
   const isPublishDisabled = creating || (!content.trim() && totalCount === 0);
 
-  // ── Render media grid ──────────────────────────────────────────
   const renderMediaGrid = () => {
     const items = [];
 
-    // 1) Ảnh gốc còn lại (keptUrls) — có nút X để xóa
     keptUrls.forEach((url, i) => {
       items.push(
         <View key={`kept-${i}`} style={styles.mediaCell}>
@@ -247,7 +231,6 @@ export function CreatePostScreen({ navigation, route }) {
       );
     });
 
-    // 2) Ảnh mới vừa chọn — có nút X để xóa
     newAssets.forEach((asset, i) => {
       items.push(
         <View key={`new-${i}`} style={styles.mediaCell}>
@@ -268,7 +251,6 @@ export function CreatePostScreen({ navigation, route }) {
       );
     });
 
-    // 3) Nút "+" thêm ảnh (nếu chưa đủ 10)
     if (totalCount < MAX_MEDIA) {
       items.push(
         <View key="add-btn" style={styles.addCellWrapper}>
@@ -288,7 +270,6 @@ export function CreatePostScreen({ navigation, route }) {
     return <View style={styles.mediaGrid}>{items}</View>;
   };
 
-  // ── JSX ────────────────────────────────────────────────────────
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
@@ -314,7 +295,6 @@ export function CreatePostScreen({ navigation, route }) {
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
 
-          {/* ── User info ── */}
           <View style={styles.userRow}>
             {user?.picture ? (
               <Image source={{ uri: fixMediaUrl(user.picture) }} style={styles.avatar} />
@@ -332,7 +312,6 @@ export function CreatePostScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* ── Text input ── */}
           <TextInput
             multiline
             placeholder="Chia sẻ niềm đam mê thể thao của bạn tại đây..."
@@ -346,10 +325,8 @@ export function CreatePostScreen({ navigation, route }) {
             {content.length}/3000 ký tự
           </Text>
 
-          {/* ── Media grid (ảnh cũ + ảnh mới + nút +) ── */}
           {renderMediaGrid()}
 
-          {/* Nút "Thêm ảnh / video" full-width (khi chưa có ảnh nào) */}
           {totalCount === 0 && (
             <TouchableOpacity onPress={handlePickMedia} style={styles.addMediaBtn}>
               <Ionicons name="image-outline" size={24} color="#FF6B35" />
@@ -357,7 +334,6 @@ export function CreatePostScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
 
-          {/* ── Location ── */}
           {location ? (
             <View style={[styles.locationBlock, styles.locationBlockActive]}>
               <Ionicons name="location" size={20} color="#10B981" />
@@ -398,7 +374,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
   keyboardView: { flex: 1 },
 
-  // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -424,7 +399,6 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingBottom: 40 },
 
-  // ── User row ──
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -449,7 +423,6 @@ const styles = StyleSheet.create({
   },
   tagDropdownText: { color: '#FF6B35', fontSize: 12, fontWeight: 'bold' },
 
-  // ── Dropdown ──
   dropdownOptions: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -477,7 +450,6 @@ const styles = StyleSheet.create({
   dropdownItemText: { color: '#374151', fontSize: 14 },
   dropdownItemTextActive: { color: '#FF6B35', fontWeight: 'bold' },
 
-  // ── Text input ──
   contentInput: {
     minHeight: 120,
     paddingHorizontal: 16,
@@ -489,7 +461,6 @@ const styles = StyleSheet.create({
   charCounter: { alignSelf: 'flex-end', fontSize: 12, color: '#9CA3AF', marginRight: 16, marginBottom: 8 },
   charCounterWarn: { color: '#EF4444' },
 
-  // ── Media grid ──
   mediaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -497,7 +468,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
-  // Ô ảnh (có ảnh)
   mediaCell: {
     position: 'relative',
     width: CELL_SIZE,
@@ -567,7 +537,6 @@ const styles = StyleSheet.create({
   },
   addMediaText: { color: '#FF6B35', fontWeight: 'bold', fontSize: 14 },
 
-  // ── Location ──
   locationBlock: {
     flexDirection: 'row',
     alignItems: 'center',

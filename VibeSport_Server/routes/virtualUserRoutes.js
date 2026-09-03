@@ -5,7 +5,6 @@ const User = require('../models/User');
 const VirtualUser = require('../models/VirtualUser');
 const Match = require('../models/Match');
 
-// Helper to populate match
 const populateFields = [
   { path: "createdBy", select: "name avatar picture phone email rating stats" },
   { path: "participants", select: "name avatar picture phone email rating isVirtual stats" },
@@ -53,7 +52,6 @@ const populateMatchVirtualUsers = async (matchDoc) => {
   return matchObj;
 };
 
-// POST /api/virtual-users - Create a new virtual account in VirtualUser collection
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;
@@ -101,7 +99,6 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/virtual-users - Get all virtual accounts created by current user
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;
@@ -119,7 +116,6 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/virtual-users/add-to-match/:matchId - Add virtual account to a match
 router.post('/add-to-match/:matchId', authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;
@@ -135,7 +131,6 @@ router.post('/add-to-match/:matchId', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy trận đấu' });
     }
 
-    // Check if requester is match owner
     const creatorId = match.createdBy ? (typeof match.createdBy === 'object' ? (match.createdBy._id || match.createdBy.id) : match.createdBy) : null;
     const ownerEntry = Array.isArray(match.memberRoles)
       ? match.memberRoles.find((entry) => entry?.role === 'owner')
@@ -146,22 +141,18 @@ router.post('/add-to-match/:matchId', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Chỉ chủ trận mới có quyền thêm tài khoản ảo vào trận' });
     }
 
-    // Verify virtual user exists in VirtualUser collection
     const vUser = await VirtualUser.findById(virtualUserId);
     if (!vUser) {
       return res.status(400).json({ success: false, message: 'Tài khoản ảo không hợp lệ' });
     }
 
-    // Check if already in match
     const isAlreadyIn = match.participants.some((p) => String(p._id || p) === String(virtualUserId));
     if (isAlreadyIn) {
       return res.status(400).json({ success: false, message: 'Tài khoản ảo đã ở trong trận đấu này rồi' });
     }
 
-    // Add to participants (Virtual user does not increment real user currentPlayers count)
     match.participants.push(virtualUserId);
 
-    // Ensure memberPositions entry
     if (!match.memberPositions) match.memberPositions = [];
     if (!match.memberPositions.some((mp) => String(mp.userId) === String(virtualUserId))) {
       match.memberPositions.push({ userId: virtualUserId, positionId: '' });
@@ -183,7 +174,6 @@ router.post('/add-to-match/:matchId', authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE /api/virtual-users/:virtualUserId - Delete a virtual account
 router.delete('/:virtualUserId', authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;

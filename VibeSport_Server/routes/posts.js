@@ -17,43 +17,30 @@ const {
 
 const router = express.Router();
 
-// Tất cả các routes liên quan đến bài viết đều qua authMiddleware để phục vụ xác thực người dùng và xác định trạng thái likes
 router.use(authMiddleware);
 
-// POST /api/posts — Tạo bài viết mới (hỗ trợ upload tối đa 10 ảnh/video qua key 'media')
 router.post('/', uploadPost.array('media', 10), createPost);
 
-// GET /api/posts — Lấy danh sách bài viết phân trang
 router.get('/', getPosts);
 
-// GET /api/posts/:id — Lấy chi tiết bài viết
 router.get('/:id', getPostById);
 
-// POST /api/posts/:id/like — Thích / Bỏ thích bài viết
 router.post('/:id/like', likePost);
 
-// DELETE /api/posts/:id/like — Bỏ thích bài viết trực tiếp
 router.delete('/:id/like', unlikePost);
 
-// GET /api/posts/:id/likes — Lấy danh sách người đã thích bài viết
 router.get('/:id/likes', getPostLikes);
 
-// POST /api/posts/:id/comment — Bình luận bài viết (hỗ trợ upload 1 ảnh qua key 'media')
 router.post('/:id/comment', uploadPost.single('media'), commentPost);
 
-// POST /api/posts/:id/comments/:commentId/like — Thích / Bỏ thích bình luận
 router.post('/:id/comments/:commentId/like', likeComment);
 
-// POST /api/posts/:id/report — User báo cáo bài viết
 router.post('/:id/report', reportPost);
 
-// DELETE /api/posts/:id — Xóa bài viết
 router.delete('/:id', deletePost);
 
-// PUT /api/posts/:id — Sửa bài viết (chỉ chủ bài)
 router.put('/:id', uploadPost.array('media', 10), updatePost);
 
-// Xử lý lỗi từ multer (file quá lớn, sai định dạng) — trả JSON thay vì HTML
 router.use((err, req, res, next) => {
   if (err && err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ success: false, message: 'File quá lớn. Tối đa 50MB mỗi file.' });

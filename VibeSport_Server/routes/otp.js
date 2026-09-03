@@ -19,7 +19,6 @@ router.post("/send-otp", async (req, res) => {
       });
     }
 
-    // Kiểm tra sự tồn tại của email trước khi gửi OTP
     const existingUser = await User.findOne({ email: normalizedEmail });
 
     if (type === "forgot_password" || type === "reset_password" || type === "forgot") {
@@ -30,7 +29,6 @@ router.post("/send-otp", async (req, res) => {
         });
       }
     } else {
-      // Đăng ký tài khoản mới: nếu email đã tồn tại thì báo lỗi ngay
       if (existingUser) {
         return res.status(400).json({
           success: false,
@@ -48,7 +46,6 @@ router.post("/send-otp", async (req, res) => {
     otpStore[normalizedEmail] = otp;
     console.log(`[OTP ROUTE] Generated OTP for ${normalizedEmail}: ${otp}`);
 
-    // Dev bypass: nếu chưa cấu hình email thì in OTP ra console
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.log(`\n========================================`);
       console.log(`[DEV MODE] OTP cho ${normalizedEmail}: ${otp}`);

@@ -17,7 +17,6 @@ import { Screen } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { BackButton } from "../components/BackButton";
 
-// Local fallback dataset in case of no internet
 const LOCAL_FALLBACK = [
   {
     name: "Thành phố Hà Nội",
@@ -64,30 +63,25 @@ const LOCAL_FALLBACK = [
 export default function AreaPickerScreen({ navigation, route }) {
   const returnTo = route?.params?.returnTo || "CompleteProfile";
 
-  // Address lists
   const [provinces, setProvinces] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [wards, setWards] = useState([]);
 
-  // Selected address levels
-  const [selectedProvince, setSelectedProvince] = useState(null); // { name, code }
-  const [selectedDistrict, setSelectedDistrict] = useState(null); // { name, code }
-  const [selectedWard, setSelectedWard] = useState(null); // { name, code }
-  const [selectedStreet, setSelectedStreet] = useState(""); // String
+  const [selectedProvince, setSelectedProvince] = useState(null); 
+  const [selectedDistrict, setSelectedDistrict] = useState(null); 
+  const [selectedWard, setSelectedWard] = useState(null); 
+  const [selectedStreet, setSelectedStreet] = useState(""); 
 
-  // Loaders
   const [loadingProvinces, setLoadingProvinces] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingWards, setLoadingWards] = useState(false);
 
-  // Modal selector states
   const [modalVisible, setModalVisible] = useState(false);
-  const [activeLevel, setActiveLevel] = useState(""); // "province", "district", "ward", "street"
+  const [activeLevel, setActiveLevel] = useState(""); 
   const [searchQuery, setSearchQuery] = useState("");
   const [customInput, setCustomInput] = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
 
-  // Load provinces on mount
   useEffect(() => {
     fetchProvinces();
   }, []);
@@ -116,7 +110,6 @@ export default function AreaPickerScreen({ navigation, route }) {
       const data = await res.json();
       setDistricts(data.districts.map(d => ({ name: d.name, code: d.code })));
     } catch (err) {
-      // Fallback local search
       const localProv = LOCAL_FALLBACK.find(p => p.code === provinceCode);
       if (localProv) {
         setDistricts(localProv.districts.map(d => ({ name: d.name, code: d.code })));
@@ -137,7 +130,6 @@ export default function AreaPickerScreen({ navigation, route }) {
       const data = await res.json();
       setWards(data.wards.map(w => ({ name: w.name, code: w.code })));
     } catch (err) {
-      // Fallback local search
       if (selectedProvince) {
         const localProv = LOCAL_FALLBACK.find(p => p.code === selectedProvince.code);
         const localDist = localProv?.districts.find(d => d.code === districtCode);
@@ -152,7 +144,6 @@ export default function AreaPickerScreen({ navigation, route }) {
     }
   };
 
-  // Generate generic street options
   const streetList = useMemo(() => {
     return [
       "Đường Trung Tâm",
@@ -167,7 +158,6 @@ export default function AreaPickerScreen({ navigation, route }) {
     ];
   }, []);
 
-  // Filter options based on active selector modal
   const filteredOptions = useMemo(() => {
     let list = [];
     if (activeLevel === "province") list = provinces;
@@ -175,7 +165,6 @@ export default function AreaPickerScreen({ navigation, route }) {
     else if (activeLevel === "ward") list = wards;
     else if (activeLevel === "street") return streetList.filter(item => item.toLowerCase().includes(searchQuery.toLowerCase().trim()));
 
-    // Append "Other..." option
     const labelOther = activeLevel === "province" ? "Tỉnh/Thành phố khác..." : activeLevel === "district" ? "Quận/Huyện khác..." : "Xã/Phường khác...";
     const listWithOther = [...list.map(item => item.name), labelOther];
 
@@ -294,7 +283,6 @@ export default function AreaPickerScreen({ navigation, route }) {
       <View style={styles.content}>
         <Text style={styles.sectionTitle}>Vui lòng chọn thông tin khu vực:</Text>
 
-        {/* 1. Tỉnh/Thành phố */}
         <TouchableOpacity style={styles.field} onPress={() => openPicker("province")}>
           <View style={styles.fieldLeft}>
             <Text style={styles.fieldLabel}>Tỉnh / Thành phố</Text>
@@ -309,7 +297,6 @@ export default function AreaPickerScreen({ navigation, route }) {
           <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
-        {/* 2. Quận/Huyện */}
         <TouchableOpacity style={styles.field} onPress={() => openPicker("district")}>
           <View style={styles.fieldLeft}>
             <Text style={styles.fieldLabel}>Quận / Huyện</Text>
@@ -324,7 +311,6 @@ export default function AreaPickerScreen({ navigation, route }) {
           <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
-        {/* 3. Phường/Xã */}
         <TouchableOpacity style={styles.field} onPress={() => openPicker("ward")}>
           <View style={styles.fieldLeft}>
             <Text style={styles.fieldLabel}>Phường / Xã</Text>
@@ -339,7 +325,6 @@ export default function AreaPickerScreen({ navigation, route }) {
           <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
-        {/* 4. Đường/Thôn */}
         <TouchableOpacity style={styles.field} onPress={() => openPicker("street")}>
           <View style={styles.fieldLeft}>
             <Text style={styles.fieldLabel}>Đường / Thôn / Xóm</Text>
@@ -350,7 +335,6 @@ export default function AreaPickerScreen({ navigation, route }) {
           <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
-        {/* Preview Address */}
         {selectedProvince && selectedDistrict && selectedWard && selectedStreet ? (
           <View style={styles.previewContainer}>
             <Ionicons name="location" size={22} color="#10B981" style={styles.previewIcon} />
@@ -363,13 +347,11 @@ export default function AreaPickerScreen({ navigation, route }) {
           </View>
         ) : null}
 
-        {/* Confirm Button */}
         <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
           <Text style={styles.confirmBtnText}>Xác nhận</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Picker Selection Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -386,7 +368,6 @@ export default function AreaPickerScreen({ navigation, route }) {
             </View>
 
             {showCustomInput ? (
-              // Custom text input form
               <View style={styles.customInputContainer}>
                 <Text style={styles.customInputLabel}>Nhập lựa chọn của bạn:</Text>
                 <TextInput
@@ -412,7 +393,6 @@ export default function AreaPickerScreen({ navigation, route }) {
                 </View>
               </View>
             ) : (
-              // Option search and list selection
               <>
                 <View style={styles.searchBarWrapper}>
                   <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchBarIcon} />

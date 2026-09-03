@@ -1983,7 +1983,6 @@ exports.approveJoinRequest = async (req, res) => {
   }
 };
 
-// ─── Từ chối yêu cầu gia nhóm (Admin/Mod) ──────────────────────────────────
 exports.rejectJoinRequest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2020,7 +2019,6 @@ exports.rejectJoinRequest = async (req, res) => {
     const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
     const formatted = formatConversation(updated, req.userId, true);
 
-    // Thông báo cho thành viên bị từ chối
     if (global.io) {
       global.io.to(targetIdStr).emit('join_request_rejected', {
         conversationId: id,
@@ -2035,7 +2033,6 @@ exports.rejectJoinRequest = async (req, res) => {
   }
 };
 
-// ─── Gửi yêu cầu thêm thành viên (Thành viên thường yêu cầu admin thêm) ───────
 exports.requestAddMember = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2050,7 +2047,6 @@ exports.requestAddMember = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
     }
 
-    // Người gửi yêu cầu phải là thành viên của nhóm
     const isParticipant = conversation.participants.some(
       (p) => String(p) === String(req.userId)
     );
@@ -2058,12 +2054,10 @@ exports.requestAddMember = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Bạn không phải là thành viên của nhóm này' });
     }
 
-    // Người được thêm không được là thành viên hiện tại
     if (conversation.participants.some((p) => String(p) === String(targetUserId))) {
       return res.status(400).json({ success: false, message: 'Người này đã là thành viên của nhóm' });
     }
 
-    // Kiểm tra đã gửi yêu cầu thêm người này chưa
     const alreadyRequested = conversation.joinRequests.some(
       (r) => String(r.userId) === String(targetUserId) && String(r.requestedBy) === String(req.userId)
     );
@@ -2087,7 +2081,6 @@ exports.requestAddMember = async (req, res) => {
     const updated = await Conversation.findById(id).populate('participants', USER_SELECT).populate('joinRequests.userId', USER_SELECT);
     const formatted = formatConversation(updated, req.userId, true);
 
-    // Notify admin and coAdmins via socket
     const rawNotifyUserIds = [
       String(conversation.admin || conversation.participants?.[0]),
       ...(conversation.coAdmins || []).map((uid) => String(uid)),
@@ -2143,7 +2136,6 @@ exports.requestAddMember = async (req, res) => {
   }
 };
 
-// ─── Gửi yêu cầu gia nhập nhóm (Thành viên yêu cầu) ─────────────────────────
 exports.requestToJoinGroup = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2153,12 +2145,10 @@ exports.requestToJoinGroup = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhóm' });
     }
 
-    // Check if already a participant
     if (conversation.participants.some((p) => String(p) === String(req.userId))) {
       return res.status(400).json({ success: false, message: 'Bạn đã là thành viên của nhóm này rồi' });
     }
 
-    // Check if already requested
     const alreadyRequested = conversation.joinRequests.some(
       (r) => String(r.userId) === String(req.userId)
     );
@@ -2172,7 +2162,6 @@ exports.requestToJoinGroup = async (req, res) => {
     const requester = await User.findById(req.userId).select('name').lean();
     const requesterName = requester?.name || 'Thành viên';
 
-    // Notify group admin and coAdmins via socket if online
     const rawNotifyUserIds = [
       String(conversation.admin || conversation.participants?.[0]),
       ...(conversation.coAdmins || []).map((id) => String(id)),
@@ -2229,8 +2218,7 @@ exports.requestToJoinGroup = async (req, res) => {
   }
 };
 
-// ─── Ghim / Bỏ ghim tin nhắn ───────────────────────────────────────────────
-// === Ghim / Bỏ ghim tin nhắn (tối đa 3) ===
+
 const MAX_PINNED_MESSAGES = 3;
 
 exports.pinMessage = async (req, res) => {
@@ -2347,16 +2335,7 @@ exports.unpinMessage = async (req, res) => {
   }
 };
 
-// ─── Gửi tin nhắn hệ thống khi kết thúc cuộc gọi ──────────────────────────
-// Được gọi từ socket 'leave_channel', 'call_rejected', 'call_busy' handler trong index.js
-// isMissed: true = cuộc gọi nhỡ (rejected/busy/timeout, duration=0)
-// isMissed: false = cuộc gọi kết thúc bình thường
-//
-// callerId (REQUIRED): MongoDB ObjectId (string) của người bấm nút gọi ban đầu.
-// Được dùng làm senderId / lastMessageSenderId để:
-// - Caller mở chat: thấy message bên PHẢI (tin nhắn của mình).
-// - Callee mở chat: thấy message bên TRÁI (tin nhắn nhận được từ caller).
-// Nếu không truyền callerId, fallback về null như cũ (không khuyến khích).
+
 exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds, isMissed = false, callerId = null) => {
   try {
     let content;
@@ -2379,24 +2358,21 @@ exports.sendSystemCallMessage = async (conversationId, callType, durationSeconds
 
     const message = await Message.create({
       conversationId,
-      senderId: callerId || null, // ƯU TIÊN callerId để hiển thị đúng phía (mine vs peer)
+      senderId: callerId || null,
       type: 'call',
       content,
       readBy: [],
     });
 
-    // Populate senderId để client nhận được object sender (giống các message khác)
     const populatedMessage = await Message.findById(message._id).populate('senderId', USER_SELECT);
 
     const conversation = await Conversation.findById(conversationId);
     if (conversation) {
       conversation.lastMessage = content;
       conversation.lastMessageAt = message.createdAt;
-      // lastMessageSenderId = callerId để last message preview cũng hiển thị đúng phía
       conversation.lastMessageSenderId = callerId || null;
       await conversation.save();
 
-      // Broadcast tới tất cả participant đang online
       if (global.io) {
         conversation.participants.forEach((pId) => {
           const pIdStr = String(pId);
@@ -2426,7 +2402,6 @@ exports.recallMessage = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy tin nhắn' });
     }
 
-    // Only the sender can recall the message
     if (String(message.senderId) !== String(req.userId)) {
       return res.status(403).json({ success: false, message: 'Bạn không có quyền thu hồi tin nhắn này' });
     }
@@ -2435,17 +2410,14 @@ exports.recallMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Tin nhắn đã được thu hồi trước đó' });
     }
 
-    // Set isRecalled to true and clear content / mediaUrl for privacy
     message.isRecalled = true;
     message.content = 'Tin nhắn đã bị thu hồi';
-    message.type = 'text'; // force text type so the client renders it as text
+    message.type = 'text'; 
     message.mediaUrl = null;
     await message.save();
 
-    // Update conversation if needed
     const conversation = await Conversation.findById(message.conversationId);
     if (conversation) {
-      // If pinned, remove it
       conversation.pinnedMessages = (conversation.pinnedMessages || []).filter(
         (p) => String(p.messageId) !== String(messageId)
       );
@@ -2459,7 +2431,6 @@ exports.recallMessage = async (req, res) => {
       await conversation.save();
     }
 
-    // Broadcast socket event so other users in the conversation know the message was recalled
     if (global.io && conversation) {
       conversation.participants.forEach((participantId) => {
         const pIdStr = String(participantId._id || participantId);

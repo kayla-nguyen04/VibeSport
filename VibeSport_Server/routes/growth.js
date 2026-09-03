@@ -10,7 +10,6 @@ const router = express.Router();
 
 router.use(requireAdmin);
 
-// Helper function to get the last 7 dates formatted as DD/MM
 function getLast7Days() {
   const dates = [];
   for (let i = 6; i >= 0; i--) {
@@ -26,14 +25,12 @@ function getLast7Days() {
 
 router.get('/', async (request, response) => {
   try {
-    // 1. Fetch Totals
     const totalUsers = await User.countDocuments();
     const totalPosts = await Post.countDocuments();
     const totalTeams = await Team.countDocuments();
     const totalMatches = await Match.countDocuments();
 
-    // 2. Fetch User distributions
-    // Role distribution
+    
     const rolesAggregate = await User.aggregate([
       { $group: { _id: '$role', count: { $sum: 1 } } }
     ]);
@@ -43,7 +40,6 @@ router.get('/', async (request, response) => {
       rolesDistribution[roleName] = item.count;
     });
 
-    // Provider distribution
     const providersAggregate = await User.aggregate([
       { $group: { _id: '$provider', count: { $sum: 1 } } }
     ]);
@@ -53,13 +49,11 @@ router.get('/', async (request, response) => {
       providersDistribution[providerName] = item.count;
     });
 
-    // 3. Aggregate 7-day stats
     const last7Days = getLast7Days();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 6);
     startDate.setHours(0, 0, 0, 0);
 
-    // Fetch daily registrations
     const userRegs = await User.aggregate([
       { $match: { createdAt: { $gte: startDate } } },
       {
@@ -70,7 +64,6 @@ router.get('/', async (request, response) => {
       }
     ]);
 
-    // Fetch daily posts
     const postRegs = await Post.aggregate([
       { $match: { createdAt: { $gte: startDate } } },
       {
@@ -81,7 +74,6 @@ router.get('/', async (request, response) => {
       }
     ]);
 
-    // Fetch daily messages
     const messageRegs = await Message.aggregate([
       { $match: { createdAt: { $gte: startDate } } },
       {
@@ -92,23 +84,19 @@ router.get('/', async (request, response) => {
       }
     ]);
 
-    // Map aggregates to last 7 days list
     const userRegMap = new Map(userRegs.map(i => [i._id, i.count]));
     const postRegMap = new Map(postRegs.map(i => [i._id, i.count]));
     const messageRegMap = new Map(messageRegs.map(i => [i._id, i.count]));
 
-    // Construct the timeline array. Add simulation offsets so charts are never empty.
     const timeline = last7Days.map((day, idx) => {
       const dateKey = day.dateStr;
 
-      // Base DB values
       let newUsers = userRegMap.get(dateKey) || 0;
       let newPosts = postRegMap.get(dateKey) || 0;
       let newMessages = messageRegMap.get(dateKey) || 0;
 
       // Simulation backup to show high-quality dynamic charts in sandbox databases
       if (totalUsers < 20) {
-        // Safe mock curve: [3, 5, 2, 8, 4, 6, 9] etc.
         const mockUsers = [4, 6, 3, 9, 5, 8, 12];
         const mockPosts = [2, 5, 3, 7, 4, 6, 8];
         const mockMessages = [15, 25, 18, 42, 31, 38, 54];
@@ -125,13 +113,11 @@ router.get('/', async (request, response) => {
       };
     });
 
-    // Provide default totals if database is empty/sparse for visualization
     const finalTotalUsers = totalUsers || 152;
     const finalTotalPosts = totalPosts || 84;
     const finalTotalTeams = totalTeams || 12;
     const finalTotalMatches = totalMatches || 28;
 
-    // Default distribution roles if empty
     if (Object.keys(rolesDistribution).length === 0) {
       rolesDistribution['Developer'] = 12;
       rolesDistribution['User'] = 110;

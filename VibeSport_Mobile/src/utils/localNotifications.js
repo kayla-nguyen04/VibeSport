@@ -61,15 +61,12 @@ const SETTINGS_KEY = '@vibesport_notification_settings';
 export async function showLocalNotification({ title = 'VibeSport', body, data, type = 'general' }) {
   if (!body || isExpoGo || !Notifications) return;
 
-  // Check user notification settings from AsyncStorage
   try {
     const stored = await AsyncStorage.getItem(SETTINGS_KEY);
     if (stored) {
       const settings = JSON.parse(stored);
-      // If Master Switch is OFF -> block all notifications
       if (settings.masterEnabled === false) return;
 
-      // Category filter check
       if (type === 'match' && settings.matchEnabled === false) return;
       if ((type === 'chat' || type === 'call') && settings.chatEnabled === false) return;
       if ((type === 'social' || type === 'comment' || type === 'like' || type === 'follow') && settings.socialEnabled === false) return;
@@ -78,7 +75,6 @@ export async function showLocalNotification({ title = 'VibeSport', body, data, t
     console.warn('Error reading notification settings:', e?.message);
   }
 
-  // Deduplicate identical notifications arriving within 2 seconds
   const now = Date.now();
   const notificationKey = `${title}:${body}`;
   if (notificationKey === lastNotificationKey && now - lastNotificationTime < 2000) {
@@ -90,7 +86,6 @@ export async function showLocalNotification({ title = 'VibeSport', body, data, t
   try {
     await requestNotificationPermission();
 
-    // Check sound preference
     let playSound = true;
     try {
       const stored = await AsyncStorage.getItem(SETTINGS_KEY);
@@ -107,7 +102,7 @@ export async function showLocalNotification({ title = 'VibeSport', body, data, t
         data: data || {},
         sound: playSound,
         priority: Notifications.AndroidNotificationPriority.MAX,
-        channelId: 'default', // Mandatory for Android 8.0+
+        channelId: 'default', 
       },
       trigger: null,
     });
