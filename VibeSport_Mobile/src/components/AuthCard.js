@@ -34,7 +34,7 @@ export function AuthCard({
 
   const isRegisterMode = mode === 'register';
   const isForgotMode = mode === 'forgot';
-  const helperText = useMemo(() => validationError || error || successMessage, [error, successMessage, validationError]);
+  const helperText = useMemo(() => validationError || error?.message || error || successMessage, [error, successMessage, validationError]);
 
   useEffect(() => {
     setForm(INITIAL_FORM);

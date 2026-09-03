@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
+import { Alert } from 'react-native';
 
 import { Screen } from '../components/Screen';
 import { AuthCard } from '../components/AuthCard';
@@ -78,7 +79,14 @@ export function AuthScreen({ route }) {
       return;
     }
 
-    return dispatch(loginUser(values));
+    const resultAction = await dispatch(loginUser(values));
+    if (resultAction.meta.requestStatus === 'rejected' && resultAction.payload?.code === 'ACCOUNT_LOCKED') {
+      Alert.alert(
+        'Tài khoản đã bị khóa',
+        resultAction.payload.reason || 'Vui lòng liên hệ quản trị viên để biết thêm thông tin.'
+      );
+    }
+    return resultAction;
   };
 
   if (mode === 'splash') {

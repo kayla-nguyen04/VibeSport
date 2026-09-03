@@ -28,6 +28,8 @@ export default function Users() {
   const [activity, setActivity] = useState({ posts: [], matches: [] });
   const [activityLoading, setActivityLoading] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [lockTarget, setLockTarget] = useState(null);
+  const [lockReason, setLockReason] = useState('');
 
   const loadData = useCallback((page = 1, search = '', status = 'all', sortBy = 'newest') => {
     dispatch(fetchUsers({ 
@@ -69,16 +71,35 @@ export default function Users() {
     }
   };
 
-  const handleLockToggle = async (userId, isCurrentlyLocked) => {
-    const resultAction = await dispatch(lockUnlockUser({ id: userId, isLocked: !isCurrentlyLocked }));
+  const handleLockToggle = async (userId, isCurrentlyLocked, reason = '') => {
+    const resultAction = await dispatch(lockUnlockUser({ id: userId, isLocked: !isCurrentlyLocked, lockReason: reason }));
     if (lockUnlockUser.fulfilled.match(resultAction)) {
       showNotification(!isCurrentlyLocked ? 'Đã khóa tài khoản' : 'Đã mở khóa tài khoản');
       if (selectedUser && selectedUser._id === userId) {
-        setSelectedUser(prev => ({ ...prev, isLocked: !isCurrentlyLocked }));
+        setSelectedUser(prev => ({ ...prev, isLocked: !isCurrentlyLocked, lockReason: reason }));
       }
     } else {
       showNotification(resultAction.payload || 'Lỗi thao tác', 'error');
     }
+  };
+
+  const requestLockToggle = (user, isCurrentlyLocked) => {
+    if (isCurrentlyLocked) {
+      handleLockToggle(user._id, true);
+      return;
+    }
+    setLockTarget(user);
+    setLockReason('');
+  };
+
+  const confirmLock = async () => {
+    if (!lockReason.trim()) {
+      showNotification('Vui lòng nhập lý do khóa tài khoản', 'error');
+      return;
+    }
+    await handleLockToggle(lockTarget._id, false, lockReason.trim());
+    setLockTarget(null);
+    setLockReason('');
   };
 
   const handleOpenDetail = async (user) => {
@@ -179,7 +200,7 @@ export default function Users() {
                     </button>
                     <button 
                       className={`action-btn ${user.isLocked ? 'unlock' : 'lock'}`}
-                      onClick={() => handleLockToggle(user._id, user.isLocked)}
+                      onClick={() => requestLockToggle(user, user.isLocked)}
                     >
                       {user.isLocked ? 'Mở khóa' : 'Khóa'}
                     </button>
@@ -296,7 +317,7 @@ export default function Users() {
                   </span>
                   <button 
                     className={`action-btn ${selectedUser.isLocked ? 'unlock' : 'lock'}`}
-                    onClick={() => handleLockToggle(selectedUser._id, selectedUser.isLocked)}
+                    onClick={() => requestLockToggle(selectedUser, selectedUser.isLocked)}
                   >
                     {selectedUser.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
                   </button>
@@ -356,6 +377,34 @@ export default function Users() {
             
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowDetailModal(false)}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lockTarget && (
+        <div className="modal-overlay" onClick={() => setLockTarget(null)}>
+          <div className="modal-content lock-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Xác nhận khóa tài khoản</h3>
+              <button className="close-btn" onClick={() => setLockTarget(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p>Bạn có chắc muốn khóa tài khoản <strong>{lockTarget.email}</strong>?</p>
+              <label htmlFor="lock-reason">Lý do khóa tài khoản</label>
+              <textarea
+                id="lock-reason"
+                className="lock-reason-input"
+                value={lockReason}
+                onChange={(e) => setLockReason(e.target.value)}
+                placeholder="Nhập lý do để người dùng biết..."
+                maxLength={500}
+                rows={4}
+              />
+              <div className="lock-confirm-actions">
+                <button className="action-btn detail-btn" onClick={() => setLockTarget(null)}>Hủy</button>
+                <button className="action-btn lock" onClick={confirmLock}>Xác nhận khóa</button>
+              </div>
             </div>
           </div>
         </div>

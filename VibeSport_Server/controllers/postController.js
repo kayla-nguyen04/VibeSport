@@ -154,21 +154,21 @@ exports.getPosts = async (req, res) => {
     // Hide removed posts from public feed
     filter.status = { $ne: 'removed_by_admin' };
 
-    // 🟢 THÊM CODE XỬ LÝ DÀNH CHO TAB "ĐANG FOLLOW" VÀ "ĐÃ FOLLOW"
+    // Lọc bài theo quan hệ follow một chiều hoặc hai chiều.
+    let followingIds = [];
+    let followedByIds = [];
     if (tag === 'following' || tag === 'followed') {
       const currentUserId = req.userId;
       if (!currentUserId) {
         return res.status(200).json({ success: true, data: [], page, limit });
       }
 
-      let targetUserIds = [];
-      if (tag === 'following') {
-        // Lấy danh sách những người mà user hiện tại ĐANG FOLLOW
-        targetUserIds = await Follow.find({ followerId: currentUserId }).distinct('followingId');
-      } else if (tag === 'followed') {
-        // Lấy danh sách những người ĐÃ FOLLOW user hiện tại (Người theo dõi mình)
-        targetUserIds = await Follow.find({ followingId: currentUserId }).distinct('followerId');
-      }
+      followingIds = await Follow.find({ followerId: currentUserId }).distinct('followingId');
+      followedByIds = await Follow.find({ followingId: currentUserId }).distinct('followerId');
+      const followedBySet = new Set(followedByIds.map((id) => String(id)));
+      const targetUserIds = tag === 'following'
+        ? followingIds.filter((id) => !followedBySet.has(String(id)))
+        : followingIds.filter((id) => followedBySet.has(String(id)));
 
       filter.userId = { $in: targetUserIds };
       filter.tags = { $ne: 'Tìm đội' };
@@ -189,14 +189,11 @@ exports.getPosts = async (req, res) => {
       filter.userId = new mongoose.Types.ObjectId(userId);
     }
 
-    // Ưu tiên bài viết từ người đang follow (Bảo toàn nguyên bản)
-    let followingIds = [];
+    // Tất cả tab đều hiển thị bài mới nhất trước.
     let sortStage = { createdAt: -1 };
     if (req.userId && !userId) {
       followingIds = await Follow.find({ followerId: req.userId }).distinct('followingId');
-      if (followingIds.length > 0) {
-        sortStage = { isFollowing: -1, createdAt: -1 };
-      }
+      followedByIds = await Follow.find({ followingId: req.userId }).distinct('followerId');
     }
 
     // Lấy danh sách FC mà user đang là thành viên để lọc bài viết của FC riêng tư (Bảo toàn nguyên bản)
@@ -257,7 +254,7 @@ exports.getPosts = async (req, res) => {
       })
     );
 
-    const mappedPosts = await mapPostInteractions(populatedPosts, req.userId, followingIds);
+    const mappedPosts = await mapPostInteractions(populatedPosts, req.userId, followingIds, followedByIds);
 
     res.status(200).json({ success: true, data: mappedPosts, page, limit });
   } catch (error) {
@@ -401,7 +398,7 @@ async function searchPostsWithPriority({ req, res, keyword, tag, userId, page, l
 }
 
 // ─── Helper: map interaction (liked, saved, topReactions) (Bảo toàn nguyên bản) ────────
-async function mapPostInteractions(posts, currentUserId, followingIds = []) {
+async function mapPostInteractions(posts, currentUserId, followingIds = [], followedByIds = []) {
   return Promise.all(
     posts.map(async (post) => {
       const postId = post._id;
@@ -409,6 +406,8 @@ async function mapPostInteractions(posts, currentUserId, followingIds = []) {
       let reactionType = null;
       let isSaved = false;
       let isFollowing = Boolean(post.isFollowing);
+      const postUserId = post.userId?._id || post.userId;
+      const isFollowedBy = followedByIds.some((id) => String(id) === String(postUserId));
 
       if (currentUserId) {
         const like = await PostLike.findOne({ postId, userId: currentUserId });
@@ -434,6 +433,8 @@ async function mapPostInteractions(posts, currentUserId, followingIds = []) {
         topReactions,
         isSaved,
         isFollowing,
+        isFollowedBy,
+        isMutualFollow: isFollowing && isFollowedBy,
       };
     })
   );

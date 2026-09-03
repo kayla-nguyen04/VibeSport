@@ -71,7 +71,7 @@ const getTagDisplayName = (tagName) => {
 const FEED_TABS = [
   { key: null, label: 'Đề xuất' },
   { key: 'following', label: 'Đang follow' },
-  { key: 'followed', label: 'Đã follow' },
+  { key: 'followed', label: 'Bạn bè' },
 ];
 
 const formatCount = (count) => {
@@ -472,7 +472,7 @@ export function CommunityFeedScreen({ navigation, onGoToProfile }) {
                   >
                     <Text style={styles.userName}>{postOwnerName}</Text>
                   </TouchableOpacity>
-                  {!isSelf && (
+                  {!isSelf && item.isMutualFollow && (
                     <Ionicons name="people" size={16} color="#FF5F3D" style={{ marginLeft: 4 }} />
                   )}
                 </View>

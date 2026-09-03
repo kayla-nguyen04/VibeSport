@@ -99,6 +99,12 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    lockReason: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 500,
+    },
     courts: [{ type: Schema.Types.ObjectId, ref: 'Court' }],
     reportCount: {
       type: Number,

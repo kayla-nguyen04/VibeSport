@@ -118,7 +118,11 @@ router.post('/login', async (request, response) => {
     }
 
     if (user.isLocked) {
-      response.status(403).json({ message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+      response.status(403).json({
+        code: 'ACCOUNT_LOCKED',
+        message: 'Tài khoản của bạn đã bị khóa.',
+        reason: user.lockReason || 'Vui lòng liên hệ quản trị viên để biết thêm thông tin.',
+      });
       return;
     }
 
@@ -204,7 +208,11 @@ router.post('/google', async (request, response) => {
     );
 
     if (user.isLocked) {
-      response.status(403).json({ message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+      response.status(403).json({
+        code: 'ACCOUNT_LOCKED',
+        message: 'Tài khoản của bạn đã bị khóa.',
+        reason: user.lockReason || 'Vui lòng liên hệ quản trị viên để biết thêm thông tin.',
+      });
       return;
     }
 

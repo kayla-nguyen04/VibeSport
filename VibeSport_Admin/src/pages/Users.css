@@ -46,6 +46,33 @@
   box-shadow: 0 4px 12px rgba(255, 107, 26, 0.08);
 }
 
+.lock-confirm-modal {
+  max-width: 520px;
+}
+
+.lock-reason-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+  font: inherit;
+}
+
+.lock-reason-input:focus {
+  outline: none;
+  border-color: var(--orange);
+}
+
+.lock-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
 .search-box svg {
   width: 16px;
   height: 16px;

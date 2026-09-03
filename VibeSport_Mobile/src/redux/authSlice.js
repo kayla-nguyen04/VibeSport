@@ -28,7 +28,11 @@ export const loginUser = createAsyncThunk('auth/loginUser', async (payload, { re
     await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
     return session;
   } catch (error) {
-    return rejectWithValue(error.message || 'Đăng nhập thất bại.');
+    return rejectWithValue({
+      message: error.message || 'Đăng nhập thất bại.',
+      code: error.code,
+      reason: error.reason,
+    });
   }
 });
 
