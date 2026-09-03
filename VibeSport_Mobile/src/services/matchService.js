@@ -53,6 +53,8 @@ export async function getMatches(filters = {}, token = null) {
   if (filters.q) params.append("q", filters.q);
   if (filters.area) params.append("area", filters.area);
   if (filters.startTime) params.append("startTime", filters.startTime);
+  if (filters.teamStatus) params.append("teamStatus", filters.teamStatus);
+  if (filters.status) params.append("status", filters.status);
   if (filters.createdBy) params.append("createdBy", filters.createdBy);
   if (filters.participantId) params.append("participantId", filters.participantId);
   if (filters.userId) params.append("userId", filters.userId);

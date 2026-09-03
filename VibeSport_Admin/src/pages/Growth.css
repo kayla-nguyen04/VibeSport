@@ -24,6 +24,52 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.growth-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.growth-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 8px rgba(15, 23, 42, 0.04);
+}
+
+.growth-date-filter label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4a5568;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.growth-date-input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #1a202c;
+  background: #fff;
+}
+
+.growth-date-error {
+  flex-basis: 100%;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
 }
 
 .growth-header h2 {
@@ -178,6 +224,14 @@
   border-radius: 20px;
   padding: 24px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.growth-chart-card-wide {
+  grid-column: 1 / -1;
+}
+
+.chart-body-wrapper-tall {
+  height: 280px;
 }
 
 .chart-header {

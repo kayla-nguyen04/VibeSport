@@ -167,6 +167,23 @@ const normalizeId = (id) => (id == null ? "" : String(id));
 
 const getUserIdValue = (value) => normalizeId(typeof value === "object" ? value?._id || value?.id : value);
 
+const getEffectiveParticipantCount = (match) => {
+  const participants = Array.isArray(match?.participants) ? match.participants : [];
+  const ownerId = getUserIdValue(match?.createdBy);
+  const realParticipants = participants.filter((participant) => {
+    const participantId = getUserIdValue(participant);
+    return participantId && participantId !== ownerId && !isVirtualUser(participant);
+  });
+
+  // currentPlayers excludes virtual accounts on the server, but includes the owner.
+  // Use it only when the API returns unpopulated participant ids.
+  if (realParticipants.length > 0 || participants.length === 0) {
+    return realParticipants.length;
+  }
+
+  return Math.max(0, Number(match?.currentPlayers || 0) - (ownerId ? 1 : 0));
+};
+
 const getNormalizedRequiredPlayers = (match) => {
   if (!match) return 0;
   return getRequiredPlayersBySport(match.sport, match, Number(match.maxPlayers || 2));
@@ -331,6 +348,7 @@ export default function TeamsScreen({ navigation }) {
   const [timeFilter, setTimeFilter] = useState("");
   const [skillFilters, setSkillFilters] = useState([]); // multi-select
   const [pitchStatusFilter, setPitchStatusFilter] = useState("");
+  const [matchStatusFilter, setMatchStatusFilter] = useState("");
   const [minCostFilter, setMinCostFilter] = useState("");
   const [maxCostFilter, setMaxCostFilter] = useState("");
   const [minServiceFilter, setMinServiceFilter] = useState("");
@@ -364,6 +382,14 @@ export default function TeamsScreen({ navigation }) {
       if (subTab === "created" && userId) filters.createdBy = userId;
       if (skillFilters.length === 1) filters.skillLevel = skillFilters[0];
       if (pitchStatusFilter) filters.pitchStatus = pitchStatusFilter;
+      if (matchStatusFilter === "not_started") {
+        filters.teamStatus = "not_started";
+      } else if (matchStatusFilter === "ongoing") {
+        filters.teamStatus = "ongoing";
+      } else if (matchStatusFilter === "ended") {
+        filters.teamStatus = "ended";
+        filters.status = "completed";
+      }
 
       const data = await getMatches(filters);
       setMatches(Array.isArray(data) ? data : []);
@@ -375,7 +401,7 @@ export default function TeamsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [activeSports, activeSubTab, userId, skillFilters, pitchStatusFilter]);
+  }, [activeSports, activeSubTab, userId, skillFilters, pitchStatusFilter, matchStatusFilter]);
 
   const loadFindTeamPosts = useCallback(async () => {
     try {
@@ -703,6 +729,14 @@ export default function TeamsScreen({ navigation }) {
     } else if (pitchStatusFilter === "Chưa cọc") {
       result = result.filter((m) => m.pitchStatus !== "Đã cọc");
     }
+    // Lọc trạng thái trận đấu
+    if (matchStatusFilter === "not_started") {
+      result = result.filter((m) => (m.teamStatus || "not_started") === "not_started");
+    } else if (matchStatusFilter === "ongoing") {
+      result = result.filter((m) => (m.teamStatus || "not_started") === "ongoing");
+    } else if (matchStatusFilter === "ended") {
+      result = result.filter((m) => m.teamStatus === "ended" || m.status === "completed" || m.status === "cancelled");
+    }
     // Lọc quận/huyện
     if (districtFilter.trim()) {
       const kw = districtFilter.trim().toLowerCase();
@@ -769,8 +803,7 @@ export default function TeamsScreen({ navigation }) {
     const creator = typeof item.createdBy === "object" ? item.createdBy : null;
     const creatorId = getUserIdValue(item.createdBy);
     const participantList = Array.isArray(item.participants) ? item.participants : [];
-    const actualJoinedCount = Number(item.currentPlayers ?? participantList.length ?? 0);
-    const participantsCount = Math.max(actualJoinedCount, participantList.length || 0);
+    const participantsCount = getEffectiveParticipantCount(item);
     const requiredPlayers = getNormalizedRequiredPlayers(item);
     const positionCount = Array.isArray(item.selectedPositionIds) ? item.selectedPositionIds.length : 0;
     const benchCount = Number(item.benchMembersTeam1 || 0) + Number(item.benchMembersTeam2 || 0);
@@ -1104,11 +1137,11 @@ export default function TeamsScreen({ navigation }) {
   const listData = isFindTeamTab ? findTeamPosts : getDisplayData();
   const hasActiveFilters = activeSports.length > 0 || Boolean(searchText.trim()) || Boolean(areaFilter.trim()) ||
     Boolean(districtFilter.trim()) || Boolean(timeFilter.trim()) || Boolean(timeFrom) || Boolean(timeTo) || skillFilters.length > 0 ||
-    Boolean(pitchStatusFilter) || Boolean(minCostFilter) || Boolean(maxCostFilter) ||
+    Boolean(pitchStatusFilter) || Boolean(matchStatusFilter) || Boolean(minCostFilter) || Boolean(maxCostFilter) ||
     Boolean(minServiceFilter) || Boolean(maxServiceFilter);
   const activeFilterCount = [
     activeSports.length > 0, searchText.trim(), areaFilter.trim(),
-    districtFilter.trim(), timeFilter.trim(), skillFilters.length > 0, pitchStatusFilter,
+    districtFilter.trim(), timeFilter.trim(), skillFilters.length > 0, pitchStatusFilter, matchStatusFilter,
     minCostFilter, maxCostFilter, minServiceFilter, maxServiceFilter
   ].filter(Boolean).length;
   const filterSummary = activeSports.length === 0
@@ -1127,6 +1160,7 @@ export default function TeamsScreen({ navigation }) {
     setTimeTo("");
     setSkillFilters([]);
     setPitchStatusFilter("");
+    setMatchStatusFilter("");
     setMinCostFilter("");
     setMaxCostFilter("");
     setMinServiceFilter("");
@@ -1501,7 +1535,23 @@ export default function TeamsScreen({ navigation }) {
               </View>
             </View>
 
-            {/* 7. Giá/người */}
+            {/* 7. Trạng thái trận đấu */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Trạng thái trận đấu</Text>
+              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                {[["", "Tất cả"], ["not_started", "⏳ Chưa bắt đầu"], ["ongoing", "▶️ Đã bắt đầu"], ["ended", "✅ Đã kết thúc"]].map(([val, lbl]) => (
+                  <TouchableOpacity
+                    key={val || "all_match_status"}
+                    style={[styles.filterChip, styles.filterChipLarge, matchStatusFilter === val && styles.filterChipActive]}
+                    onPress={() => setMatchStatusFilter(val)}
+                  >
+                    <Text style={[styles.filterChipText, matchStatusFilter === val && styles.filterChipTextActive]}>{lbl}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* 8. Giá/người */}
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>Giá / người (đ)</Text>
               <View style={{ flexDirection: "row", gap: 8 }}>

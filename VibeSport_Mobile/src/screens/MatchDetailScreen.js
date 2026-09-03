@@ -428,15 +428,39 @@ export default function MatchDetailScreen({ navigation, route }) {
 
   useEffect(() => {
     if (match && !hasInitializedCost) {
-      setCostItems([
-        { id: "1", name: "Tiền thuê sân", quantity: 1, price: match.totalCourtCost || 0, selected: true },
-        { id: "2", name: "Nước uống", quantity: 1, price: 0, selected: false }
-      ]);
+      const savedBreakdown = Array.isArray(match.expenseBreakdown) && match.expenseBreakdown.length > 0
+        ? match.expenseBreakdown.map((item, index) => ({
+            id: item?.id || `saved_${index + 1}`,
+            name: item?.name || "Chi phí",
+            quantity: Number(item?.quantity || 0),
+            price: Number(item?.price || 0),
+            selected: item?.selected !== false,
+          }))
+        : [
+            {
+              id: "1",
+              name: "Tiền thuê sân",
+              quantity: 1,
+              price: Number(match.finalSettlement?.totalExpense || match.totalCourtCost || 0),
+              selected: true,
+            },
+            { id: "2", name: "Nước uống", quantity: 1, price: 0, selected: false },
+          ];
+
+      setCostItems(savedBreakdown);
       setHasInitializedCost(true);
     }
+
     if (match) {
-      const nextCount = Math.max(1, (match.participants || []).length || allParticipants.length || 1);
-      setParticipantCountOverride((prev) => (prev && prev !== 0 ? prev : nextCount));
+      const savedParticipantCount = Number(match.finalSettlement?.participantsCount || 0);
+      const nextCount = savedParticipantCount > 0
+        ? savedParticipantCount
+        : Math.max(1, (match.participants || []).length || allParticipants.length || 1);
+
+      setParticipantCountOverride((prev) => {
+        if (savedParticipantCount > 0) return savedParticipantCount;
+        return prev && prev !== 0 ? prev : nextCount;
+      });
     }
   }, [match, hasInitializedCost, allParticipants.length]);
 
@@ -504,6 +528,7 @@ export default function MatchDetailScreen({ navigation, route }) {
         console.warn('Không thể tải danh sách đánh giá của bạn cho trận:', e.message);
       }
     }
+    return data;
   };
 
   const handleToggleTeamStatus = async (newStatus, settlementData = null) => {
@@ -512,28 +537,7 @@ export default function MatchDetailScreen({ navigation, route }) {
       await updateTeamStatus(matchId, newStatus, settlementData || {}, token);
       await reloadMatch();
 
-      if (newStatus === "ended") {
-        Alert.alert(
-          "Trận đấu đã kết thúc",
-          "Bảng tổng kết chi phí trận đấu hiện đã được khóa và không thể chỉnh sửa nữa.\n\nHãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi trong trận đấu này nhé!",
-          [
-            {
-              text: "Đánh giá ngay",
-              onPress: () => {
-                const otherParticipants = (match?.participants || []).filter(
-                  (p) => getUserId(p) !== userId
-                );
-                if (otherParticipants.length > 0) {
-                  handleOpenSingleRating(otherParticipants[0]);
-                } else {
-                  Alert.alert("Thông báo", "Trận đấu không có thành viên nào khác để đánh giá.");
-                }
-              },
-            },
-            { text: "Để sau", style: "cancel" },
-          ]
-        );
-      } else {
+      if (newStatus !== "ended") {
         Alert.alert("Thành công", "Trận đấu đã bắt đầu!");
       }
     } catch (err) {
@@ -646,15 +650,15 @@ export default function MatchDetailScreen({ navigation, route }) {
   }, [matchId, socket]);
 
   // Mở Popup Đánh giá cho 1 cá nhân
-  const handleOpenSingleRating = (targetUser) => {
-    const isMatchEnded = match?.teamStatus === "ended" || match?.status === "completed";
+  const handleOpenSingleRating = (targetUser, matchToRate = match) => {
+    const isMatchEnded = matchToRate?.teamStatus === "ended" || matchToRate?.status === "completed";
     if (!isMatchEnded) {
       Alert.alert("Thông báo", "Bạn chỉ có thể đánh giá thành viên sau khi trận đấu đã KẾT THÚC!");
       return;
     }
 
     const targetId = getUserId(targetUser);
-    const isTargetParticipant = (match?.participants || []).some(
+    const isTargetParticipant = (matchToRate?.participants || []).some(
       (p) => getUserId(p) === targetId
     );
 
@@ -1719,12 +1723,23 @@ export default function MatchDetailScreen({ navigation, route }) {
 
               {/* Flexible Centered Badges */}
               {(() => {
+                const savedSettlementTotal = Number(match.finalSettlement?.totalExpense || 0);
+                const savedSettlementPerPerson = Number(match.finalSettlement?.perPerson || 0);
                 const mainPlayersCount = match.sport === "football" && Array.isArray(match.selectedPositionIds) && match.selectedPositionIds.length > 0
                   ? match.selectedPositionIds.length
                   : Math.max(1, (match.maxPlayers || 10) - (match.benchMembers || 0));
                 const totalHoursVal = match.totalHours || 1;
-                const totalCostVal = match.totalCourtCost || (match.costPerPerson * totalHoursVal);
-                const costPerPlayerVal = match.costPerPlayer || (totalCostVal ? Math.round(totalCostVal / mainPlayersCount) : match.costPerPerson);
+                const totalCostVal = savedSettlementTotal > 0
+                  ? savedSettlementTotal
+                  : (match.totalCourtCost || (Number(match.costPerPerson || 0) * totalHoursVal));
+                const costPerPlayerVal = savedSettlementPerPerson > 0
+                  ? savedSettlementPerPerson
+                  : (match.costPerPlayer || getMatchCostValue({
+                      ...match,
+                      sport: match.sport,
+                      requiredPlayers: getRequiredPlayersBySport(match?.sport, match, Number(match?.maxPlayers || 2)),
+                      totalCourtCost: totalCostVal,
+                    }) || (totalCostVal ? Math.round(totalCostVal / Math.max(1, mainPlayersCount)) : match.costPerPerson));
 
                 return (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6, marginVertical: 12 }}>
