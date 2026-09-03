@@ -10,6 +10,55 @@ const router = express.Router();
 
 router.use(requireAdmin);
 
+const formatDateKey = (date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+};
+
+function parseDateInput(value) {
+  if (!value) return null;
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(value);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.getFullYear() === Number(match[1]) &&
+    date.getMonth() === Number(match[2]) - 1 &&
+    date.getDate() === Number(match[3])
+    ? date
+    : null;
+}
+
+function getDateRange(fromDate, toDate, defaultDays = 7) {
+  let start = parseDateInput(fromDate) || new Date();
+  let end = parseDateInput(toDate) || new Date();
+
+  if (!fromDate && !toDate) {
+    start.setDate(start.getDate() - (defaultDays - 1));
+  }
+
+  if (fromDate && !toDate) {
+    end = new Date(start);
+  }
+
+  if (!fromDate && toDate) {
+    start = new Date(end);
+    start.setDate(start.getDate() - (defaultDays - 1));
+  }
+
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  const dates = [];
+  const current = new Date(start);
+  while (current <= end) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  return { start, end, dates };
+}
+
+// Helper function to get the last 7 dates formatted as DD/MM
 function getLast7Days() {
   const dates = [];
   for (let i = 6; i >= 0; i--) {
@@ -25,13 +74,24 @@ function getLast7Days() {
 
 router.get('/', async (request, response) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const totalPosts = await Post.countDocuments();
-    const totalTeams = await Team.countDocuments();
-    const totalMatches = await Match.countDocuments();
+    const { fromDate, toDate } = request.query;
+    if ((fromDate && !parseDateInput(fromDate)) || (toDate && !parseDateInput(toDate))) {
+      return response.status(400).json({ success: false, message: 'Ngày lọc không hợp lệ.' });
+    }
+    if (fromDate && toDate && fromDate > toDate) {
+      return response.status(400).json({ success: false, message: 'Từ ngày không được lớn hơn Đến ngày.' });
+    }
+    const dateRange = getDateRange(fromDate, toDate, 7);
+
+    // 1. Fetch Totals
+    const totalUsers = await User.countDocuments({ createdAt: { $gte: dateRange.start, $lte: dateRange.end } });
+    const totalPosts = await Post.countDocuments({ createdAt: { $gte: dateRange.start, $lte: dateRange.end } });
+    const totalTeams = await Team.countDocuments({ createdAt: { $gte: dateRange.start, $lte: dateRange.end } });
+    const totalMatches = await Match.countDocuments({ createdAt: { $gte: dateRange.start, $lte: dateRange.end } });
 
     
     const rolesAggregate = await User.aggregate([
+      { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       { $group: { _id: '$role', count: { $sum: 1 } } }
     ]);
     const rolesDistribution = {};
@@ -41,6 +101,7 @@ router.get('/', async (request, response) => {
     });
 
     const providersAggregate = await User.aggregate([
+      { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       { $group: { _id: '$provider', count: { $sum: 1 } } }
     ]);
     const providersDistribution = {};
@@ -49,13 +110,15 @@ router.get('/', async (request, response) => {
       providersDistribution[providerName] = item.count;
     });
 
-    const last7Days = getLast7Days();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 6);
-    startDate.setHours(0, 0, 0, 0);
+    // 3. Aggregate 7-day stats
+    const last7Days = dateRange.dates.map((day) => ({
+      dateStr: formatDateKey(day),
+      rawDate: day,
+    }));
+    const startDate = new Date(dateRange.start);
 
     const userRegs = await User.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       {
         $group: {
           _id: { $dateToString: { format: '%d/%m', date: '$createdAt', timezone: '+07:00' } },
@@ -65,7 +128,7 @@ router.get('/', async (request, response) => {
     ]);
 
     const postRegs = await Post.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       {
         $group: {
           _id: { $dateToString: { format: '%d/%m', date: '$createdAt', timezone: '+07:00' } },
@@ -75,7 +138,18 @@ router.get('/', async (request, response) => {
     ]);
 
     const messageRegs = await Message.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%d/%m', date: '$createdAt', timezone: '+07:00' } },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Fetch daily matches
+    const matchRegs = await Match.aggregate([
+      { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       {
         $group: {
           _id: { $dateToString: { format: '%d/%m', date: '$createdAt', timezone: '+07:00' } },
@@ -87,6 +161,7 @@ router.get('/', async (request, response) => {
     const userRegMap = new Map(userRegs.map(i => [i._id, i.count]));
     const postRegMap = new Map(postRegs.map(i => [i._id, i.count]));
     const messageRegMap = new Map(messageRegs.map(i => [i._id, i.count]));
+    const matchRegMap = new Map(matchRegs.map(i => [i._id, i.count]));
 
     const timeline = last7Days.map((day, idx) => {
       const dateKey = day.dateStr;
@@ -94,41 +169,22 @@ router.get('/', async (request, response) => {
       let newUsers = userRegMap.get(dateKey) || 0;
       let newPosts = postRegMap.get(dateKey) || 0;
       let newMessages = messageRegMap.get(dateKey) || 0;
-
-      // Simulation backup to show high-quality dynamic charts in sandbox databases
-      if (totalUsers < 20) {
-        const mockUsers = [4, 6, 3, 9, 5, 8, 12];
-        const mockPosts = [2, 5, 3, 7, 4, 6, 8];
-        const mockMessages = [15, 25, 18, 42, 31, 38, 54];
-        newUsers = Math.max(newUsers, mockUsers[idx]);
-        newPosts = Math.max(newPosts, mockPosts[idx]);
-        newMessages = Math.max(newMessages, mockMessages[idx]);
-      }
+      const newMatches = matchRegMap.get(dateKey) || 0;
 
       return {
         date: dateKey,
         newUsers,
         newPosts,
         newMessages,
+        newMatches,
       };
     });
 
-    const finalTotalUsers = totalUsers || 152;
-    const finalTotalPosts = totalPosts || 84;
-    const finalTotalTeams = totalTeams || 12;
-    const finalTotalMatches = totalMatches || 28;
-
-    if (Object.keys(rolesDistribution).length === 0) {
-      rolesDistribution['Developer'] = 12;
-      rolesDistribution['User'] = 110;
-      rolesDistribution['Manager'] = 5;
-      rolesDistribution['QA'] = 4;
-    }
-    if (Object.keys(providersDistribution).length === 0) {
-      providersDistribution['email'] = 45;
-      providersDistribution['google'] = 98;
-      providersDistribution['facebook'] = 9;
-    }
+    // Provide default totals if database is empty/sparse for visualization
+    const finalTotalUsers = totalUsers;
+    const finalTotalPosts = totalPosts;
+    const finalTotalTeams = totalTeams;
+    const finalTotalMatches = totalMatches;
 
     response.json({
       success: true,
