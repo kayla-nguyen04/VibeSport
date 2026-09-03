@@ -9,7 +9,6 @@ const Notification = require('../models/Notification');
 const uploadCourt = require('../middleware/uploadCourt');
 const requireAdmin = require('../middleware/adminAuth');
 
-// Hàm gửi thông báo tới các user trong các trận đấu đang sử dụng sân bị Ẩn/Xóa
 const normalizePitchTypeValue = (value = '') => {
   const raw = String(value || '').toLowerCase();
   if (!raw) return '';
@@ -96,7 +95,6 @@ async function notifyMatchParticipantsForCourt(court, actionLabel) {
     const courtIdStr = String(court._id || court.id);
     const courtName = court.name || 'Mẫu sân';
 
-    // Tìm tất cả các trận đấu đang diễn ra hoặc chưa bắt đầu có chọn mẫu sân này
     const matches = await Match.find({
       teamStatus: { $ne: 'ended' },
       status: { $ne: 'cancelled' },
@@ -110,12 +108,11 @@ async function notifyMatchParticipantsForCourt(court, actionLabel) {
     console.log(`[CourtNotice] Found ${matches.length} active match(es) using court "${courtName}"`);
 
     for (const match of matches) {
-      // TRẬN ĐẤU VẪN ĐƯỢC TIẾP TỤC BÌNH THƯỜNG - CHỈ GỬI THÔNG BÁO CHO CÁC USER TRONG TRẬN
       const participants = (match.participants || []).map((p) => String(p._id || p));
       
       for (const uId of participants) {
         try {
-          const notifMsg = `📢 Thông báo sân thi đấu: Mẫu sân "${courtName}" của trận "${match.title}" đã được ban quản trị ${actionLabel}. Tuy nhiên trận đấu của bạn vẫn sẽ tiếp tục diễn ra bình thường!`;
+          const notifMsg = ` Thông báo sân thi đấu: Mẫu sân "${courtName}" của trận "${match.title}" đã được ban quản trị ${actionLabel}. Tuy nhiên trận đấu của bạn vẫn sẽ tiếp tục diễn ra bình thường!`;
 
           await Notification.create({
             userId: uId,
@@ -126,7 +123,7 @@ async function notifyMatchParticipantsForCourt(court, actionLabel) {
 
           if (global.io) {
             global.io.to(String(uId)).emit('new_notification', {
-              title: '📢 Thông báo sân thi đấu',
+              title: ' Thông báo sân thi đấu',
               message: notifMsg,
               matchId: match._id,
             });
@@ -141,7 +138,6 @@ async function notifyMatchParticipantsForCourt(court, actionLabel) {
   }
 }
 
-// GET /api/courts (hoặc /api/admin/courts)
 router.get('/', async (req, res) => {
   try {
     const { sportType, district, search, status } = req.query;
@@ -186,8 +182,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/courts/upload-images (Upload ảnh sân lên Cloudinary, trả về URLs)
-// ⚠️ Phải đặt TRƯỚC /:id routes để tránh Express match 'upload-images' như một :id param
 router.post('/upload-images', uploadCourt.array('images', 10), (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
@@ -200,7 +194,6 @@ router.post('/upload-images', uploadCourt.array('images', 10), (req, res) => {
   }
 });
 
-// GET /api/courts/:id
 router.get('/:id', async (req, res) => {
   try {
     const court = await Court.findById(req.params.id).populate('owner', 'name phone email picture avatar');
@@ -212,7 +205,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// GET /api/courts/:courtId/ratings
 router.get('/:courtId/ratings', async (req, res) => {
   try {
     const { courtId } = req.params;

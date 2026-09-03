@@ -15,7 +15,6 @@ async function generateAgoraToken(req, res) {
       });
     }
 
-    // Parse conversationId từ channelName: call_<conversationId>
     const match = String(channelName).match(/^call_(.+)$/);
     if (!match) {
       return res.status(400).json({
@@ -25,7 +24,6 @@ async function generateAgoraToken(req, res) {
     }
     const conversationId = match[1];
 
-    // Xác thực: user phải là participant của conversation
     const conversation = await Conversation.findById(conversationId)
       .select('participants')
       .lean();

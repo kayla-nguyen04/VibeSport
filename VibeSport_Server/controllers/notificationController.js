@@ -5,7 +5,6 @@ function normalizeNotificationMessage(message) {
   return message.replace(/đã Vibe bài viết của bạn/gi, 'đã thích bài viết của bạn');
 }
 
-// 1. Get notifications (paginated)
 exports.getNotifications = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -42,7 +41,6 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-// 2. Get unread count
 exports.getUnreadCount = async (req, res) => {
   try {
     const count = await Notification.countDocuments({
@@ -61,7 +59,6 @@ exports.getUnreadCount = async (req, res) => {
   }
 };
 
-// 3. Mark single notification as read
 exports.markOneRead = async (req, res) => {
   try {
     const { id } = req.params;
@@ -86,7 +83,6 @@ exports.markOneRead = async (req, res) => {
   }
 };
 
-// 4. Mark all notifications as read
 exports.markAllRead = async (req, res) => {
   try {
     await Notification.updateMany(

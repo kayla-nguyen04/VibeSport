@@ -649,8 +649,6 @@ export function CallScreen({ route, navigation }) {
           keyExtractor={(item, idx) => (idx === 0 ? 'local' : String(item.uid))}
           renderItem={({ item, index }) => {
             const isLocal = index === 0;
-            // Lấy tên thật từ uidToName map (peer/participants truyền từ ChatDetail/IncomingCallModal).
-            // Fallback về String(uid) nếu map rỗng (vd user không trong participants list).
             const name = isLocal
               ? (currentUser?.name || 'Bạn')
               : (getDisplayName(item.uid) || `User ${item.uid}`);
@@ -709,24 +707,20 @@ export function CallScreen({ route, navigation }) {
               {isVideo ? renderVideoGrid() : renderVoiceGrid()}
             </View>
 
-            {/* ===== Top overlay: status text (RINGING / CONNECTING) + duration (CONNECTED) + ENDED message ===== */}
-            {/* Hiển thị overlay trên remote view, không che controls bar. */}
+            
             <View style={styles.topOverlay} pointerEvents="none">
               {callState !== 'CONNECTED' && callState !== 'ENDED' && (
                 <Text style={styles.statusText}>
                   {callState === 'OUTGOING_RINGING' && 'Đang gọi…'}
                   {callState === 'INCOMING_RINGING' && 'Cuộc gọi đến…'}
                   {callState === 'CONNECTING' && 'Đang kết nối…'}
-                  {/* Fallback nếu state không match enum (vd lỗi thư viện) */}
                   {!['OUTGOING_RINGING', 'INCOMING_RINGING', 'CONNECTING', 'CONNECTED'].includes(callState) && 'Đang kết nối…'}
                 </Text>
               )}
               {callState === 'CONNECTED' && (
                 <Text style={styles.durationText}>{formatDuration(durationSec)}</Text>
               )}
-              {/* Khi callState === 'ENDED', hiển thị thông báo cuối theo endedReason.
-                  Đây là lý do useSocket.js call_rejected delay 1.8s trước khi pop:
-                  user kịp đọc dòng này trước khi CallScreen đóng. */}
+              
               {callState === 'ENDED' && (
                 <Text style={styles.statusText}>
                   {endedReason === 'timeout' && 'Không có phản hồi'}
@@ -734,7 +728,6 @@ export function CallScreen({ route, navigation }) {
                   {endedReason === 'call_busy' && 'Người nhận đang bận'}
                   {endedReason === 'call_cancelled' && 'Cuộc gọi đã hủy'}
                   {endedReason === 'call_answered_elsewhere' && 'Người khác đã nhấc máy'}
-                  {/* Fallback cho các reason khác (no_answer, normal end, v.v.) */}
                   {endedReason &&
                     !['timeout', 'call_rejected', 'call_busy', 'call_cancelled', 'call_answered_elsewhere'].includes(endedReason) &&
                     'Đã kết thúc'}

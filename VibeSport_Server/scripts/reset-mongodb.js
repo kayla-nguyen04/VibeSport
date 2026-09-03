@@ -1,11 +1,9 @@
 require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 
-// Fix DNS querySrv ECONNREFUSED/ENOTFOUND on Windows when resolving MongoDB Atlas SRV records
 if (process.env.MONGODB_URI && process.env.MONGODB_URI.startsWith('mongodb+srv://')) {
   try {
     require('node:dns').setServers(['8.8.8.8', '1.1.1.1']);
   } catch (err) {
-    // Fallback if dns.setServers fails or is restricted
   }
 }
 
@@ -24,7 +22,6 @@ async function resetMongoDB() {
     await mongoose.connect(MONGODB_URI);
     console.log('✓ Đã kết nối MongoDB');
 
-    // Hỏi xác nhận
     rl.question(
       '\n⚠️  Bạn muốn xóa toàn bộ dữ liệu trong database "vibesport"? (yes/no): ',
       async (answer) => {
@@ -37,7 +34,6 @@ async function resetMongoDB() {
         }
 
         try {
-          // Xóa tất cả collections
           const db = mongoose.connection.db;
           const collections = await db.listCollections().toArray();
 

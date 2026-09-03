@@ -72,7 +72,6 @@ async function validateEmailDomain(domain) {
       return true;
     }
   } catch {
-    // fall through to A record check
   }
 
   try {

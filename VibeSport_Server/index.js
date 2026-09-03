@@ -1,11 +1,9 @@
 require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
 
-// Fix DNS querySrv ECONNREFUSED/ENOTFOUND on Windows when resolving MongoDB Atlas SRV records
 if (process.env.MONGODB_URI && process.env.MONGODB_URI.startsWith('mongodb+srv://')) {
   try {
     require('node:dns').setServers(['8.8.8.8', '1.1.1.1']);
   } catch (err) {
-    // Fallback if dns.setServers fails or is restricted
   }
 }
 
@@ -48,10 +46,6 @@ const io = new Server(server, {
     origin: '*',
   },
 });
-// ================================
-// Socket.IO authentication middleware
-// Verify token from handshake auth, set socket.data.userId server-side
-// ================================
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -71,40 +65,15 @@ io.use(async (socket, next) => {
     next(new Error('unauthorized: server error'));
   }
 });
-
-// ================================
-// Agora channel participant tracking
-// Key: channelName → Set of Agora uids (int)
-// ================================
 const MAX_PARTICIPANTS_PER_CHANNEL = 8;
 
-// Key: channelName → Date (last user join time)
-// Cập nhật MỖI LẦN có user join, xóa khi channel empty
 const lastJoinTimes = new Map();
-
-// Key: channelName → Date (thời điểm user ĐẦU TIÊN join — bắt đầu cuộc gọi thật sự).
-// Set 1 lần khi channel chuyển từ 0 → ≥1 participant, KHÔNG bị ghi đè
-// khi user khác join sau. Dùng để tính duration cuộc gọi chính xác.
 const callStartTimes = new Map();
-
-// Key: channelName → { conversationId, callType, callerId, timerId }
-// Lưu cuộc gọi đang chờ (start_call gửi rồi nhưng chưa ai join)
-// Dùng cho: call_rejected / call_busy / timeout 30s
-// timerId để cancel timeout khi người nhận nhấc máy
 const pendingCalls = new Map();
-
-// Key: channelName → callType ('audio' | 'video')
-// Lưu callType ngay khi cuộc gọi được nhấc máy thành công (join_channel_request)
-// Dùng trong handleLeaveChannel thay vì phụ thuộc client payload
 const activeCallTypes = new Map();
-
-// Key: userId (string) → 'pending' | 'active'
-// 'pending': user có incoming call chưa trả lời (đang rung chuông)
-// 'active':  user đang trong cuộc gọi đã kết nối
-// Dùng để server chặn cuộc gọi thứ 2 ngay lập tức, không cần đợi client phản hồi
 const busyUsers = new Map();
 
-const channelParticipants = new Map(); // { channelName -> Set(uid) }
+const channelParticipants = new Map(); 
 
 function getChannelParticipantCount(channelName) {
   return channelParticipants.get(channelName)?.size ?? 0;
@@ -117,11 +86,6 @@ function addParticipant(channelName, uid) {
   channelParticipants.get(channelName).add(uid);
 }
 
-// Key: channelName → number (số participant tối đa đã từng có trong channel).
-// Dùng để quyết định CÓ GỬI system message "Cuộc gọi kết thúc (X phút)" hay không.
-// Nếu peak = 1, nghĩa là chỉ có 1 người từng join (thường là caller tự join rồi cancel)
-// → cuộc gọi không thật sự diễn ra → ĐÃ được xử lý bởi call_cancelled / timeout / ...
-// → KHÔNG gửi thêm system message để tránh trùng.
 const peakParticipants = new Map();
 
 function updatePeakParticipants(channelName) {
@@ -132,19 +96,12 @@ function updatePeakParticipants(channelName) {
   }
 }
 
-// Key: channelName → callerId (string, MongoDB ObjectId của người bấm nút gọi).
-// Tồn tại xuyên suốt vòng đời của channel (từ start_call → tất cả thành viên rời).
-// Dùng để gán senderId cho system message "Cuộc gọi nhỡ" / "Cuộc gọi kết thúc"
-// — đảm bảo message hiển thị bên PHẢI trên UI của caller, bên TRÁI với callee.
-// pendingCalls không đủ vì nó bị DELETE ngay khi có người đầu tiên join channel,
-// trong khi handleLeaveChannel (chạy khi user rời) có thể xảy ra sau đó.
 const callCallerIds = new Map();
 
 function removeParticipant(channelName, uid) {
   channelParticipants.get(channelName)?.delete(uid);
   if (channelParticipants.get(channelName)?.size === 0) {
     channelParticipants.delete(channelName);
-    // Clean up orphaned call state when channel becomes empty
     lastJoinTimes.delete(channelName);
     callStartTimes.delete(channelName);
     pendingCalls.delete(channelName);
@@ -161,61 +118,43 @@ function isChannelFull(channelName) {
 /**
  * Xử lý khi một user rời khỏi channel.
  * Dùng chung cho: leave_channel event VÀ disconnect event.
- * @param {object} socket - Socket.IO socket instance
+ * @param {object} socket 
  * @param {string} channelName
- * @param {string|null} callTypeFallback - fallback từ client payload (leave_channel)
- *                                      disconnect không có payload → truyền null
+ * @param {string|null} callTypeFallback 
+ *                                      
  */
 async function handleLeaveChannel(socket, channelName, callTypeFallback) {
   const agoraUid = socket.data?.agoraUid;
   const userId = socket.data?.userId;
   if (!agoraUid) return;
 
-  // Kiểm tra user có trong channel không (an toàn cho disconnect race condition)
   const participants = channelParticipants.get(channelName);
   if (!participants || !participants.has(agoraUid)) return;
 
-  // Tính duration từ callStartTimes TRƯỚC khi xóa participant.
-  // Ưu tiên callStartTimes (chính xác từ lúc user đầu tiên join).
-  // Fallback về lastJoinTimes nếu không có (edge case).
   const startTime = callStartTimes.get(channelName) ?? lastJoinTimes.get(channelName);
   const callType = activeCallTypes.get(channelName) ?? callTypeFallback;
   const durationSeconds = startTime
     ? Math.max(0, Math.floor((Date.now() - startTime) / 1000))
     : 0;
-  // Số participant tối đa từng có trong channel.
-  // peakParticipants có thể đã bị xóa nếu channel đã rỗng từ trước,
-  // nên check ?? 0.
+  
   const peak = peakParticipants.get(channelName) ?? 0;
 
-  // === FIX: Đọc callerId TRƯỚC khi removeParticipant ===
-  // removeParticipant sẽ delete callCallerIds khi channel về rỗng
-  // (trường hợp caller là người rời cuối cùng). Nếu đọc sau, callerId = null
-  // → senderId = null → bug cũ (message luôn hiện bên trái).
   const callerId = callCallerIds.get(channelName) ?? null;
 
-  // Xóa khỏi channel
   removeParticipant(channelName, agoraUid);
   io.to(channelName).emit('user_left_channel', { channelName, agoraUid });
   socket.leave(channelName);
 
-  // Xóa currentChannel trên socket
   if (socket.data.currentChannel === channelName) {
     socket.data.currentChannel = null;
   }
 
-  // Xóa busyUsers khi rời cuộc gọi active
   if (userId && busyUsers.get(userId) === 'active') {
     busyUsers.delete(userId);
   }
 
   const countAfterRemove = channelParticipants.get(channelName)?.size ?? 0;
 
-  // === Issue 2: Phát tín hiệu "cuộc gọi đã kết thúc" tới TẤT CẢ thành viên
-  // còn lại trong channel để họ thoát CallScreen. ===
-  // Bỏ qua người vừa rời (socket đã leave channel rồi, nhưng vẫn check
-  // để chắc chắn — phòng trường hợp 1 user có nhiều socket).
-  // Gửi TRƯỚC khi gửi system message để client cleanup UI ngay.
   if (countAfterRemove > 0) {
     const convId = channelName?.match(/^call_(.+)$/)?.[1];
     io.to(channelName).emit('call_ended', {
@@ -227,12 +166,6 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
     });
   }
 
-  // === Issue 3: Gửi tin nhắn hệ thống "cuộc gọi kết thúc" ===
-  // Chỉ khi channel rỗng HOÀN TOÀN (tất cả thành viên đã rời)
-  // VÀ có nhiều hơn 1 người từng join (peak > 1) — tránh trùng với
-  // call_cancelled / call_busy / call_rejected / timeout (đã gửi "Cuộc gọi nhỡ").
-  // senderId = callerId (người bấm nút gọi ban đầu, đã đọc trước khi xóa Map)
-  // → message hiển thị đúng phía trên UI (bên phải với caller, bên trái với callee).
   if (countAfterRemove === 0 && peak > 1) {
     const convId = channelName?.match(/^call_(.+)$/)?.[1];
     if (startTime && convId && callType) {
@@ -246,13 +179,10 @@ async function handleLeaveChannel(socket, channelName, callTypeFallback) {
 }
 
 /**
- * Xoá busyUsers cho tất cả user liên quan đến 1 channel.
- * Dùng chung cho call_busy / call_rejected / call_cancelled / timeout /
- * disconnect để đảm bảo không có user nào bị "kẹt" state 'pending' hoặc
- * 'active' sau khi cuộc gọi kết thúc bằng mọi lý do.
+ * 
  *
  * @param {string} channelName
- * @param {string} [reason]   - log tag để debug
+ * @param {string} [reason]   
  */
 function clearBusyForChannel(channelName, reason = 'cleared') {
   const pending = pendingCalls.get(channelName);
@@ -269,13 +199,11 @@ function clearBusyForChannel(channelName, reason = 'cleared') {
   return cleared;
 }
 
-// Setup Socket.IO global reference
 global.io = io;
 
 io.on('connection', (socket) => {
   console.log('[SOCKET] Client connected:', socket.id);
 
-  // Helper: chuyển ObjectId string → agoraUid int32
   function toAgoraUid(userId) {
     if (!userId || typeof userId !== 'string' || userId.length < 24) return 0;
     const hex = userId.slice(-8);
@@ -284,7 +212,6 @@ io.on('connection', (socket) => {
   }
 
   socket.on('join', () => {
-    // socket.data.userId đã được io.use() middleware gán từ token đã verify
     const userId = socket.data.userId;
     if (userId) {
       socket.join(userId.toString());
@@ -293,9 +220,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ================================
-  // Agora call signaling via Socket.IO
-  // ================================
 
   socket.on('start_call', async (payload) => {
     const {
@@ -321,11 +245,6 @@ io.on('connection', (socket) => {
 
         clearBusyForChannel(channelName, 'timeout (30s)');
 
-        // Server là nguồn timeout chính thức — emit thẳng cho caller, không phụ thuộc
-        // vào việc callee's client có kịp emit call_rejected trước khi bị getAuthGuard
-        // chặn (race condition: server set pendingCalls.delete() TRƯỚC khi client kịp
-        // emit → getAuthGuard thấy pending=null → return → caller đứng mãi ở 35s
-        // no-answer timeout thay vì 30s).
         if (pending.callerId) {
           io.to(pending.callerId.toString()).emit('call_rejected', { channelName, reason: 'timeout' });
         }

@@ -15,7 +15,6 @@ const messageSchema = new Schema(
         return this.type !== 'call';
       },
     },
-    // Loại tin nhắn: 'text' (mặc định), 'image', hoặc 'call' (tin nhắn hệ thống cuộc gọi)
     type: {
       type: String,
       enum: ['text', 'image', 'call'],
@@ -27,7 +26,6 @@ const messageSchema = new Schema(
       trim: true,
       maxlength: 2000,
     },
-    // URL ảnh (chỉ dùng khi type === 'image')
     mediaUrl: {
       type: String,
       default: null,

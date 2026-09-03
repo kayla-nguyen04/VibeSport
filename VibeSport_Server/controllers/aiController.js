@@ -3,8 +3,6 @@ const Match = require('../models/Match');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Groq đã khai tử llama-3.3-70b-versatile, llama-3.1-8b-instant và gemma2-9b-it
-// (xem https://console.groq.com/docs/deprecations). Danh sách model còn hoạt động:
 const ACTIVE_MODELS = [
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
@@ -23,9 +21,7 @@ exports.chatWithAi = async (req, res) => {
 
     const userQuery = prompt.trim();
 
-    // ==========================================
-    // BƯỚC 1: TRUY VẤN DỮ LIỆU TỪ MONGODB
-    // ==========================================
+    
     const openMatches = await Match.find({
       status: 'open',
       teamStatus: { $ne: 'ended' },
@@ -47,9 +43,7 @@ exports.chatWithAi = async (req, res) => {
       skillLevel: m.skillLevel,
     }));
 
-    // ==========================================
-    // BƯỚC 2: THIẾT LẬP PROMPT HỆ THỐNG
-    // ==========================================
+    
     const systemInstruction = `
 Bạn là "VibeSport AI" - Trợ lý thể thao thông minh của ứng dụng VibeSport.
 
@@ -89,9 +83,7 @@ DANH SÁCH CÁC TRẬN ĐẤU HIỆN CÓ:
 ${JSON.stringify(matchesSummary, null, 2)}
 `;
 
-    // ==========================================
-    // BƯỚC 3: GỌI GROQ AI
-    // ==========================================
+    
     let rawText = null;
     let lastError = null;
 
@@ -122,9 +114,7 @@ ${JSON.stringify(matchesSummary, null, 2)}
       throw lastError || new Error('Không nhận được phản hồi từ các model Groq.');
     }
 
-    // ==========================================
-    // BƯỚC 4: XỬ LÝ KẾT QUẢ TRẢ VỀ
-    // ==========================================
+   
     let parsedData = {};
     try {
       const cleanJsonStr = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();

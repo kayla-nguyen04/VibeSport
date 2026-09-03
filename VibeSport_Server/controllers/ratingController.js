@@ -4,7 +4,6 @@ const VirtualUser = require('../models/VirtualUser');
 const Notification = require('../models/Notification');
 const Match = require('../models/Match');
 
-// Hàm gửi đánh giá
 exports.rateParticipants = async (req, res) => {
   try {
     const fromUserId = req.user.id || req.user._id;
@@ -19,12 +18,10 @@ exports.rateParticipants = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy trận đấu.' });
     }
 
-    // Kiểm tra trận đấu đã kết thúc chưa
     if (matchDoc.teamStatus !== 'ended' && matchDoc.status !== 'completed') {
       return res.status(400).json({ message: 'Chỉ có thể đánh giá người chơi sau khi trận đấu đã kết thúc.' });
     }
 
-    // Kiểm tra người gửi đánh giá có phải là thành viên trong trận đấu không
     const isSenderInMatch = matchDoc.participants.some(
       (p) => String(p._id || p) === String(fromUserId)
     );
@@ -40,20 +37,17 @@ exports.rateParticipants = async (req, res) => {
       const { toUserId, stars, comment } = item;
       if (!toUserId || !stars || stars < 1 || stars > 5) continue;
 
-      // Kiểm tra người được đánh giá có tham gia trận đấu này không
       const isTargetInMatch = matchDoc.participants.some(
         (p) => String(p._id || p) === String(toUserId)
       );
       if (!isTargetInMatch) continue;
 
-      // 1. Kiểm tra xem người gửi đã từng đánh giá target trong trận này chưa
       const existing = await Rating.findOne({ fromUser: fromUserId, toUser: toUserId, matchId });
       if (existing) {
         skipped.push({ toUserId, reason: 'already_rated' });
         continue;
       }
 
-      // Tạo mới đánh giá (không cho phép cập nhật lại để đảm bảo 1 người 1 lần)
       const ratingDoc = await Rating.create({
         fromUser: fromUserId,
         toUser: toUserId,
@@ -63,8 +57,6 @@ exports.rateParticipants = async (req, res) => {
       });
       createdRatings.push(ratingDoc);
 
-      // 2. Tính lại điểm Rating trung bình 100 điểm đánh giá gần nhất (Grab Style)
-      // Mặc định ban đầu mỗi người có 100 đánh giá 5 sao. Các đánh giá mới sẽ thay thế các đánh giá 5 sao này.
       const userRatings = await Rating.find({ toUser: toUserId })
         .sort({ createdAt: -1 })
         .limit(100);
@@ -80,7 +72,6 @@ exports.rateParticipants = async (req, res) => {
         avgRating = Number(((actualStars + defaultStars) / 100).toFixed(1));
       }
 
-      // Kiểm tra điều kiện khóa tài khoản (< 2.0 sao)
       const shouldLockAccount = avgRating < 2.0;
 
       const updatedUser = await User.findByIdAndUpdate(toUserId, {
@@ -95,7 +86,6 @@ exports.rateParticipants = async (req, res) => {
         });
       }
 
-      // 3. Tự động tạo thông báo cho người nhận
       try {
         await Notification.create({
           userId: toUserId,
@@ -105,12 +95,11 @@ exports.rateParticipants = async (req, res) => {
           relatedId: matchId,
         });
 
-        // HỆ THỐNG CẢNH BÁO SAO (STAR WARNING & BAN SYSTEM)
         if (avgRating < 2.0) {
           // Dưới 2 sao => BAN ACCOUNT (Khóa tài khoản)
           await Notification.create({
             userId: toUserId,
-            title: '⛔ TÀI KHOẢN ĐÃ BỊ KHÓA',
+            title: 'TÀI KHOẢN ĐÃ BỊ KHÓA',
             message: `Tài khoản của bạn đã bị KHÓA do điểm đánh giá trung bình 100 trận gần nhất rơi xuống dưới 2.0⭐ (${avgRating}⭐). Vui lòng liên hệ hỗ trợ để biết thêm chi tiết.`,
             type: 'rating_warning',
             relatedId: matchId,
@@ -124,7 +113,6 @@ exports.rateParticipants = async (req, res) => {
             });
           }
         } else if (avgRating < 3.0) {
-          // Dưới 3 sao => CẢNH BÁO USER
           await Notification.create({
             userId: toUserId,
             title: '⚠️ CẢNH BÁO ĐIỂM ĐÁNH GIÁ THẤP',
@@ -136,7 +124,7 @@ exports.rateParticipants = async (req, res) => {
           if (global.io) {
             const targetRoom = String(toUserId);
             global.io.to(targetRoom).emit('new_notification', {
-              title: '⚠️ Cảnh báo điểm đánh giá',
+              title: ' Cảnh báo điểm đánh giá',
               message: `Điểm đánh giá trung bình của bạn là ${avgRating}⭐ (Dưới 3.0⭐). Vui lòng chú ý thái độ thi đấu!`,
             });
           }
@@ -157,7 +145,6 @@ exports.rateParticipants = async (req, res) => {
   }
 };
 
-// Hàm lấy danh sách đánh giá của 1 user
 exports.getUserRatings = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -198,7 +185,6 @@ exports.getUserRatings = async (req, res) => {
   }
 };
 
-// Hàm Admin lấy danh sách người dùng, điểm sao trung bình và lịch sử bị đánh giá
 exports.getAdminReputationList = async (req, res) => {
   try {
     const { search } = req.query;
@@ -263,7 +249,6 @@ exports.getAdminReputationList = async (req, res) => {
   }
 };
 
-// Trả về danh sách userId mà current user đã đánh giá trong 1 trận
 exports.getMyRatingsForMatch = async (req, res) => {
   try {
     const fromUserId = req.user.id || req.user._id;

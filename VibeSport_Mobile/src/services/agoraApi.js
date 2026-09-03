@@ -38,8 +38,8 @@ async function request(path, options, timeoutMs = REQUEST_TIMEOUT_MS) {
 /**
  * Gọi API server để tạo Agora RTC token.
  *
- * @param {string} jwtToken - JWT auth token của user hiện tại (từ Redux state.auth.token)
- * @param {object} payload  - { channelName: string, uid: string (MongoDB ObjectId) }
+ * @param {string} jwtToken JWT auth token của user hiện tại (từ Redux state.auth.token)
+ * @param {object} payload   { channelName: string, uid: string (MongoDB ObjectId) }
  * @returns {Promise<{ success: boolean, token: string, appId: string, channelName: string, uid: number }>}
  */
 export function generateAgoraTokenRequest(jwtToken, payload) {

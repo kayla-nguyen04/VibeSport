@@ -1,6 +1,5 @@
 const Session = require('../models/Session');
 
-// Middleware xác thực Token đăng nhập của VibeSport
 exports.authMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -15,7 +14,6 @@ exports.authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
     }
 
-    // Gán thông tin người dùng vào request
     req.user = session.userId;
     next();
   } catch (error) {

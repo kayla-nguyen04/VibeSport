@@ -3,7 +3,7 @@ const Match = require('../models/Match');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 
-const CRON_SCHEDULE = '* * * * *'; // Run every 1 minute
+const CRON_SCHEDULE = '* * * * *';
 
 const parseMatchDateTime = (match, timeStr) => {
   if (!match?.date || !timeStr) return null;
@@ -55,7 +55,6 @@ async function processMatchSchedules() {
 
       const participants = (match.participants || []).map((p) => String(p._id || p));
 
-      // 1. GỬI THÔNG BÁO TRƯỚC 30 PHÚT KHI TRẬN BẮT ĐẦU
       const timeToStartMs = matchStart.getTime() - now.getTime();
       const isWithin30Min = timeToStartMs > 0 && timeToStartMs <= 30 * 60 * 1000;
 
@@ -75,12 +74,12 @@ async function processMatchSchedules() {
                 type: 'match_reminder',
                 matchId: match._id,
                 fromUserId: creator?._id || null,
-                message: `⏰ Trận đấu "${match.title}" sẽ bắt đầu sau 30 phút nữa (${match.startTime}). Vui lòng chuẩn bị có mặt đúng giờ!`,
+                message: `Trận đấu "${match.title}" sẽ bắt đầu sau 30 phút nữa (${match.startTime}). Vui lòng chuẩn bị có mặt đúng giờ!`,
               });
 
               if (global.io) {
                 global.io.to(String(uId)).emit('new_notification', {
-                  title: '⏰ Trận đấu sắp bắt đầu',
+                  title: 'Trận đấu sắp bắt đầu',
                   message: `Trận "${match.title}" sẽ bắt đầu lúc ${match.startTime}. Vui lòng chuẩn bị có mặt đúng giờ!`,
                   matchId: match._id,
                 });
@@ -92,7 +91,6 @@ async function processMatchSchedules() {
         }
       }
 
-      // 2. TỰ ĐỘNG BẮT ĐẦU TRẬN ĐẤU (teamStatus = "ongoing")
       const isVotingDelete = match.deletionVote && match.deletionVote.active;
       if (match.teamStatus === 'not_started' && now >= matchStart && !isVotingDelete) {
         match.teamStatus = 'ongoing';
@@ -103,7 +101,6 @@ async function processMatchSchedules() {
         }
       }
 
-      // 3. TỰ ĐỘNG KẾT THÚC TRẬN ĐẤU SAU 30 PHÚT KHI HẾT GIỜ BÀI VIẾT
       const autoEndThreshold = new Date(matchEnd.getTime() + 30 * 60 * 1000);
       if (now >= autoEndThreshold) {
         match.teamStatus = 'ended';
@@ -117,12 +114,12 @@ async function processMatchSchedules() {
                 userId: uId,
                 type: 'match_ended',
                 matchId: match._id,
-                message: `🏆 Trận đấu "${match.title}" đã kết thúc. Hãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi nhé!`,
+                message: `Trận đấu "${match.title}" đã kết thúc. Hãy dành ít phút để đánh giá thái độ thi đấu của các bạn chơi nhé!`,
               });
 
               if (global.io) {
                 global.io.to(String(uId)).emit('new_notification', {
-                  title: '🏆 Trận đấu đã kết thúc',
+                  title: 'Trận đấu đã kết thúc',
                   message: `Trận "${match.title}" đã kết thúc. Hãy dành ít phút đánh giá các bạn chơi nhé!`,
                   matchId: match._id,
                 });

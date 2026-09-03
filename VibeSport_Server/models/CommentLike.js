@@ -19,7 +19,6 @@ const commentLikeSchema = new Schema(
   }
 );
 
-// Tránh trùng lặp like từ một người dùng trên một cmt
 commentLikeSchema.index({ commentId: 1, userId: 1 }, { unique: true });
 
 module.exports = model('CommentLike', commentLikeSchema);

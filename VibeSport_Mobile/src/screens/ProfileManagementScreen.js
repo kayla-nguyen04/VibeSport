@@ -58,10 +58,8 @@ export default function ProfileManagementScreen({ navigation }) {
   const user = useSelector((state) => state.auth.user);
   const userId = user?.id || user?._id;
 
-  // Lắng nghe dữ liệu tập trung từ Redux Store của hệ thống bài viết
   const { posts, page, hasMore, refreshing, loading } = useSelector((state) => state.posts);
 
-  // Bộ lọc tối ưu chỉ lấy các bài đăng thuộc sở hữu của chính tài khoản hiện tại
   const myPosts = useMemo(() => {
     return posts.filter((post) => {
       const authorId = post.userId?._id || post.userId?.id || post.userId;
@@ -69,7 +67,6 @@ export default function ProfileManagementScreen({ navigation }) {
     });
   }, [posts, userId]);
 
-  // Hàm tải dữ liệu kết hợp phân trang
   const loadPostsData = useCallback(async ({ targetPage = 1 } = {}) => {
     if (!token || !userId) return;
     try {
@@ -79,7 +76,6 @@ export default function ProfileManagementScreen({ navigation }) {
     }
   }, [dispatch, token, userId]);
 
-  // Tự động reload tải lại trang 1 mỗi khi màn hình được Focus quay lại
   useFocusEffect(
     useCallback(() => {
       loadPostsData({ targetPage: 1 });
@@ -94,7 +90,6 @@ export default function ProfileManagementScreen({ navigation }) {
     }
   };
 
-  // Nghiệp vụ Thích/Bỏ thích bài viết đồng bộ thời gian thực
   const handleToggleLike = useCallback((post) => {
     if (post.isLiked) {
       dispatch(unlikePost(post._id));
@@ -107,7 +102,6 @@ export default function ProfileManagementScreen({ navigation }) {
     navigation.navigate('PostDetail', { postId: post._id });
   }, [navigation]);
 
-  // Nghiệp vụ chia sẻ bài viết sử dụng thư viện Share gốc của React Native giống trang chủ
   const handleSharePost = useCallback(async (post) => {
     try {
       const authorName = user?.name || 'Thành viên VibeSport';
@@ -128,7 +122,6 @@ export default function ProfileManagementScreen({ navigation }) {
     }
   }, [user]);
 
-  // Nghiệp vụ Xóa bài viết an toàn 2 lớp kết hợp bọc lỗi hệ thống
   const handleOpenPostMenu = useCallback((post) => {
     Alert.alert(
       'Quản lý bài đăng',

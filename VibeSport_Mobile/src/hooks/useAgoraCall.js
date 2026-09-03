@@ -62,14 +62,9 @@ export function useAgoraCall() {
   const [isJoined, setIsJoined] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
-  // Speaker (loa ngoài / earpiece).
-  // - Voice call: mặc định false → earpiece (đúng UX call thoại).
-  // - Video call Android: mặc định true → loa ngoài (xem video xa màn hình).
-  // - Video call iOS: mặc định false → earpiece (giữ behavior cũ, user bật nếu cần).
-  // Được set đúng giá trị trong joinCall() sau khi biết callType.
+  
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
-  // Callback báo ra ngoài khi onJoinChannelSuccess xảy ra — dùng cho state machine
-  // (dispatch setConnectedAt) và duration timer. Set qua joinCall options.
+  
   const onConnectedCallbackRef = useRef(null);
   const setOnConnectedCallback = useCallback((cb) => {
     onConnectedCallbackRef.current = cb;
@@ -99,10 +94,10 @@ export function useAgoraCall() {
   /**
    * Tham gia cuộc gọi Agora.
    *
-   * @param {string} channelName   - Tên phòng (Agora channel)
+   * @param {string} channelName    Tên phòng (Agora channel)
    * @param {'voice'|'video'} callType
-   * @param {string} agoraToken    - RTC token từ server
-   * @param {number} agoraUid      - Agora UID (đã convert từ ObjectId → số)
+   * @param {string} agoraToken    RTC token từ server
+   * @param {number} agoraUid      Agora UID (đã convert từ ObjectId → số)
    */
   const joinCall = useCallback(
     async (channelName, callType, agoraToken, agoraUid) => {
@@ -110,7 +105,6 @@ export function useAgoraCall() {
       setIsInitializing(true);
 
       try {
-        // Xin quyền RECORD_AUDIO trước khi khởi tạo engine
         const hasPermission = await requestAudioPermission();
         if (!hasPermission) {
           throw new Error('RECORD_AUDIO permission denied');
@@ -131,32 +125,24 @@ export function useAgoraCall() {
             throw new Error(`Agora initialize failed code: ${initResult}`);
           }
 
-          // 1. setChannelProfile TRƯỚC — audio/video modules phải biết profile trước khi enable
           engine.setChannelProfile(ChannelProfileType.ChannelProfileCommunication);
 
-          // 2. setClientRole sau setChannelProfile
           engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
 
-          // 3. Audio profile: tối ưu cho voice (noise suppression + codec)
           engine.setAudioProfile(
             AudioProfileType.AudioProfileSpeechStandard,
             AudioScenarioType.AudioScenarioVoiceChat
           );
 
-          // 4. Enable audio module
           engine.enableAudio();
 
-          // 5. Audio route (loa ngoài vs earpiece):
-          // - Video call + Android: bật loa ngoài sẵn (cầm xa để xem video, áp tai vào loa thoại không hợp lý)
-          // - Voice call (mọi platform) + Video call iOS: giữ earpiece (mặc định), user toggle nếu muốn
+          
           const defaultSpeakerOn = callType === 'video' && Platform.OS === 'android';
           setIsSpeakerOn(defaultSpeakerOn);
           if (defaultSpeakerOn) {
             engine.setDefaultAudioRouteToSpeakerphone(true);
           }
 
-          // 6. Volume indication: bật để onAudioVolumeIndication bắn event debug audio
-          //    interval=200ms (min hợp lệ), smooth=3, reportVad=true
           engine.enableAudioVolumeIndication(200, 3, true);
 
           if (callType === 'video') {
@@ -168,11 +154,9 @@ export function useAgoraCall() {
             });
           }
 
-          // ---- Event listeners ----
           engine.addListener('onJoinChannelSuccess', (connection, elapsed) => {
             setIsJoined(true);
-            // Báo ra ngoài (state machine + duration timer).
-            // Dùng ref để tránh stale closure và re-register listener.
+            
             try {
               onConnectedCallbackRef.current?.(Date.now());
             } catch (err) {
@@ -181,19 +165,14 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onUserJoined', (connection, remoteUid, elapsed) => {
-            // Dùng setupRemoteVideo (single-channel) — không cần RtcConnection
             if (callType === 'video') {
-              // Bắt buộc cast remoteUid về number vì SDK yêu cầu uid kiểu số
               const uidNum = Number(remoteUid);
               engine.setupRemoteVideo({
                 uid: uidNum,
                 renderMode: RenderModeType.RenderModeFit,
               });
             }
-            // Mặc định hasVideo = false; chỉ set true khi nhận
-            // onRemoteVideoStateChanged với state === Decoding.
-            // Nếu set true ngay tại đây mà remote chưa bật camera thì
-            // RtcSurfaceView sẽ render nền đen/avatar, gây hiểu nhầm.
+            
             setRemoteUsers((prev) => {
               const exists = prev.some((u) => u.uid === remoteUid);
               if (exists) return prev;
@@ -222,30 +201,16 @@ export function useAgoraCall() {
           });
 
           engine.addListener('onLocalAudioStateChanged', (connection, state, reason) => {
-            // (silent — không cần log state change local audio)
           });
 
-          // Remote video state — nguồn sự thật DUY NHẤT để biết remote có
-          // đang phát video hay không. Trước đây hook này chỉ lắng nghe
-          // onRemoteAudioStateChanged, khiến hasVideo bị hardcode = true
-          // ngay khi remote join (dù chưa bật camera), gây hiện tượng
-          // RtcSurfaceView render nền đen.
           engine.addListener('onRemoteVideoStateChanged', (connection, remoteUid, state, reason, elapsed) => {
             const stateName = RemoteVideoState[state] ?? `unknown(${state})`;
-            // state:
-            //  0 = Stopped  (remote chưa bật video / đã tắt)
-            //  1 = Starting (đang bắt đầu nhận frame đầu tiên)
-            //  2 = Decoding (đã nhận frame và đang decode bình thường)
-            //  3 = Frozen   (mạng chập chờn, video bị đóng băng)
-            //  4 = Failed   (lỗi)
-            // → hasVideo = true chỉ khi đang decode hoặc đang khởi động
-            //   (Starting) để UI không bị giật về avatar.
+            
             const isVideoPlaying = state === RemoteVideoState.RemoteVideoStateDecoding
                                 || state === RemoteVideoState.RemoteVideoStateStarting;
             setRemoteUsers((prev) => {
               const exists = prev.some((u) => u.uid === remoteUid);
-              // Nếu chưa có trong state (event đến trước onUserJoined) thì
-              // thêm mới với hasVideo đúng trạng thái
+              
               if (!exists) {
                 return [...prev, { uid: remoteUid, hasVideo: isVideoPlaying, hasAudio: true }];
               }
@@ -254,16 +219,6 @@ export function useAgoraCall() {
               );
             });
 
-            // === BƯỚC 2 WORKAROUND: gọi lại setupRemoteVideo() khi state chuyển
-            // sang Starting hoặc Decoding. ===
-            // Lý do: native RtcSurfaceView mount có thể bị chậm hơn so với
-            // onUserJoined event (đặc biệt khi RtcSurfaceView mount trong FlatList
-            // — virtualization delay). Khi đó setupRemoteVideo() trong onUserJoined
-            // sẽ bind vào native surface chưa ready, frame buffer không được route
-            // đúng → màn hình đen. Gọi LẠI khi surface chắc chắn đã mount + render
-            // xong (sau khi có frame thực tế báo về) sẽ ép SDK rebind buffer.
-            // Workaround được cộng đồng react-native-agora confirm trong issue
-            // tương tự (SO #64441672, Agora docs FAQ).
             if (
               callType === 'video' &&
               (state === RemoteVideoState.RemoteVideoStateStarting ||
@@ -281,7 +236,6 @@ export function useAgoraCall() {
             }
           });
 
-          // Remote audio state — đánh dấu hasAudio=false khi remote drop audio stream
           engine.addListener('onRemoteAudioStateChanged', (connection, remoteUid, state, reason) => {
             // state: 0=Stopped, 1=Starting, 2=Running, 3=Stopping, 4=Frozen
             if (state === 0) {
@@ -295,14 +249,11 @@ export function useAgoraCall() {
             }
           });
 
-          // onAudioVolumeIndication — không log để tránh spam log liên tục
-          // (callback fire mỗi vài trăm ms khi có audio activity)
           engine.addListener('onAudioVolumeIndication', () => {});
 
           engineRef.current = engine;
         }
 
-        // ChannelMediaOptions: bật publish audio + video
         const options = new ChannelMediaOptions();
         options.autoSubscribeVideo = true;
         options.autoSubscribeAudio = true;

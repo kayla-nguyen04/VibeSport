@@ -29,14 +29,14 @@ const mapSkillLevel = (oldLevel) => {
 };
 
 async function syncTargetDB(uri, label) {
-  console.log(`\n⏳ Connecting to ${label}...`);
+  console.log(`\nConnecting to ${label}...`);
   const conn = await mongoose.createConnection(uri).asPromise();
-  console.log(`✅ Connected to ${label}!`);
+  console.log(`Connected to ${label}!`);
 
   const MatchModel = conn.model("Match", Match.schema);
   const matches = await MatchModel.find({});
 
-  console.log(`🔍 Found ${matches.length} matches in ${label}. Updating...`);
+  console.log(`Found ${matches.length} matches in ${label}. Updating...`);
 
   let updatedCount = 0;
 
@@ -78,7 +78,7 @@ async function syncTargetDB(uri, label) {
     updatedCount++;
   }
 
-  console.log(`🎉 Successfully updated ${updatedCount} matches in ${label}!`);
+  console.log(`Successfully updated ${updatedCount} matches in ${label}!`);
   await conn.close();
 }
 

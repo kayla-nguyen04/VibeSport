@@ -6,7 +6,6 @@ const Session = require('../models/Session');
 const router = express.Router();
 
 
-// Helper functions for auth
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hashedPassword = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -41,7 +40,6 @@ function createSessionPayload(user) {
   };
 }
 
-// Routes
 router.post('/register', async (request, response) => {
   try {
     console.log('POST /auth/register', request.body);

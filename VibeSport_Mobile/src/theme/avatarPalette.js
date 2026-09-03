@@ -1,9 +1,4 @@
-// ============================================
-// AVATAR PALETTE - Proposal (NOT from Figma MCP)
-// Dùng để random màu nền initials avatar theo tên user
-// ============================================
 
-// 8 màu sáng/vừa, contrast tốt với chữ trắng
 export const avatarPalette = [
   '#FF6B3D', // Coral Orange
   '#E91E63', // Pink
@@ -15,7 +10,6 @@ export const avatarPalette = [
   '#FF9800', // Amber
 ];
 
-// Hàm chọn màu theo name (deterministic hash)
 export function getAvatarColor(name) {
   if (!name) return avatarPalette[0];
 

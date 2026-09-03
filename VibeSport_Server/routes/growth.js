@@ -89,8 +89,7 @@ router.get('/', async (request, response) => {
     const totalTeams = await Team.countDocuments({ createdAt: { $gte: dateRange.start, $lte: dateRange.end } });
     const totalMatches = await Match.countDocuments({ createdAt: { $gte: dateRange.start, $lte: dateRange.end } });
 
-    // 2. Fetch User distributions
-    // Role distribution
+    
     const rolesAggregate = await User.aggregate([
       { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       { $group: { _id: '$role', count: { $sum: 1 } } }
@@ -101,7 +100,6 @@ router.get('/', async (request, response) => {
       rolesDistribution[roleName] = item.count;
     });
 
-    // Provider distribution
     const providersAggregate = await User.aggregate([
       { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       { $group: { _id: '$provider', count: { $sum: 1 } } }
@@ -119,7 +117,6 @@ router.get('/', async (request, response) => {
     }));
     const startDate = new Date(dateRange.start);
 
-    // Fetch daily registrations
     const userRegs = await User.aggregate([
       { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       {
@@ -130,7 +127,6 @@ router.get('/', async (request, response) => {
       }
     ]);
 
-    // Fetch daily posts
     const postRegs = await Post.aggregate([
       { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       {
@@ -141,7 +137,6 @@ router.get('/', async (request, response) => {
       }
     ]);
 
-    // Fetch daily messages
     const messageRegs = await Message.aggregate([
       { $match: { createdAt: { $gte: dateRange.start, $lte: dateRange.end } } },
       {
@@ -163,17 +158,14 @@ router.get('/', async (request, response) => {
       }
     ]);
 
-    // Map aggregates to last 7 days list
     const userRegMap = new Map(userRegs.map(i => [i._id, i.count]));
     const postRegMap = new Map(postRegs.map(i => [i._id, i.count]));
     const messageRegMap = new Map(messageRegs.map(i => [i._id, i.count]));
     const matchRegMap = new Map(matchRegs.map(i => [i._id, i.count]));
 
-    // Construct the timeline array. Add simulation offsets so charts are never empty.
     const timeline = last7Days.map((day, idx) => {
       const dateKey = day.dateStr;
 
-      // Base DB values
       let newUsers = userRegMap.get(dateKey) || 0;
       let newPosts = postRegMap.get(dateKey) || 0;
       let newMessages = messageRegMap.get(dateKey) || 0;

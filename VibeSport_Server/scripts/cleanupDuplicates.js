@@ -7,7 +7,6 @@ async function cleanup() {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to MongoDB');
 
-    // Delete conversations where participantKey contains a dash '-'
     const result = await Conversation.deleteMany({ participantKey: { $regex: '-' } });
     console.log(`Deleted ${result.deletedCount} duplicate/temporary conversations.`);
     process.exit(0);
