@@ -35,10 +35,10 @@ export const updateUserRole = createAsyncThunk(
 
 export const lockUnlockUser = createAsyncThunk(
   'adminUsers/lockUnlock',
-  async ({ id, isLocked }, { getState, rejectWithValue }) => {
+  async ({ id, isLocked, lockReason = '' }, { getState, rejectWithValue }) => {
     try {
       const { token } = getState().auth;
-      const response = await axios.patch(`${API_URL}/${id}/lock`, { isLocked }, {
+      const response = await axios.patch(`${API_URL}/${id}/lock`, { isLocked, lockReason }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;

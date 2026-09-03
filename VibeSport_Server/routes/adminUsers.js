@@ -86,13 +86,21 @@ router.patch('/:id/role', async (req, res) => {
 router.patch('/:id/lock', async (req, res) => {
   try {
     const { id } = req.params;
-    const { isLocked } = req.body;
+    const { isLocked, lockReason } = req.body;
 
     if (typeof isLocked !== 'boolean') {
       return res.status(400).json({ success: false, message: 'isLocked phải là boolean' });
     }
 
-    const user = await User.findByIdAndUpdate(id, { isLocked }, { returnDocument: 'after' }).select('-passwordHash -googleId');
+    if (isLocked && !String(lockReason || '').trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập lý do khóa tài khoản' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { isLocked, lockReason: isLocked ? String(lockReason).trim() : '' },
+      { returnDocument: 'after' }
+    ).select('-passwordHash -googleId');
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
     }

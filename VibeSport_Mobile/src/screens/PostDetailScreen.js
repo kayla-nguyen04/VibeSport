@@ -157,6 +157,53 @@ export default function PostDetailScreen({ route, navigation }) {
     setShowReplies((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
   };
 
+  const toggleExpandComment = (commentId) => {
+    setExpandedComments((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
+  };
+
+  const handleReply = (comment) => {
+    setReplyingTo(comment);
+    setCommentText('');
+    setTimeout(() => commentInputRef.current?.focus(), 0);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+    setCommentText('');
+  };
+
+  const updateCommentLikeState = (commentList, commentId) => commentList.map((comment) => {
+    if (comment._id === commentId) {
+      const isLiked = !comment.isLiked;
+      return {
+        ...comment,
+        isLiked,
+        likesCount: Math.max(0, Number(comment.likesCount || 0) + (isLiked ? 1 : -1)),
+      };
+    }
+    return {
+      ...comment,
+      replies: Array.isArray(comment.replies)
+        ? updateCommentLikeState(comment.replies, commentId)
+        : comment.replies,
+    };
+  });
+
+  const handleLikeComment = async (commentId) => {
+    if (!post || !token) {
+      Alert.alert('Thông báo', 'Vui lòng đăng nhập để thích bình luận.');
+      return;
+    }
+
+    try {
+      setComments((prev) => updateCommentLikeState(prev, commentId));
+      await likeCommentRequest(post._id, commentId, token);
+    } catch (err) {
+      setComments((prev) => updateCommentLikeState(prev, commentId));
+      Alert.alert('Lỗi', err.message || 'Không thể thích bình luận.');
+    }
+  };
+
   const handleLikePost = async () => {
     if (!post) return;
     try {
@@ -342,16 +389,19 @@ export default function PostDetailScreen({ route, navigation }) {
 
       if (res?.success && res?.data) {
         if (replyingTo) {
-          // Add reply to parent comment's replies array
-          setComments((prev) =>
-            prev.map((c) => {
-              if (c._id === replyingTo._id) {
-                return { ...c, replies: [...(c.replies || []), res.data] };
-              }
-              return c;
-            })
-          );
-          // Auto-expand replies list to show the new reply
+          const addReplyToComment = (commentList) => commentList.map((comment) => {
+            if (comment._id === replyingTo._id) {
+              return { ...comment, replies: [...(comment.replies || []), res.data] };
+            }
+            return {
+              ...comment,
+              replies: Array.isArray(comment.replies)
+                ? addReplyToComment(comment.replies)
+                : comment.replies,
+            };
+          });
+
+          setComments((prev) => addReplyToComment(prev));
           setShowReplies((prev) => ({
             ...prev,
             [replyingTo._id]: true,
@@ -432,7 +482,7 @@ export default function PostDetailScreen({ route, navigation }) {
     return `${diffDays} ngày trước`;
   };
 
-  const renderCommentBubble = (comment, isReply = false) => {
+  const renderCommentBubble = (comment, depth = 0) => {
     const avatarColor = getAvatarColor(comment.userId?.name);
     const isExpanded = expandedComments[comment._id];
     const shouldTruncate = comment.content && comment.content.length > 150;
@@ -445,7 +495,7 @@ export default function PostDetailScreen({ route, navigation }) {
     const commentAuthorId = comment.userId?._id || comment.userId?.id || comment.userId;
 
     return (
-      <View key={comment._id} style={[styles.commentItem, isReply && styles.replyItem]}>
+      <View key={comment._id} style={[styles.commentItem, depth > 0 && styles.replyItem, depth > 1 && { paddingLeft: 50 + Math.min(depth - 1, 2) * 18 }]}>
         {/* Avatar – bấm vào → trang cá nhân */}
         <TouchableOpacity
           activeOpacity={0.75}
@@ -454,17 +504,17 @@ export default function PostDetailScreen({ route, navigation }) {
           {comment.userId?.picture ? (
             <Image
               source={{ uri: comment.userId.picture }}
-              style={[styles.commentAvatar, isReply && styles.replyAvatar]}
+                style={[styles.commentAvatar, depth > 0 && styles.replyAvatar]}
             />
           ) : (
             <View
               style={[
                 styles.commentAvatarPlaceholder,
-                isReply && styles.replyAvatar,
+                depth > 0 && styles.replyAvatar,
                 { backgroundColor: avatarColor },
               ]}
             >
-              <Text style={[styles.avatarInitials, isReply && { fontSize: 10 }]}>
+              <Text style={[styles.avatarInitials, depth > 0 && { fontSize: 10 }]}>
                 {getInitials(comment.userId?.name)}
               </Text>
             </View>
@@ -538,31 +588,31 @@ export default function PostDetailScreen({ route, navigation }) {
     );
   };
 
-  const renderCommentItem = ({ item }) => {
-    const isRepliesShown = !!showReplies[item._id];
-    const hasReplies = item.replies && item.replies.length > 0;
+  const renderCommentThread = (comment, depth = 0) => {
+    const replies = Array.isArray(comment.replies) ? comment.replies : [];
+    const repliesVisible = !!showReplies[comment._id];
 
     return (
-      <View>
-        {renderCommentBubble(item, false)}
-        {hasReplies && (
+      <View key={comment._id}>
+        {renderCommentBubble(comment, depth)}
+        {replies.length > 0 && (
           <View style={styles.repliesContainer}>
-            {!isRepliesShown ? (
+            {!repliesVisible ? (
               <TouchableOpacity
-                style={styles.toggleRepliesBtn}
-                onPress={() => toggleShowReplies(item._id)}
+                style={[styles.toggleRepliesBtn, depth > 0 && { paddingLeft: 50 + depth * 18 }]}
+                onPress={() => toggleShowReplies(comment._id)}
               >
                 <View style={styles.toggleRepliesLine} />
                 <Text style={styles.toggleRepliesText}>
-                  Xem {item.replies.length} câu trả lời khác
+                  Xem {replies.length} câu trả lời khác
                 </Text>
               </TouchableOpacity>
             ) : (
               <View>
-                {item.replies.map((reply) => renderCommentBubble(reply, true))}
+                {replies.map((reply) => renderCommentThread(reply, depth + 1))}
                 <TouchableOpacity
-                  style={styles.toggleRepliesBtn}
-                  onPress={() => toggleShowReplies(item._id)}
+                  style={[styles.toggleRepliesBtn, depth > 0 && { paddingLeft: 50 + depth * 18 }]}
+                  onPress={() => toggleShowReplies(comment._id)}
                 >
                   <View style={styles.toggleRepliesLine} />
                   <Text style={styles.toggleRepliesText}>Ẩn câu trả lời</Text>
@@ -575,13 +625,23 @@ export default function PostDetailScreen({ route, navigation }) {
     );
   };
 
+  const renderCommentItem = ({ item }) => {
+    return renderCommentThread(item);
+  };
+
   if (loading) {
     return (
       <Screen style={styles.safeArea}>
         <ScreenHeader style={styles.header}>
-          <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+            <Ionicons name="arrow-back" size={22} color="#1F2937" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>Chi tiết bài viết</Text>
-          <View style={{ width: 36 }} />
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.iconButton} disabled>
+              <Ionicons name="ellipsis-horizontal" size={20} color="#1F2937" />
+            </TouchableOpacity>
+          </View>
         </ScreenHeader>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FF6B35" />
@@ -606,68 +666,19 @@ export default function PostDetailScreen({ route, navigation }) {
   return (
     <Screen style={styles.safeArea}>
       <ScreenHeader style={styles.header}>
-        <BackButton onPress={() => navigation.goBack()} style={styles.backButton} />
-
-        <TouchableOpacity
-          style={styles.headerUserInfo}
-          activeOpacity={0.8}
-          onPress={() => {
-            const authorId = post.userId?._id || post.userId?.id || post.userId;
-            navigateToProfile(authorId);
-          }}
-        >
-          {post.fcId && typeof post.fcId === 'object' ? (
-            <>
-              {post.fcId.avatar ? (
-                <Image source={{ uri: post.fcId.avatar }} style={styles.headerAvatar} />
-              ) : (
-                <View style={[styles.headerAvatarPlaceholder, { backgroundColor: '#f97316' }]}>
-                  <Text style={styles.headerAvatarText}>{post.fcId.name?.charAt(0).toUpperCase() || 'F'}</Text>
-                </View>
-              )}
-              <View style={styles.headerNameCol}>
-                <View style={styles.headerNameRow}>
-                  <Text style={styles.headerName} numberOfLines={1}>{post.fcId.name}</Text>
-                </View>
-                <Text style={styles.headerSubtext}>
-                  Đăng bởi {post.userId?.name || 'Thành viên'} • {formatTime(post.createdAt)}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <>
-              {post.userId?.picture ? (
-                <Image source={{ uri: post.userId.picture }} style={styles.headerAvatar} />
-              ) : (
-                <View style={[styles.headerAvatarPlaceholder, { backgroundColor: posterAvatarColor }]}>
-                  <Text style={styles.headerAvatarText}>{getInitials(post.userId?.name)}</Text>
-                </View>
-              )}
-              <View style={styles.headerNameCol}>
-                <View style={styles.headerNameRow}>
-                  <Text style={styles.headerName} numberOfLines={1}>{post.userId?.name || 'Thành viên'}</Text>
-                  {post.isFollowing ? (
-                    <View style={styles.headerFollowBadge}>
-                      <Text style={styles.headerFollowBadgeText}>Đang theo dõi</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Text style={styles.headerSubtext}>
-                  {post.sportType ? `⚽ ${post.sportType} • ` : ''}
-                  {formatTime(post.createdAt)}
-                </Text>
-              </View>
-            </>
-          )}
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+          <Ionicons name="arrow-back" size={22} color="#1F2937" />
         </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setOptionsVisible(true)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.optionsButton}
-        >
-          <Ionicons name="ellipsis-horizontal" size={20} color="#7C8190" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Chi tiết bài viết</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => setOptionsVisible(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.iconButton}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#1F2937" />
+          </TouchableOpacity>
+        </View>
       </ScreenHeader>
 
       <KeyboardAvoidingView
@@ -963,10 +974,44 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 9,
+    marginTop: Platform.OS === 'ios' ? 4 : 8,
+    height: 58,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 94, 94, 0.19)',
+    zIndex: 10,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoImage: {
+    width: 44,
+    height: 44,
+    marginRight: -6,
+  },
+  logoText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  logoHighlight: {
+    color: '#FF5F3D',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: -2,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButton: {
     width: 36,

@@ -38,6 +38,8 @@ async function request(path, options, timeoutMs = REQUEST_TIMEOUT_MS) {
         const serverMessage = data?.message || text || response.statusText || 'Yêu cầu thất bại.';
         const httpError = new Error(`${serverMessage}`);
         httpError.isHttpError = true;
+        httpError.code = data?.code;
+        httpError.reason = data?.reason;
         throw httpError;
       }
 

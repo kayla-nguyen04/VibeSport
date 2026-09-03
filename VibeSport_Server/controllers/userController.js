@@ -24,11 +24,14 @@ function formatUserPublic(user) {
 async function buildUserStats(userId, storedStats = {}) {
   const matchesPlayed = await Match.countDocuments({
     participants: userId,
-    status: { $in: ['open', 'full', 'completed'] },
+    $or: [
+      { status: 'completed' },
+      { teamStatus: 'ended' },
+    ],
   });
 
   return {
-    matchesPlayed: Math.max(matchesPlayed, storedStats.matchesPlayed || 0),
+    matchesPlayed,
     matchesWon: storedStats.matchesWon || 0,
     mvp: storedStats.mvp || 0,
     rating: storedStats.rating ?? 0,
