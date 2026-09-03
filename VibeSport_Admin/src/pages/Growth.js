@@ -5,12 +5,26 @@ import './Growth.css';
 
 const API_GROWTH_URL = 'http://localhost:4000/api/admin/growth';
 
+const formatLocalDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function Growth() {
   const { token } = useSelector((state) => state.auth);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 6);
+    return formatLocalDate(date);
+  });
+  const [endDate, setEndDate] = useState(() => formatLocalDate(new Date()));
+  const [dateError, setDateError] = useState('');
   
   // Tooltip interactive state
   const [hoveredPoint, setHoveredPoint] = useState(null);
@@ -21,11 +35,22 @@ export default function Growth() {
       return;
     }
 
+    if (startDate && endDate && startDate > endDate) {
+      setDateError('Từ ngày không được lớn hơn Đến ngày.');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
+      setDateError('');
       const response = await axios.get(API_GROWTH_URL, {
         headers: { Authorization: `Bearer ${token}` },
+        params: {
+          fromDate: startDate || undefined,
+          toDate: endDate || undefined,
+        },
       });
       if (response.data.success) {
         setData(response.data);
@@ -38,7 +63,7 @@ export default function Growth() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, startDate, endDate]);
 
   useEffect(() => {
     if (token) {
@@ -69,7 +94,24 @@ export default function Growth() {
 
   if (!data) return null;
 
-  const { totals, rolesDistribution, providersDistribution, timeline } = data;
+  const { totals, rolesDistribution, providersDistribution } = data;
+  const timeline = Array.isArray(data.timeline) && data.timeline.length > 0
+    ? data.timeline.map((day) => ({
+      date: day?.date || '',
+      newUsers: Number(day?.newUsers) || 0,
+      newPosts: Number(day?.newPosts) || 0,
+      newMessages: Number(day?.newMessages) || 0,
+      newMatches: Number(day?.newMatches) || 0,
+    }))
+    : [{ date: '', newUsers: 0, newPosts: 0, newMessages: 0, newMatches: 0 }];
+  const safeTotals = {
+    users: Number(totals?.users) || 0,
+    posts: Number(totals?.posts) || 0,
+    teams: Number(totals?.teams) || 0,
+    matches: Number(totals?.matches) || 0,
+  };
+  const safeRolesDistribution = rolesDistribution && typeof rolesDistribution === 'object' ? rolesDistribution : {};
+  const safeProvidersDistribution = providersDistribution && typeof providersDistribution === 'object' ? providersDistribution : {};
 
   // --- Calculations for SVG Line Chart (Users) ---
   const chartWidth = 600;
@@ -83,8 +125,9 @@ export default function Growth() {
   const plotHeight = chartHeight - paddingTop - paddingBottom;
 
   const maxUsersVal = Math.max(...timeline.map((d) => d.newUsers), 5);
+  const labelStep = Math.max(1, Math.ceil(timeline.length / 10));
   const userPoints = timeline.map((day, idx) => {
-    const x = paddingLeft + (idx * plotWidth) / (timeline.length - 1);
+    const x = paddingLeft + (idx * plotWidth) / Math.max(timeline.length - 1, 1);
     const y = paddingTop + plotHeight - (day.newUsers / maxUsersVal) * plotHeight;
     return { x, y, value: day.newUsers, date: day.date };
   });
@@ -115,6 +158,23 @@ export default function Growth() {
   const groupWidth = barPlotWidth / numDays;
   const barWidth = groupWidth * 0.3; // Width of single bar
 
+  const matchChartWidth = 600;
+  const matchChartHeight = 280;
+  const matchPaddingLeft = 45;
+  const matchPaddingRight = 20;
+  const matchPaddingTop = 25;
+  const matchPaddingBottom = 55;
+  const matchPlotWidth = matchChartWidth - matchPaddingLeft - matchPaddingRight;
+  const matchPlotHeight = matchChartHeight - matchPaddingTop - matchPaddingBottom;
+  const maxMatchesVal = Math.max(...timeline.map((day) => day.newMatches), 5);
+  const matchPoints = timeline.map((day, idx) => ({
+    x: matchPaddingLeft + (idx * matchPlotWidth) / Math.max(timeline.length - 1, 1),
+    y: matchPaddingTop + matchPlotHeight - (day.newMatches / maxMatchesVal) * matchPlotHeight,
+    value: day.newMatches,
+    date: day.date,
+  }));
+  const matchLinePath = matchPoints.map((point, idx) => `${idx === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+
   return (
     <div className="growth-dashboard-container">
       {/* Header */}
@@ -123,12 +183,43 @@ export default function Growth() {
           <h2>Thống kê độ tăng trưởng</h2>
           <p className="growth-subtitle">Theo dõi và phân tích sự phát triển của hệ thống VibeSport</p>
         </div>
-        <button className="growth-refresh-btn" onClick={fetchGrowthData}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-          </svg>
-          Làm mới
-        </button>
+        <div className="growth-actions">
+          <div className="growth-date-filter">
+            <label>
+              <span>Từ ngày</span>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setDateError(e.target.value && endDate && e.target.value > endDate ? 'Từ ngày không được lớn hơn Đến ngày.' : '');
+                }}
+                className="growth-date-input"
+              />
+            </label>
+            <label>
+              <span>Đến ngày</span>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setDateError(startDate && e.target.value && startDate > e.target.value ? 'Từ ngày không được lớn hơn Đến ngày.' : '');
+                }}
+                className="growth-date-input"
+              />
+            </label>
+          </div>
+          <button className="growth-refresh-btn" onClick={fetchGrowthData}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+            </svg>
+            Làm mới
+          </button>
+          {dateError && <span className="growth-date-error">{dateError}</span>}
+        </div>
       </div>
 
       {/* KPI Stats Cards */}
@@ -144,7 +235,7 @@ export default function Growth() {
           </div>
           <div className="kpi-info">
             <span className="kpi-label">Tổng thành viên</span>
-            <h3 className="kpi-value">{totals.users}</h3>
+            <h3 className="kpi-value">{safeTotals.users}</h3>
             <span className="kpi-trend positive">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M12 19V5M5 12l7-7 7 7" />
@@ -162,7 +253,7 @@ export default function Growth() {
           </div>
           <div className="kpi-info">
             <span className="kpi-label">Tổng bài viết</span>
-            <h3 className="kpi-value">{totals.posts}</h3>
+            <h3 className="kpi-value">{safeTotals.posts}</h3>
             <span className="kpi-trend positive">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M12 19V5M5 12l7-7 7 7" />
@@ -180,7 +271,7 @@ export default function Growth() {
           </div>
           <div className="kpi-info">
             <span className="kpi-label">Số lượng đội bóng</span>
-            <h3 className="kpi-value">{totals.teams}</h3>
+            <h3 className="kpi-value">{safeTotals.teams}</h3>
             <span className="kpi-trend positive">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M12 19V5M5 12l7-7 7 7" />
@@ -202,7 +293,7 @@ export default function Growth() {
           </div>
           <div className="kpi-info">
             <span className="kpi-label">Tổng số trận đấu</span>
-            <h3 className="kpi-value">{totals.matches}</h3>
+            <h3 className="kpi-value">{safeTotals.matches}</h3>
             <span className="kpi-trend positive">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M12 19V5M5 12l7-7 7 7" />
@@ -218,7 +309,7 @@ export default function Growth() {
         {/* Users Growth Line Chart */}
         <div className="growth-chart-card">
           <div className="chart-header">
-            <h4>Lượt đăng ký người dùng mới (7 ngày qua)</h4>
+            <h4>Lượt đăng ký người dùng mới ({startDate} đến {endDate})</h4>
           </div>
           <div className="chart-body-wrapper">
             <svg width="100%" height="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="svg-chart">
@@ -283,14 +374,14 @@ export default function Growth() {
                     stroke="#a0aec0" 
                     strokeWidth="1" 
                   />
-                  <text 
-                    x={p.x} 
+                  <text
+                    x={p.x}
                     y={paddingTop + plotHeight + 18} 
                     textAnchor="middle" 
                     fontSize="10" 
                     fill="#718096"
                   >
-                    {p.date}
+                    {idx % labelStep === 0 || idx === userPoints.length - 1 ? p.date : ''}
                   </text>
                 </g>
               ))}
@@ -461,13 +552,47 @@ export default function Growth() {
                       fontSize="10" 
                       fill="#718096"
                     >
-                      {day.date}
+                      {idx % labelStep === 0 || idx === timeline.length - 1 ? day.date : ''}
                     </text>
                   </g>
                 );
               })}
             </svg>
           </div>
+        </div>
+      </div>
+
+      {/* Match Growth Chart */}
+      <div className="growth-chart-card growth-chart-card-wide">
+        <div className="chart-header">
+          <h4>Trận đấu mới</h4>
+          <div className="chart-legend">
+            <span className="legend-item"><span className="legend-dot matches-dot"></span>Trận đấu</span>
+          </div>
+        </div>
+        <div className="chart-body-wrapper chart-body-wrapper-tall">
+          <svg width="100%" height="100%" viewBox={`0 0 ${matchChartWidth} ${matchChartHeight}`} className="svg-chart">
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
+              const y = matchPaddingTop + matchPlotHeight * ratio;
+              const value = Math.round(maxMatchesVal * (1 - ratio));
+              return (
+                <g key={index}>
+                  <line x1={matchPaddingLeft} y1={y} x2={matchChartWidth - matchPaddingRight} y2={y} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" />
+                  <text x={matchPaddingLeft - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#718096">{value}</text>
+                </g>
+              );
+            })}
+            <path d={`${matchLinePath} L ${matchPoints[matchPoints.length - 1].x} ${matchPaddingTop + matchPlotHeight} L ${matchPoints[0].x} ${matchPaddingTop + matchPlotHeight} Z`} fill="#fff1eb" />
+            <path d={matchLinePath} fill="none" stroke="#ff6b35" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            {matchPoints.map((point, idx) => (
+              <g key={idx}>
+                <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#ff6b35" strokeWidth="3" className="chart-data-point" />
+                <text x={point.x} y={matchPaddingTop + matchPlotHeight + 22} textAnchor="middle" fontSize="10" fill="#718096">
+                  {idx % labelStep === 0 || idx === matchPoints.length - 1 ? point.date : ''}
+                </text>
+              </g>
+            ))}
+          </svg>
         </div>
       </div>
 
@@ -479,8 +604,8 @@ export default function Growth() {
             <h4>Phân quyền tài khoản (Roles)</h4>
           </div>
           <div className="distribution-body">
-            {Object.entries(rolesDistribution).map(([role, count]) => {
-              const percentage = Math.round((count / totals.users) * 100) || 0;
+            {Object.entries(safeRolesDistribution).map(([role, count]) => {
+              const percentage = Math.round((Number(count) / safeTotals.users) * 100) || 0;
               return (
                 <div key={role} className="distribution-row">
                   <div className="dist-meta">
@@ -505,8 +630,8 @@ export default function Growth() {
             <h4>Nguồn đăng nhập (Providers)</h4>
           </div>
           <div className="distribution-body">
-            {Object.entries(providersDistribution).map(([provider, count]) => {
-              const percentage = Math.round((count / totals.users) * 100) || 0;
+            {Object.entries(safeProvidersDistribution).map(([provider, count]) => {
+              const percentage = Math.round((Number(count) / safeTotals.users) * 100) || 0;
               
               // Capitalize provider name
               const formattedProvider = provider === 'email' ? 'Email/Mật khẩu' 
