@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import './PostsPage.css';
+import { SERVER_URL } from '../config';
 
 const STATUS_LABELS = {
   active: 'Hoạt động',
@@ -44,7 +45,7 @@ function truncateText(text, maxLength = 80) {
 }
 
 // Resolve media URL — nếu là relative path thì ghép với API base URL
-const API_IMG_BASE = 'http://localhost:4000';
+const API_IMG_BASE = SERVER_URL;
 function resolveMediaUrl(url) {
   if (!url) return null;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;

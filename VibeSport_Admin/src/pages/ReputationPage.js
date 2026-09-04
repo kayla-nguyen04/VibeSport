@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import './ReputationPage.css';
+import { SERVER_URL } from '../config';
 
 export default function ReputationPage() {
   const [users, setUsers] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [courts, setCourts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -15,7 +17,7 @@ export default function ReputationPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('adminToken');
-      const res = await axios.get('http://localhost:4000/api/ratings/admin/list', {
+      const res = await axios.get(`${SERVER_URL}/api/ratings/admin/list`, {
         params: { search: searchQuery.trim() || undefined },
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -29,14 +31,9 @@ export default function ReputationPage() {
     }
   }, [searchQuery]);
 
-  useEffect(() => {
-    fetchReputationData();
-    fetchCourts();
-  }, [fetchReputationData]);
-
   const fetchCourts = useCallback(async () => {
     try {
-      const res = await axios.get('http://localhost:4000/api/courts', { params: { status: 'active' } });
+      const res = await axios.get(`${SERVER_URL}/api/courts`, { params: { status: 'active' } });
       if (res.data?.success) {
         setCourts(res.data.data || []);
       }
@@ -44,6 +41,11 @@ export default function ReputationPage() {
       console.error('Fetch courts error:', err.message);
     }
   }, []);
+
+  useEffect(() => {
+    fetchReputationData();
+    fetchCourts();
+  }, [fetchReputationData, fetchCourts]);
 
   const handleOpenHistory = (user) => {
     setSelectedUser(user);
