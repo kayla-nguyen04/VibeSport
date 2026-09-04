@@ -1,12 +1,13 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios"; // đổi thành instance axios/api của bạn nếu có
+import axios from "axios";
+import { ADMIN_API_URL } from "../../config";
 
 export const login = createAsyncThunk(
   "auth/login",
   async (credentials, { rejectWithValue }) => {
     try {
       const res = await axios.post(
-        "http://localhost:4000/api/admin/login",
+        `${ADMIN_API_URL}/login`,
         credentials,
       );
       return res.data;

@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { ADMIN_API_URL } from '../config';
 
-const API_BASE_URL = 'http://localhost:4000/api/admin';
+const API_BASE_URL = ADMIN_API_URL;
 
 const api = axios.create({
   baseURL: API_BASE_URL,

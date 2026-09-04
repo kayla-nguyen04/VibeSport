@@ -2,8 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
 import './Growth.css';
+import { ADMIN_API_URL } from '../config';
 
-const API_GROWTH_URL = 'http://localhost:4000/api/admin/growth';
+const API_GROWTH_URL = `${ADMIN_API_URL}/growth`;
 
 const formatLocalDate = (date) => {
   const year = date.getFullYear();
@@ -259,24 +260,6 @@ export default function Growth() {
                 <path d="M12 19V5M5 12l7-7 7 7" />
               </svg>
               8.2% tuần này
-            </span>
-          </div>
-        </div>
-
-        <div className="growth-kpi-card">
-          <div className="kpi-icon-wrapper teams-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <div className="kpi-info">
-            <span className="kpi-label">Số lượng đội bóng</span>
-            <h3 className="kpi-value">{safeTotals.teams}</h3>
-            <span className="kpi-trend positive">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
-              5.0% tuần này
             </span>
           </div>
         </div>

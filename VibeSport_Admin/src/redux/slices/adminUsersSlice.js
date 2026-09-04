@@ -1,7 +1,8 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
+import { ADMIN_API_URL } from '../../config';
 
-const API_URL = 'http://localhost:4000/api/admin/users';
+const API_URL = `${ADMIN_API_URL}/users`;
 
 export const fetchUsers = createAsyncThunk(
   'adminUsers/fetchUsers',

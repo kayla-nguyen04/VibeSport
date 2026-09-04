@@ -9,6 +9,7 @@ import {
 } from '../redux/slices/adminUsersSlice';
 import './Users.css';
 
+// eslint-disable-next-line no-unused-vars
 const ROLES = [
   { value: 'Admin', label: 'Admin' },
   { value: 'User', label: 'Users' }
@@ -57,6 +58,7 @@ export default function Users() {
     loadData(1, query, statusFilter, sortFilter);
   };
 
+  // eslint-disable-next-line no-unused-vars
   const handleRoleChange = async (userId, newRole) => {
     if (newRole === 'Admin') {
       showNotification('Không được phép cấp quyền Admin!', 'error');

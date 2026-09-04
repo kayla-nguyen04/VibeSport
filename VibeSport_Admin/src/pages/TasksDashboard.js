@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
 import './TasksDashboard.css';
+import { ADMIN_API_URL } from '../config';
 
-const API_BASE_URL = 'http://localhost:4000/api/admin/tasks';
+const API_BASE_URL = `${ADMIN_API_URL}/tasks`;
 
 export default function TasksDashboard() {
   const { token } = useSelector((state) => state.auth);
