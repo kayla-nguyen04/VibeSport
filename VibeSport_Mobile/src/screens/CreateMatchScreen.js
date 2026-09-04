@@ -757,7 +757,11 @@ function RacketCourt({ maxPlayers, sport, selectedIds = [], onToggle }) {
                 width: dotSize,
                 height: dotSize,
                 borderRadius: dotSize / 2,
-                backgroundColor: isSelected ? ORANGE : sportColor,
+                backgroundColor: isSelected
+                  ? ORANGE
+                  : sport === "pickleball"
+                    ? "transparent"
+                    : sportColor,
                 borderColor: isSelected ? "#fff" : "rgba(255,255,255,0.7)",
                 borderWidth: isSelected ? 2 : 1,
               },
@@ -2602,6 +2606,7 @@ export default function CreateMatchScreen({ navigation, route }) {
                 <CourtTypeButton
                   key={item.maxPlayers}
                   label={item.label}
+                  subLabel={item.count}
                   isSelected={footballMaxPlayers === item.maxPlayers}
                   onPress={() => handleSelectFootballMaxPlayers(item.maxPlayers)}
                 />
