@@ -61,6 +61,31 @@ export const getServiceCostRange = () => {
   };
 };
 
+const getCourtServiceMenu = (court) => {
+  const serviceDetails = court?.serviceDetails || {};
+  const services = [
+    { key: "drinkService", fallback: SERVICE_MENU[0] },
+    { key: "equipmentService", fallback: SERVICE_MENU[1] },
+  ];
+
+  const realServices = services
+    .map(({ key, fallback }) => {
+      const service = serviceDetails[key];
+      if (!service || service.minPrice == null || service.maxPrice == null) return null;
+
+      const priceRangeParts = String(service.priceRange || "").split("/");
+      return {
+        label: service.name || fallback.label,
+        unit: service.unit || priceRangeParts[1]?.trim() || fallback.unit,
+        priceMin: Number(service.minPrice),
+        priceMax: Number(service.maxPrice),
+      };
+    })
+    .filter(Boolean);
+
+  return realServices.length > 0 ? realServices : SERVICE_MENU;
+};
+
 const isPitchSupportedByCourt = (court, pitchTypeLabel) => {
   if (!court) return true;
 
@@ -1113,7 +1138,7 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
               </Text>
 
               <View style={{ gap: 8 }}>
-                {SERVICE_MENU.map((item, idx) => (
+                {getCourtServiceMenu(court).map((item, idx) => (
                   <View key={idx} style={{
                     padding: 10,
                     backgroundColor: "#F9FAFB",
@@ -1126,7 +1151,7 @@ export function CourtDetailModal({ visible, court, onClose, navigation }) {
                       {idx + 1}. {item.label}
                     </Text>
                     <Text style={{ fontSize: 13, fontWeight: "700", color: "#059669", marginTop: 2 }}>
-                      Giá thuê: {(item.priceMin / 1000).toFixed(0)}.000đ - {(item.priceMax / 1000).toFixed(0)}.000đ / {item.unit}
+                      Giá thuê: {Number(item.priceMin).toLocaleString("vi-VN")}đ - {Number(item.priceMax).toLocaleString("vi-VN")}đ / {item.unit}
                     </Text>
                   </View>
                 ))}
